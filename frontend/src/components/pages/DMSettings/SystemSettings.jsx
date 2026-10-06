@@ -81,6 +81,8 @@ const SystemSettings = ({testDataHostname = TEST_DATA_HOSTNAME}) => {
     const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
+    // Shown once after a run: the server generates a new random password each time
+    const [testCredentials, setTestCredentials] = useState(null);
 
     // Timezone settings
     const [currentTimezone, setCurrentTimezone] = useState('');
@@ -277,10 +279,12 @@ const SystemSettings = ({testDataHostname = TEST_DATA_HOSTNAME}) => {
 
     const handleGenerateTestData = async () => {
         setIsGeneratingTestData(true);
+        setTestCredentials(null);
         try {
             // The api utility returns the response body: { success, data: { message, summary } }
             const response = await api.post('/test-data/generate');
             const summary = response?.data?.summary;
+            setTestCredentials(response?.data?.testCredentials || null);
             enqueueSnackbar(
                 summary
                     ? `Test data generated: ${summary.loot} loot items, ${summary.gold} gold transactions, ${summary.users} users, ${summary.ships} ships, ${summary.crew} crew members`
@@ -568,7 +572,7 @@ const SystemSettings = ({testDataHostname = TEST_DATA_HOSTNAME}) => {
                                         color: "text.secondary",
                                         mb: 2
                                     }}>
-                                    Creates: 4 test users (testplayer1-4, password: testpass123), 4 characters, ~50 loot items, ~40 gold transactions, 5 ships, 4 outposts, and 13 crew members.
+                                    Creates: 4 test users (testplayer1-4, with a new random password shown once after each run), 4 characters, ~50 loot items, ~40 gold transactions, 5 ships, 4 outposts, and 13 crew members.
                                 </Typography>
                                 
                                 <Button
@@ -581,6 +585,13 @@ const SystemSettings = ({testDataHostname = TEST_DATA_HOSTNAME}) => {
                                 >
                                     {isGeneratingTestData ? <CircularProgress size={24}/> : 'Generate Test Data'}
                                 </Button>
+
+                                {testCredentials && (
+                                    <Alert severity="success" sx={{ mt: 2 }}>
+                                        Test accounts {testCredentials.username} - password: <strong>{testCredentials.password}</strong>.
+                                        Copy it now; it is not shown again and replaces the previous password.
+                                    </Alert>
+                                )}
                             </CardContent>
                         </Card>
                     </Grid>

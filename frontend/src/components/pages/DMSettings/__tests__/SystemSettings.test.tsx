@@ -697,6 +697,28 @@ describe('SystemSettings', () => {
     expect(screen.queryByText(/Error generating test data/i)).not.toBeInTheDocument();
   });
 
+  it('shows the generated test account password once and never a fixed one (F-1209)', async () => {
+    campaignContextValue = makeContext({}, true);
+    (api.post as any).mockResolvedValue({
+      success: true,
+      data: {
+        message: 'Test data generated successfully',
+        summary: { loot: 57, gold: 40, users: 4, ships: 5, crew: 13 },
+        testCredentials: { username: 'testplayer1-4', password: 'Xy7_random-pass9', note: 'n' },
+      },
+    });
+
+    renderSystemSettings({ testDataHostname: 'localhost' });
+
+    // The static card text no longer publishes a password
+    expect(screen.queryByText(/testpass123/)).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Generate Test Data/i }));
+
+    expect(await screen.findByText(/Xy7_random-pass9/)).toBeInTheDocument();
+    expect(screen.getByText(/Copy it now/)).toBeInTheDocument();
+  });
+
   it('shows the server message when test data generation fails', async () => {
     campaignContextValue = makeContext({}, true);
     (api.post as any).mockRejectedValue({ response: { data: { message: 'Test data generation is only available on test instances' } } });
