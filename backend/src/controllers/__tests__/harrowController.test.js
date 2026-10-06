@@ -25,28 +25,9 @@ const campaignSettings = require('../../utils/campaignSettings');
 const { hasDmRights } = require('../../utils/roleUtils');
 const harrowController = require('../harrowController');
 
-function createMockRes() {
-  return {
-    success: jest.fn(),
-    created: jest.fn(),
-    validationError: jest.fn(),
-    notFound: jest.fn(),
-    forbidden: jest.fn(),
-    error: jest.fn(),
-    json: jest.fn(),
-    status: jest.fn().mockReturnThis(),
-  };
-}
+const { createMockRes, createMockReq } = require('../../../tests/utils/mockHttp');
 
-function createMockReq(overrides = {}) {
-  return {
-    body: {},
-    params: {},
-    query: {},
-    user: { id: 7 },
-    ...overrides,
-  };
-}
+const baseReq = (overrides = {}) => createMockReq({ user: { id: 7 }, ...overrides });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -68,7 +49,7 @@ describe('getState', () => {
     Harrow.getChoosing.mockResolvedValue([
       { character_id: 1, chapter: 2, card_name: 'Locksmith', is_chosen_boon: true },
     ]);
-    const req = createMockReq();
+    const req = baseReq();
     const res = createMockRes();
 
     await harrowController.getState(req, res);
@@ -91,7 +72,7 @@ describe('getState', () => {
     Harrow.getChoosing.mockResolvedValue([]);
     const res = createMockRes();
 
-    await harrowController.getState(createMockReq(), res);
+    await harrowController.getState(baseReq(), res);
 
     expect(Harrow.getBalances).toHaveBeenCalledWith(1);
     expect(res.success.mock.calls[0][0].enabled).toBe(false);
@@ -101,20 +82,20 @@ describe('getState', () => {
 describe('award', () => {
   it('rejects a missing characterId', async () => {
     const res = createMockRes();
-    await harrowController.award(createMockReq({ body: { points: 2 } }), res);
+    await harrowController.award(baseReq({ body: { points: 2 } }), res);
     expect(res.validationError).toHaveBeenCalledWith('characterId is required');
   });
 
   it('rejects non-positive points', async () => {
     const res = createMockRes();
-    await harrowController.award(createMockReq({ body: { characterId: 1, points: 0 } }), res);
+    await harrowController.award(baseReq({ body: { characterId: 1, points: 0 } }), res);
     expect(res.validationError).toHaveBeenCalledWith('points must be a positive integer');
   });
 
   it('404s an unknown character', async () => {
     Harrow.getCharacter.mockResolvedValue(null);
     const res = createMockRes();
-    await harrowController.award(createMockReq({ body: { characterId: 99, points: 2 } }), res);
+    await harrowController.award(baseReq({ body: { characterId: 99, points: 2 } }), res);
     expect(res.notFound).toHaveBeenCalledWith('Character not found');
   });
 
@@ -124,7 +105,7 @@ describe('award', () => {
     Harrow.getBalance.mockResolvedValue(5);
     const res = createMockRes();
 
-    await harrowController.award(createMockReq({ body: { characterId: 1, points: 2 } }), res);
+    await harrowController.award(baseReq({ body: { characterId: 1, points: 2 } }), res);
 
     expect(Harrow.addEntry).toHaveBeenCalledWith(
       expect.objectContaining({ characterId: 1, chapter: 2, delta: 2, entryType: 'award', userId: 7 })
@@ -137,7 +118,7 @@ describe('awardBatch', () => {
   it('rejects an out-of-range suitMatchCount', async () => {
     const res = createMockRes();
     await harrowController.awardBatch(
-      createMockReq({ body: { suitMatchCount: 12, awards: [{ characterId: 1 }] } }),
+      baseReq({ body: { suitMatchCount: 12, awards: [{ characterId: 1 }] } }),
       res
     );
     expect(res.validationError).toHaveBeenCalledWith('suitMatchCount must be an integer between 0 and 9');
@@ -145,7 +126,7 @@ describe('awardBatch', () => {
 
   it('rejects an empty awards array', async () => {
     const res = createMockRes();
-    await harrowController.awardBatch(createMockReq({ body: { suitMatchCount: 3, awards: [] } }), res);
+    await harrowController.awardBatch(baseReq({ body: { suitMatchCount: 3, awards: [] } }), res);
     expect(res.validationError).toHaveBeenCalledWith('awards must be a non-empty array');
   });
 
@@ -156,7 +137,7 @@ describe('awardBatch', () => {
     const res = createMockRes();
 
     await harrowController.awardBatch(
-      createMockReq({
+      baseReq({
         body: {
           suitMatchCount: 3,
           awards: [
@@ -180,7 +161,7 @@ describe('spend', () => {
   it('forbids a player spending on a character they do not own', async () => {
     Harrow.getCharacter.mockResolvedValue({ id: 2, name: 'Merisiel', user_id: 8 });
     const res = createMockRes();
-    await harrowController.spend(createMockReq({ body: { characterId: 2, points: 1 } }), res);
+    await harrowController.spend(baseReq({ body: { characterId: 2, points: 1 } }), res);
     expect(res.forbidden).toHaveBeenCalledWith('You can only spend Harrow Points on your own character');
   });
 
@@ -188,7 +169,7 @@ describe('spend', () => {
     Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
     Harrow.getBalance.mockResolvedValue(1);
     const res = createMockRes();
-    await harrowController.spend(createMockReq({ body: { characterId: 1, points: 3 } }), res);
+    await harrowController.spend(baseReq({ body: { characterId: 1, points: 3 } }), res);
     expect(res.validationError).toHaveBeenCalledWith(
       expect.stringContaining('Not enough Harrow Points')
     );
@@ -200,7 +181,7 @@ describe('spend', () => {
     Harrow.addEntry.mockResolvedValue({ id: 11 });
     const res = createMockRes();
 
-    await harrowController.spend(createMockReq({ body: { characterId: 1, points: 2 } }), res);
+    await harrowController.spend(baseReq({ body: { characterId: 1, points: 2 } }), res);
 
     expect(Harrow.addEntry).toHaveBeenCalledWith(
       expect.objectContaining({ delta: -2, entryType: 'spend', chapter: 2 })
@@ -215,7 +196,7 @@ describe('spend', () => {
     Harrow.addEntry.mockResolvedValue({ id: 12 });
     const res = createMockRes();
 
-    await harrowController.spend(createMockReq({ body: { characterId: 2, points: 1 } }), res);
+    await harrowController.spend(baseReq({ body: { characterId: 2, points: 1 } }), res);
 
     expect(res.forbidden).not.toHaveBeenCalled();
     expect(res.success).toHaveBeenCalled();
@@ -225,14 +206,14 @@ describe('spend', () => {
 describe('adjust', () => {
   it('requires a reason', async () => {
     const res = createMockRes();
-    await harrowController.adjust(createMockReq({ body: { characterId: 1, delta: 2 } }), res);
+    await harrowController.adjust(baseReq({ body: { characterId: 1, delta: 2 } }), res);
     expect(res.validationError).toHaveBeenCalledWith('reason is required for an adjustment');
   });
 
   it('rejects a zero delta', async () => {
     const res = createMockRes();
     await harrowController.adjust(
-      createMockReq({ body: { characterId: 1, delta: 0, reason: 'fix' } }),
+      baseReq({ body: { characterId: 1, delta: 0, reason: 'fix' } }),
       res
     );
     expect(res.validationError).toHaveBeenCalledWith('delta must be a non-zero integer');
@@ -243,7 +224,7 @@ describe('adjust', () => {
     Harrow.getBalance.mockResolvedValue(1);
     const res = createMockRes();
     await harrowController.adjust(
-      createMockReq({ body: { characterId: 1, delta: -5, reason: 'fix' } }),
+      baseReq({ body: { characterId: 1, delta: -5, reason: 'fix' } }),
       res
     );
     expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('negative'));
@@ -255,7 +236,7 @@ describe('adjust', () => {
     Harrow.addEntry.mockResolvedValue({ id: 13 });
     const res = createMockRes();
     await harrowController.adjust(
-      createMockReq({ body: { characterId: 1, delta: -2, reason: 'fix' } }),
+      baseReq({ body: { characterId: 1, delta: -2, reason: 'fix' } }),
       res
     );
     expect(Harrow.addEntry).toHaveBeenCalledWith(
@@ -268,7 +249,7 @@ describe('adjust', () => {
 describe('advanceChapter', () => {
   it('rejects an out-of-range chapter', async () => {
     const res = createMockRes();
-    await harrowController.advanceChapter(createMockReq({ body: { chapter: 9 } }), res);
+    await harrowController.advanceChapter(baseReq({ body: { chapter: 9 } }), res);
     expect(res.validationError).toHaveBeenCalledWith('chapter must be an integer between 1 and 6');
   });
 
@@ -276,7 +257,7 @@ describe('advanceChapter', () => {
     campaignSettings.setCampaignSetting.mockResolvedValue({});
     Harrow.getBalances.mockResolvedValue([]);
     const res = createMockRes();
-    await harrowController.advanceChapter(createMockReq({ body: { chapter: 3 } }), res);
+    await harrowController.advanceChapter(baseReq({ body: { chapter: 3 } }), res);
     expect(campaignSettings.setCampaignSetting).toHaveBeenCalledWith(
       'harrow_current_chapter',
       '3',
@@ -291,7 +272,7 @@ describe('setChoosing', () => {
     Harrow.getCharacter.mockResolvedValue({ id: 2, name: 'Merisiel', user_id: 8 });
     const res = createMockRes();
     await harrowController.setChoosing(
-      createMockReq({ body: { characterId: 2, cardName: 'Owl' } }),
+      baseReq({ body: { characterId: 2, cardName: 'Owl' } }),
       res
     );
     expect(res.forbidden).toHaveBeenCalled();
@@ -302,7 +283,7 @@ describe('setChoosing', () => {
     Harrow.setChoosing.mockResolvedValue({ card_name: 'Locksmith' });
     const res = createMockRes();
     await harrowController.setChoosing(
-      createMockReq({ body: { characterId: 1, cardName: 'Locksmith', isChosenBoon: true } }),
+      baseReq({ body: { characterId: 1, cardName: 'Locksmith', isChosenBoon: true } }),
       res
     );
     expect(Harrow.setChoosing).toHaveBeenCalledWith(
@@ -316,7 +297,7 @@ describe('getCharacterLedger', () => {
   it('rejects an out-of-range chapter filter', async () => {
     const res = createMockRes();
     await harrowController.getCharacterLedger(
-      createMockReq({ params: { characterId: '1' }, query: { chapter: '8' } }),
+      baseReq({ params: { characterId: '1' }, query: { chapter: '8' } }),
       res
     );
     expect(res.validationError).toHaveBeenCalledWith('chapter must be an integer between 1 and 6');
@@ -325,7 +306,7 @@ describe('getCharacterLedger', () => {
   it('returns the full ledger when no chapter filter is given', async () => {
     Harrow.getLedger.mockResolvedValue([{ id: 1, delta: 3 }]);
     const res = createMockRes();
-    await harrowController.getCharacterLedger(createMockReq({ params: { characterId: '1' } }), res);
+    await harrowController.getCharacterLedger(baseReq({ params: { characterId: '1' } }), res);
     expect(Harrow.getLedger).toHaveBeenCalledWith(1, null);
     expect(res.success).toHaveBeenCalledWith({ ledger: [{ id: 1, delta: 3 }] }, expect.any(String));
   });

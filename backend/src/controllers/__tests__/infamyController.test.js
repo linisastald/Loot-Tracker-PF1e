@@ -28,64 +28,7 @@ const infamyController = require('../infamyController');
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockRes() {
-  const res = {};
-  res.status = jest.fn().mockReturnValue(res);
-  res.json = jest.fn().mockReturnValue(res);
-
-  res.success = jest.fn((data = null, message = 'Operation successful') => {
-    res.status(200);
-    res.json({ success: true, message, data });
-    return res;
-  });
-
-  res.created = jest.fn((data = null, message = 'Resource created successfully') => {
-    res.status(201);
-    res.json({ success: true, message, data });
-    return res;
-  });
-
-  res.error = jest.fn((message = 'An error occurred', statusCode = 500, errors = null) => {
-    res.status(statusCode);
-    res.json({ success: false, message, errors });
-    return res;
-  });
-
-  res.validationError = jest.fn((errors) => {
-    const message = typeof errors === 'string' ? errors : 'Validation error';
-    res.status(400);
-    res.json({ success: false, message });
-    return res;
-  });
-
-  res.notFound = jest.fn((message = 'Resource not found') => {
-    res.status(404);
-    res.json({ success: false, message });
-    return res;
-  });
-
-  res.forbidden = jest.fn((message = 'Access forbidden') => {
-    res.status(403);
-    res.json({ success: false, message });
-    return res;
-  });
-
-  return res;
-}
-
-function createMockReq(overrides = {}) {
-  const req = {
-    body: {},
-    params: {},
-    query: {},
-    cookies: {},
-    user: { id: 1, role: 'Player' },
-    ...overrides,
-  };
-  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
-  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
-  return req;
-}
+const { createMockRes, createMockReq } = require('../../../tests/utils/mockHttp');
 
 // ---------------------------------------------------------------------------
 // Tests
