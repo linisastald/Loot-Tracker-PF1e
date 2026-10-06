@@ -1,27 +1,21 @@
 import api from '../utils/api';
-import { LootItem, LootStatus, ItemType } from '../types/game';
+import { ApiResponse, LootItem, LootStatus, ItemType } from '../types/game';
 
 /**
  * Loot Service - Centralized API service for all loot-related operations
  * This service maps to the new refactored backend API structure
  */
 
-// API Response types
-export interface ApiResponse<T = any> {
-  data: T;
-  status: number;
-}
-
-export interface ItemParsingData {
+interface ItemParsingData {
   description: string;
 }
 
-export interface BulkCreateData {
+interface BulkCreateData {
   entries?: LootItem[];
   items?: Partial<LootItem>[];
 }
 
-export interface LootSearchParams {
+interface LootSearchParams {
   isDM?: boolean;
   activeCharacterId?: number;
   status?: LootStatus;
@@ -30,29 +24,26 @@ export interface LootSearchParams {
   [key: string]: any;
 }
 
-export interface StatusUpdateData {
+interface StatusUpdateData {
   lootIds: number[];
   status: LootStatus;
   characterId?: number;
   saleValue?: number | null;
 }
 
-export interface SplitStackData {
+interface SplitStackData {
   lootId: number;
   newQuantities: Array<{ quantity: number }>;
 }
 
-export interface AppraisalData {
+interface AppraisalData {
   lootIds: number[];
   characterId: number;
-  appraisalRolls: Array<{
-    lootId: number;
-    roll: number;
-    believedValue?: number;
-  }>;
+  /** One d20 roll (1-20) per entry in lootIds, in the same order. */
+  appraisalRolls: number[];
 }
 
-export interface IdentificationData {
+interface IdentificationData {
   items: number[];
   characterId: number | null;
   /** Omitted for a DM identification (the server ignores rolls in that case). */
@@ -64,7 +55,7 @@ export interface IdentificationData {
 // Matches the backend contract for POST /item-creation/calculate-value
 // (ItemParsingService.calculateItemValue -> calculateFinalValue). `mods` is a
 // list of mod references by id; the backend fetches each mod's plus/valuecalc.
-export interface ValueCalculationData {
+interface ValueCalculationData {
   itemId?: number | null;
   itemType?: ItemType | string | null;
   itemSubtype?: string | null;
@@ -76,17 +67,11 @@ export interface ValueCalculationData {
   weight?: number | null;
 }
 
-export interface SuggestionParams {
+interface SuggestionParams {
   query: string;
   limit?: number;
   itemType?: ItemType;
   itemSubtype?: string;
-}
-
-export interface SalesData {
-  amount?: number;
-  itemsToKeep?: number[];
-  itemsToSell?: number[];
 }
 
 const lootService = {
@@ -109,12 +94,6 @@ const lootService = {
     return api.post('/item-creation', payload);
   },
 
-  /**
-   * Create multiple loot items
-   */
-  bulkCreateLoot: (items: Partial<LootItem>[]): Promise<ApiResponse> =>
-    api.post('/item-creation/bulk', { items }),
-
   // ===== Item Retrieval & Search =====
 
   /**
@@ -128,11 +107,6 @@ const lootService = {
    */
   searchLoot: (params: LootSearchParams = {}): Promise<ApiResponse> =>
     api.get('/items/search', { params }),
-
-  /**
-   * Get loot item by ID
-   */
-  getLootById: (id: number): Promise<ApiResponse> => api.get(`/items/${id}`),
 
   /**
    * Get items by IDs (for reference data)
@@ -182,12 +156,6 @@ const lootService = {
     return api.post(`/items/${lootId}/split`, rest);
   },
 
-  /**
-   * Delete loot item
-   */
-  deleteLootItem: (id: number): Promise<ApiResponse> =>
-    api.delete(`/items/${id}`),
-
   // ===== Reports & Statistics =====
 
   /**
@@ -227,12 +195,6 @@ const lootService = {
   getCharacterLedger: (
     params: Record<string, any> = {}
   ): Promise<ApiResponse> => api.get('/reports/ledger', { params }),
-
-  /**
-   * Get loot statistics
-   */
-  getLootStatistics: (params: Record<string, any> = {}): Promise<ApiResponse> =>
-    api.get('/reports/statistics', { params }),
 
   // ===== Sales Management =====
 
@@ -301,12 +263,6 @@ const lootService = {
    */
   suggestItems: (params: SuggestionParams): Promise<ApiResponse> =>
     api.get('/item-creation/items/suggest', { params }),
-
-  /**
-   * Get mod suggestions for autocomplete
-   */
-  suggestMods: (params: SuggestionParams): Promise<ApiResponse> =>
-    api.get('/item-creation/mods/suggest', { params }),
 };
 
 export default lootService;
