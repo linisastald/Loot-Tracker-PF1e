@@ -512,7 +512,7 @@ describe('calendarController', () => {
       const mockClient = mockAdvanceClient({ year: 4723, month: 3, day: 10 });
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
       mockRegionRead('Varisia');
-      // generateMissingWeather existence checks (runs after commit)
+      // weather existence checks (runs after commit)
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
 
       await calendarController.advanceDays(req, res);

@@ -1,29 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
-// Mock api utility
+// Mock api utility (default implementations are installed in beforeEach so a
+// test that overrides one cannot leak into the next)
 vi.mock('../../../utils/api', () => ({
   default: {
-    get: vi.fn().mockImplementation((url: string) => {
-      if (url === '/calendar/current-date') {
-        return Promise.resolve({
-          data: { year: 4722, month: 1, day: 15 },
-        });
-      }
-      if (url === '/calendar/notes') {
-        return Promise.resolve({ data: [] });
-      }
-      if (url.startsWith('/weather/range')) {
-        return Promise.resolve({ data: [] });
-      }
-      return Promise.resolve({ data: {} });
-    }),
-    post: vi.fn().mockResolvedValue({
-      data: { year: 4722, month: 1, day: 16 },
-    }),
-    put: vi.fn().mockResolvedValue({ data: { success: true } }),
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
@@ -50,6 +37,24 @@ vi.mock('../../../contexts/CampaignContext', () => ({
 import api from '../../../utils/api';
 import GolarionCalendar from '../GolarionCalendar';
 
+const installDefaultApiMocks = () => {
+  (api.get as any).mockReset().mockImplementation((url: string) => {
+    if (url === '/calendar/current-date') {
+      return Promise.resolve({ data: { year: 4722, month: 1, day: 15 } });
+    }
+    if (url === '/calendar/notes') {
+      return Promise.resolve({ data: [] });
+    }
+    if (url.startsWith('/weather/range')) {
+      return Promise.resolve({ data: [] });
+    }
+    return Promise.resolve({ data: {} });
+  });
+  (api.post as any).mockReset().mockResolvedValue({ data: { year: 4722, month: 1, day: 16 } });
+  (api.put as any).mockReset().mockResolvedValue({ data: { success: true } });
+  (api.delete as any).mockReset().mockResolvedValue({ data: { success: true } });
+};
+
 const renderCalendar = () => {
   return render(
     <BrowserRouter>
@@ -61,6 +66,7 @@ const renderCalendar = () => {
 describe('GolarionCalendar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    installDefaultApiMocks();
     campaignSettingsValue = { region: 'Varisia', weather_forecast_days: '7' };
   });
 
@@ -231,9 +237,6 @@ describe('GolarionCalendar', () => {
             },
           ]});
         }
-        if (url === '/settings/region') {
-          return Promise.resolve({ data: { value: 'Varisia' } });
-        }
         if (url.startsWith('/weather/range')) {
           return Promise.resolve({ data: [] });
         }
@@ -274,9 +277,6 @@ describe('GolarionCalendar', () => {
               isCustom: false, createdBy: null,
             },
           ]});
-        }
-        if (url === '/settings/region') {
-          return Promise.resolve({ data: { value: 'Varisia' } });
         }
         if (url.startsWith('/weather/range')) {
           return Promise.resolve({ data: [] });
@@ -396,6 +396,210 @@ describe('GolarionCalendar', () => {
         expect(weatherCalls.length).toBeGreaterThan(0);
         expect(weatherCalls[weatherCalls.length - 1]).toMatch(/\/Cheliax$/);
       });
+    });
+  });
+
+  describe('calendar mutations', () => {
+    const NOTE = {
+      id: 1,
+      startDate: { year: 4722, month: 1, day: 15 },
+      endDate: { year: 4722, month: 1, day: 15 },
+      note: 'Meet the mayor',
+      dmOnly: false,
+      createdBy: 1,
+    };
+
+    const HOLIDAY = {
+      id: 3, name: 'Crystalhue', month: 12, day: 21,
+      category: 'Religious', deity: 'Shelyn', region: null,
+      description: 'Winter solstice festival of art.', movableRule: null,
+      isCustom: true, createdBy: 1,
+    };
+
+    const mockCalendarData = (overrides: { notes?: unknown[]; holidays?: unknown[]; weather?: unknown[] } = {}) => {
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/calendar/current-date') {
+          return Promise.resolve({ data: { year: 4722, month: 1, day: 15 } });
+        }
+        if (url === '/calendar/notes') return Promise.resolve({ data: overrides.notes ?? [] });
+        if (url === '/calendar/holidays') return Promise.resolve({ data: overrides.holidays ?? [] });
+        if (url.startsWith('/weather/range')) return Promise.resolve({ data: overrides.weather ?? [] });
+        return Promise.resolve({ data: {} });
+      });
+    };
+
+    afterEach(() => {
+      mockIsDM = false;
+    });
+
+    it('Next Day posts to /calendar/next-day and moves to the returned date', async () => {
+      renderCalendar();
+      await screen.findByText(/Calendar Information/i);
+
+      fireEvent.click(screen.getByRole('button', { name: /Next Day/i }));
+
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/calendar/next-day'));
+      expect(await screen.findByText(/16 Abadius 4722/)).toBeInTheDocument();
+    });
+
+    it('shows an error when Next Day fails', async () => {
+      (api.post as any).mockRejectedValueOnce(new Error('boom'));
+      renderCalendar();
+      await screen.findByText(/Calendar Information/i);
+
+      fireEvent.click(screen.getByRole('button', { name: /Next Day/i }));
+
+      expect(await screen.findByText('Failed to advance day. Please try again later.')).toBeInTheDocument();
+    });
+
+    it('Add Days posts the number of days to /calendar/advance and clears the field', async () => {
+      (api.post as any).mockResolvedValueOnce({ data: { year: 4722, month: 1, day: 20 } });
+      renderCalendar();
+      await screen.findByText(/Calendar Information/i);
+
+      fireEvent.change(screen.getByLabelText(/^Days$/i), { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /Add Days/i }));
+
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/calendar/advance', { days: 5 }));
+      await waitFor(() => expect(screen.getByLabelText(/^Days$/i)).toHaveValue(null));
+    });
+
+    it('Add Days rejects a non-positive number without calling the API', async () => {
+      renderCalendar();
+      await screen.findByText(/Calendar Information/i);
+
+      fireEvent.change(screen.getByLabelText(/^Days$/i), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /Add Days/i }));
+
+      expect(await screen.findByText('Please enter a valid number of days')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('adds a note for the selected date with the entered span and flags', async () => {
+      mockCalendarData();
+      renderCalendar();
+      await screen.findByRole('button', { name: /Add Note/i });
+
+      fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Buy rope' } });
+      fireEvent.change(screen.getByLabelText(/Spans \(days\)/i), { target: { value: '3' } });
+      fireEvent.click(screen.getByRole('button', { name: /Add Note/i }));
+
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith('/calendar/notes', {
+          startDate: { year: 4722, month: 1, day: 15 },
+          days: 3,
+          note: 'Buy rope',
+          dmOnly: false,
+          asSeparateNotes: false,
+        })
+      );
+    });
+
+    it('does not submit an empty note', async () => {
+      mockCalendarData();
+      renderCalendar();
+      await screen.findByRole('button', { name: /Add Note/i });
+
+      fireEvent.click(screen.getByRole('button', { name: /Add Note/i }));
+
+      expect(await screen.findByText('Note text is required.')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('edits an existing note through PUT with the new text', async () => {
+      mockCalendarData({ notes: [NOTE] });
+      renderCalendar();
+
+      fireEvent.click((await screen.findAllByLabelText('edit note'))[0]);
+      const field = await screen.findByLabelText('Note');
+      expect(field).toHaveValue('Meet the mayor');
+      fireEvent.change(field, { target: { value: 'Meet the sheriff' } });
+      fireEvent.click(screen.getByRole('button', { name: /Update Note/i }));
+
+      await waitFor(() =>
+        expect(api.put).toHaveBeenCalledWith('/calendar/notes/1', {
+          note: 'Meet the sheriff',
+          days: 1,
+          dmOnly: false,
+        })
+      );
+    });
+
+    it('deletes a note', async () => {
+      mockCalendarData({ notes: [NOTE] });
+      renderCalendar();
+
+      fireEvent.click((await screen.findAllByLabelText('delete note'))[0]);
+
+      await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/calendar/notes/1'));
+    });
+
+    it('shows an error when deleting a note fails', async () => {
+      mockCalendarData({ notes: [NOTE] });
+      (api.delete as any).mockRejectedValueOnce(new Error('nope'));
+      renderCalendar();
+
+      fireEvent.click((await screen.findAllByLabelText('delete note'))[0]);
+
+      expect(await screen.findByText('Failed to delete note. Please try again later.')).toBeInTheDocument();
+    });
+
+    it('a DM can regenerate the forecast', async () => {
+      mockIsDM = true;
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('button', { name: /Regenerate Forecast/i }));
+
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/weather/regenerate-forecast'));
+      expect(await screen.findByText(/Forecast regenerated/i)).toBeInTheDocument();
+    });
+
+    it('a DM can set the weather for the selected day', async () => {
+      mockIsDM = true;
+      renderCalendar();
+      await screen.findByText(/Calendar Information/i);
+
+      fireEvent.click(await screen.findByRole('button', { name: /^Edit$/ }));
+      fireEvent.change(await screen.findByLabelText(/Low/), { target: { value: '40' } });
+      fireEvent.change(screen.getByLabelText(/High/), { target: { value: '55' } });
+      fireEvent.click(screen.getByRole('button', { name: /Save Weather/i }));
+
+      await waitFor(() =>
+        expect(api.put).toHaveBeenCalledWith(
+          '/weather/set',
+          expect.objectContaining({ year: 4722, month: 1, day: 15, region: 'Varisia', tempLow: 40, tempHigh: 55 })
+        )
+      );
+    });
+
+    it('a DM can add a holiday', async () => {
+      mockIsDM = true;
+      mockCalendarData({ holidays: [HOLIDAY] });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Holidays' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Add Holiday/i }));
+      fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'Harvest Feast' } });
+      const buttons = screen.getAllByRole('button', { name: /Add Holiday/i });
+      fireEvent.click(buttons[buttons.length - 1]);
+
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith(
+          '/calendar/holidays',
+          expect.objectContaining({ name: 'Harvest Feast', month: null, day: null })
+        )
+      );
+    });
+
+    it('a DM can delete a custom holiday', async () => {
+      mockIsDM = true;
+      mockCalendarData({ holidays: [HOLIDAY] });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Holidays' }));
+      fireEvent.click(await screen.findByLabelText('delete holiday'));
+
+      await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/calendar/holidays/3'));
     });
   });
 });
