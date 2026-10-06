@@ -17,12 +17,7 @@
     "test:ci": "jest --coverage --watchAll=false",
     "test:unit": "jest --config=jest.unit.config.js",
     "test:unit:watch": "jest --config=jest.unit.config.js --watch",
-    "test:unit:coverage": "jest --config=jest.unit.config.js --coverage",
-    "test:integration": "cross-env USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=integration",
-    "test:api": "cross-env USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=tests/api",
-    "test:setup": "node scripts/test-setup.js setup",
-    "test:teardown": "node scripts/test-setup.js teardown",
-    "test:reset": "npm run test:teardown && npm run test:setup"
+    "test:unit:coverage": "jest --config=jest.unit.config.js --coverage"
   },
   "keywords": [],
   "author": "",

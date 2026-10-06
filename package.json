@@ -7,9 +7,7 @@
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "cd backend && npm run test:unit",
     "test:frontend": "cd frontend && npx vitest run",
-    "install:all": "cd frontend && npm install && cd ../backend && npm install",
-    "setup:test": "cd backend && npm run test:setup",
-    "teardown:test": "cd backend && npm run test:teardown"
+    "install:all": "cd frontend && npm install && cd ../backend && npm install"
   },
   "license": "ISC"
 }
