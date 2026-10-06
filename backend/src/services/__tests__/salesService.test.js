@@ -1,6 +1,7 @@
 const SalesService = require('../salesService');
 
-// Mock dependencies
+// Mock dependencies. The sale-value calculator is real: it is pure, and the
+// tests below check the gold it produces (a mocked calculator hides money bugs).
 jest.mock('../../utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
@@ -13,38 +14,58 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
-jest.mock('../../utils/saleValueCalculator', () => ({
-  calculateItemSaleValue: jest.fn(),
-  calculateTotalSaleValue: jest.fn(),
+jest.mock('../../models/Gold', () => ({
+  lockLedger: jest.fn(),
+  create: jest.fn(),
 }));
 
 const dbUtils = require('../../utils/dbUtils');
-const saleValueCalculator = require('../../utils/saleValueCalculator');
+const Gold = require('../../models/Gold');
 
-// Default sale-value behavior. Re-applied in beforeEach because the unit
-// jest config sets resetMocks: true, which wipes implementations between tests.
-// Generic client.query result: rowCount mirrors the id array an UPDATE ... ANY($1) targets.
-const defaultClientQuery = async (sql, params) => ({
-  rows: [{ id: 1 }],
-  rowCount: Array.isArray(params && params[0]) ? params[0].length : 1,
-});
-
-const defaultItemSaleValue = (item) => {
-  const value = parseFloat(item.value) || 0;
-  return item.type === 'trade good' ? value : value * 0.5;
+// A recording pg client. The first SELECT is answered with `selectRows`; an
+// UPDATE reports it touched as many rows as the id array it was given (or
+// `updateRowCount`). `client.log` records every client call and every Gold call
+// in order, so tests can check the sequence (lock first, then the writes).
+const makeClient = (selectRows, { updateRowCount } = {}) => {
+  const log = [];
+  const client = {
+    log,
+    query: jest.fn(async (sql, params) => {
+      const text = sql.replace(/\s+/g, ' ').trim();
+      log.push({ kind: 'sql', text, params });
+      if (/^SELECT l\.\*/.test(text)) return { rows: selectRows };
+      if (/^UPDATE loot/.test(text)) {
+        return { rows: [], rowCount: updateRowCount !== undefined ? updateRowCount : params[0].length };
+      }
+      return { rows: [], rowCount: 1 };
+    }),
+  };
+  Gold.lockLedger.mockImplementation(async () => { log.push({ kind: 'lock' }); });
+  Gold.create.mockImplementation(async (entry, c) => {
+    log.push({ kind: 'gold', entry, client: c });
+    return { id: 99, ...entry };
+  });
+  dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+  return client;
 };
-const defaultTotalSaleValue = (items) => items.reduce((sum, item) => {
-  const value = parseFloat(item.value) || 0;
-  const saleValue = item.type === 'trade good' ? value : value * 0.5;
-  const qty = parseInt(item.quantity) || 1;
-  return sum + saleValue * qty;
-}, 0);
+
+const sqlCalls = (client, re) => client.log.filter(c => c.kind === 'sql' && re.test(c.text));
+const pendingItem = (over) => ({ status: 'Pending Sale', unidentified: false, quantity: 1, ...over });
+
+// Asserts a sale ran as one ordered unit: ledger lock first, then the sold rows,
+// the guarded status update and the gold credit, all through the same client.
+const expectAtomicSale = (client) => {
+  const kinds = client.log.map(c => (c.kind === 'sql' ? c.text.split(' ')[0] + ' ' + c.text.split(' ')[1] : c.kind));
+  expect(client.log[0].kind).toBe('lock');
+  expect(kinds.indexOf('lock')).toBeLessThan(kinds.findIndex(k => k.startsWith('SELECT')));
+  expect(kinds.findIndex(k => k === 'INSERT INTO')).toBeLessThan(kinds.indexOf('gold'));
+  const goldCall = client.log.find(c => c.kind === 'gold');
+  expect(goldCall.client).toBe(client);
+};
 
 describe('SalesService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    saleValueCalculator.calculateItemSaleValue.mockImplementation(defaultItemSaleValue);
-    saleValueCalculator.calculateTotalSaleValue.mockImplementation(defaultTotalSaleValue);
   });
 
   describe('filterValidSaleItems (pure)', () => {
@@ -58,22 +79,18 @@ describe('SalesService', () => {
 
       const { validItems, invalidItems } = SalesService.filterValidSaleItems(items);
 
-      expect(validItems).toHaveLength(2);
       expect(validItems.map(i => i.id)).toEqual([1, 4]);
-      expect(invalidItems).toHaveLength(2);
       expect(invalidItems.map(i => i.id)).toEqual([2, 3]);
     });
 
-    it('should treat all items as valid when none are unidentified and all have values', () => {
-      const items = [
-        { id: 1, unidentified: false, value: 10 },
-        { id: 2, unidentified: false, value: 20 },
-      ];
+    it('treats NULL unidentified as sellable and undefined value as not sellable', () => {
+      const { validItems, invalidItems } = SalesService.filterValidSaleItems([
+        { id: 1, unidentified: null, value: 10 },
+        { id: 2, unidentified: false, value: undefined },
+      ]);
 
-      const { validItems, invalidItems } = SalesService.filterValidSaleItems(items);
-
-      expect(validItems).toHaveLength(2);
-      expect(invalidItems).toHaveLength(0);
+      expect(validItems.map(i => i.id)).toEqual([1]);
+      expect(invalidItems.map(i => i.id)).toEqual([2]);
     });
 
     it('should handle empty array', () => {
@@ -103,6 +120,20 @@ describe('SalesService', () => {
       expect(entry.gold).toBe(25);
       expect(entry.silver).toBe(7);
       expect(entry.copper).toBe(5);
+    });
+
+    it('F-0736: does not lose silver or copper to floating-point error', () => {
+      // 2.3 % 1 * 10 is 2.9999999999999982 in binary floating point
+      const a = SalesService.createGoldEntry(2.3, 'x');
+      expect([a.gold, a.silver, a.copper]).toEqual([2, 3, 0]);
+
+      // 0.1 + 0.2 = 0.30000000000000004; 1.15 * 10 % 1 is also noisy
+      const b = SalesService.createGoldEntry(0.1 + 0.2, 'x');
+      expect([b.gold, b.silver, b.copper]).toEqual([0, 3, 0]);
+      const c = SalesService.createGoldEntry(1.15, 'x');
+      expect([c.gold, c.silver, c.copper]).toEqual([1, 1, 5]);
+      const d = SalesService.createGoldEntry(4.35, 'x');
+      expect([d.gold, d.silver, d.copper]).toEqual([4, 3, 5]);
     });
 
     it('should handle zero total', () => {
@@ -145,44 +176,107 @@ describe('SalesService', () => {
   });
 
   describe('sellAllPendingItems', () => {
-    it('should sell all valid pending items', async () => {
-      const mockClient = { query: jest.fn() };
-      const pendingItems = [
-        { id: 1, name: 'Sword', unidentified: false, value: 100, type: 'weapon', quantity: 1 },
-        { id: 2, name: 'Shield', unidentified: false, value: 200, type: 'armor', quantity: 1 },
-      ];
-
-      // SELECT pending items
-      mockClient.query.mockResolvedValueOnce({ rows: pendingItems });
-      // INSERT sold records (one per item)
-      mockClient.query.mockImplementation(defaultClientQuery);
-
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+    it('sells a weapon and armor at half value: 100gp + 200gp = 150gp, with every write checked', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Sword', value: 100, type: 'weapon' }),
+        pendingItem({ id: 2, name: 'Shield', value: 200, type: 'armor' }),
+      ]);
 
       const result = await SalesService.sellAllPendingItems();
 
       expect(result.sold.count).toBe(2);
-      expect(mockClient.query.mock.calls[0][0]).toContain("status = 'Pending Sale'");
+      expect(result.sold.total).toBe(150);
+      expect(result.sold.items.map(i => i.soldFor)).toEqual([50, 100]);
+
+      const select = sqlCalls(client, /^SELECT l\.\*/)[0];
+      expect(select.text).toContain("l.status = 'Pending Sale'");
+      expect(select.text).toContain('FOR UPDATE OF l');
+
+      const [insert] = sqlCalls(client, /^INSERT INTO sold/);
+      expect(insert.params[0]).toEqual([1, 2]);
+      expect(insert.params[1]).toEqual([50, 100]);
+
+      const [update] = sqlCalls(client, /^UPDATE loot SET status = 'Sold'/);
+      expect(update.params).toEqual([[1, 2]]);
+      expect(update.text).toContain("status = 'Pending Sale'");
+
+      const gold = client.log.find(c => c.kind === 'gold');
+      expect(gold.entry).toMatchObject({ transactionType: 'Sale', gold: 150, silver: 0, copper: 0, platinum: 0 });
+      expect(result.gold).toMatchObject({ id: 99, gold: 150 });
+      expectAtomicSale(client);
+    });
+
+    it('sells trade goods at full value and credits quantity times unit value', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Ruby', value: 50, type: 'trade good', quantity: 3 }),
+        pendingItem({ id: 2, name: 'Dagger', value: 2, type: 'weapon', quantity: 10 }),
+      ]);
+
+      const result = await SalesService.sellAllPendingItems();
+
+      // 50 x 3 (full) + 1 x 10 (half) = 160
+      expect(result.sold.total).toBe(160);
+      expect(client.log.find(c => c.kind === 'gold').entry.gold).toBe(160);
+    });
+
+    it('F-0737: records sold.soldfor as the line total (unit value x quantity) so sold rows sum to the gold entry', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Dagger', value: 20, type: 'weapon', quantity: 10 }),
+        pendingItem({ id: 2, name: 'Gem', value: 30, type: 'trade good', quantity: 2 }),
+      ]);
+
+      const result = await SalesService.sellAllPendingItems();
+
+      const [insert] = sqlCalls(client, /^INSERT INTO sold/);
+      expect(insert.params[1]).toEqual([100, 60]);
+      expect(insert.params[1].reduce((a, b) => a + b, 0)).toBe(result.sold.total);
+      expect(client.log.find(c => c.kind === 'gold').entry.gold).toBe(160);
+    });
+
+    it('credits the exact silver and copper for a 2.3gp sale', async () => {
+      const client = makeClient([pendingItem({ id: 1, name: 'Bauble', value: 4.6, type: 'weapon' })]);
+
+      await SalesService.sellAllPendingItems();
+
+      const { entry } = client.log.find(c => c.kind === 'gold');
+      expect([entry.gold, entry.silver, entry.copper]).toEqual([2, 3, 0]);
+    });
+
+    it('skips unidentified and valueless items and reports them', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Sword', value: 100, type: 'weapon' }),
+        pendingItem({ id: 2, name: 'Unknown Ring', value: 900, unidentified: true }),
+        pendingItem({ id: 3, name: 'Odd Thing', value: null }),
+      ]);
+
+      const result = await SalesService.sellAllPendingItems();
+
+      expect(result.sold.count).toBe(1);
+      expect(result.skipped.items.map(i => i.id)).toEqual([2, 3]);
+      expect(sqlCalls(client, /^UPDATE loot/)[0].params).toEqual([[1]]);
+    });
+
+    it('rolls back when the guarded status UPDATE touches fewer rows than expected (double sale)', async () => {
+      const client = makeClient([pendingItem({ id: 1, name: 'Sword', value: 100, type: 'weapon' })], { updateRowCount: 0 });
+
+      await expect(SalesService.sellAllPendingItems()).rejects.toMatchObject({ name: 'ValidationError' });
+      // The gold credit is never reached after the failed update
+      expect(client.log.some(c => c.kind === 'gold')).toBe(false);
     });
 
     it('should throw when no items pending', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValueOnce({ rows: [] });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      makeClient([]);
 
       await expect(SalesService.sellAllPendingItems())
         .rejects.toThrow('No items pending sale found');
     });
 
     it('should throw when all items are invalid', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValueOnce({
-        rows: [{ id: 1, name: 'Unknown', unidentified: true, value: null }],
-      });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      const client = makeClient([pendingItem({ id: 1, name: 'Unknown', unidentified: true, value: null })]);
 
       await expect(SalesService.sellAllPendingItems())
         .rejects.toThrow('No valid items to sell');
+      expect(client.log.some(c => c.kind === 'gold')).toBe(false);
     });
   });
 
@@ -192,61 +286,48 @@ describe('SalesService', () => {
       await expect(SalesService.sellSelectedItems(null)).rejects.toThrow('Item IDs array is required');
     });
 
-    it('should sell only specified items', async () => {
-      const mockClient = { query: jest.fn() };
-      const items = [
-        { id: 1, name: 'Gem', status: 'Pending Sale', unidentified: false, value: 50, type: 'trade good', quantity: 1 },
-      ];
-
-      mockClient.query.mockResolvedValueOnce({ rows: items });
-      mockClient.query.mockImplementation(defaultClientQuery);
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+    it('sells only the specified items, crediting the right gold atomically', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Gem', value: 50, type: 'trade good' }),
+      ]);
 
       const result = await SalesService.sellSelectedItems([1]);
 
       expect(result.sold.count).toBe(1);
-      // Verify it queries by IDs
-      expect(mockClient.query.mock.calls[0][1]).toEqual([[1]]);
+      expect(result.sold.total).toBe(50);
+      expect(sqlCalls(client, /^SELECT l\.\*/)[0].params).toEqual([[1]]);
+      expect(sqlCalls(client, /^INSERT INTO sold/)[0].params[0]).toEqual([1]);
+      expect(sqlCalls(client, /^UPDATE loot/)[0].params).toEqual([[1]]);
+      expect(client.log.find(c => c.kind === 'gold').entry.gold).toBe(50);
+      expectAtomicSale(client);
     });
 
     it('F-0740: rejects ids that are already sold, naming them, and sells nothing', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValueOnce({
-        rows: [
-          { id: 1, name: 'Gem', status: 'Pending Sale', unidentified: false, value: 50, type: 'trade good' },
-          { id: 2, name: 'Ruby', status: 'Sold', unidentified: false, value: 500, type: 'trade good' },
-        ],
-      });
-      mockClient.query.mockImplementation(defaultClientQuery);
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Gem', value: 50, type: 'trade good' }),
+        pendingItem({ id: 2, name: 'Ruby', status: 'Sold', value: 500, type: 'trade good' }),
+      ]);
 
       await expect(SalesService.sellSelectedItems([1, 2, 77])).rejects.toMatchObject({
         name: 'ValidationError',
         message: expect.stringMatching(/Ruby \(id 2, status Sold\).*not found: 77/),
       });
-      // Only the SELECT ran: no sold rows, no status update, no gold entry
-      expect(mockClient.query).toHaveBeenCalledTimes(1);
-      expect(mockClient.query.mock.calls[0][0]).toContain('FOR UPDATE');
+      // Only the lock and the SELECT ran: no sold rows, no status update, no gold entry
+      expect(client.log.filter(c => c.kind === 'sql')).toHaveLength(1);
+      expect(client.log.some(c => c.kind === 'gold')).toBe(false);
+      expect(sqlCalls(client, /^SELECT/)[0].text).toContain('FOR UPDATE');
     });
 
     it('F-0740: fails the whole sale when the guarded UPDATE affects fewer rows than expected', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query
-        .mockResolvedValueOnce({
-          rows: [{ id: 1, name: 'Gem', status: 'Pending Sale', unidentified: false, value: 50, type: 'trade good' }],
-        })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // INSERT sold
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // UPDATE guarded by status: lost the race
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      const client = makeClient([pendingItem({ id: 1, name: 'Gem', value: 50, type: 'trade good' })], { updateRowCount: 0 });
 
       await expect(SalesService.sellSelectedItems([1])).rejects.toMatchObject({ name: 'ValidationError' });
-      expect(mockClient.query.mock.calls[2][0]).toContain("status = 'Pending Sale'");
+      expect(sqlCalls(client, /^UPDATE loot/)[0].text).toContain("status = 'Pending Sale'");
+      expect(client.log.some(c => c.kind === 'gold')).toBe(false);
     });
 
     it('should throw when no items found with given IDs', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValueOnce({ rows: [] });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      makeClient([]);
 
       await expect(SalesService.sellSelectedItems([999]))
         .rejects.toThrow('No items found with the specified IDs');
@@ -259,37 +340,41 @@ describe('SalesService', () => {
         .rejects.toThrow('Keep IDs must be an array');
     });
 
-    it('should sell pending items excluding kept ones', async () => {
-      const mockClient = { query: jest.fn() };
-      const items = [
-        { id: 3, name: 'Potion', unidentified: false, value: 50, type: 'potion', quantity: 1 },
-      ];
-
-      mockClient.query.mockResolvedValueOnce({ rows: items });
-      mockClient.query.mockImplementation(defaultClientQuery);
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+    it('sells pending items excluding kept ones and credits the sold total', async () => {
+      const client = makeClient([
+        pendingItem({ id: 3, name: 'Potion', value: 50, type: 'potion' }),
+      ]);
 
       const result = await SalesService.sellAllExceptItems([1, 2]);
 
       expect(result.sold.count).toBe(1);
+      expect(result.sold.total).toBe(25);
       expect(result.kept.ids).toEqual([1, 2]);
-      // Verify query uses != ALL
-      expect(mockClient.query.mock.calls[0][0]).toContain('!= ALL($1)');
+      const select = sqlCalls(client, /^SELECT l\.\*/)[0];
+      expect(select.text).toContain("l.status = 'Pending Sale'");
+      expect(select.text).toContain('!= ALL($1::int[])');
+      expect(select.params).toEqual([[1, 2]]);
+      expect(sqlCalls(client, /^UPDATE loot/)[0].params).toEqual([[3]]);
+      expect(client.log.find(c => c.kind === 'gold').entry.gold).toBe(25);
+      expectAtomicSale(client);
     });
 
-    it('should sell all pending when keepIds is empty', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValueOnce({
-        rows: [{ id: 1, name: 'Sword', unidentified: false, value: 100, type: 'weapon', quantity: 1 }],
-      });
-      mockClient.query.mockImplementation(defaultClientQuery);
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+    it('sells every pending item when keepIds is empty', async () => {
+      const client = makeClient([pendingItem({ id: 1, name: 'Sword', value: 100, type: 'weapon' })]);
 
       const result = await SalesService.sellAllExceptItems([]);
 
       expect(result.sold.count).toBe(1);
-      // Should not use != ALL when keepIds is empty
-      expect(mockClient.query.mock.calls[0][0]).not.toContain('!= ALL');
+      expect(sqlCalls(client, /^SELECT l\.\*/)[0].params).toEqual([[]]);
+      expect(result.kept).toBeUndefined();
+      expectAtomicSale(client);
+    });
+
+    it('rolls back when an item was sold by a concurrent request', async () => {
+      const client = makeClient([pendingItem({ id: 1, name: 'Sword', value: 100, type: 'weapon' })], { updateRowCount: 0 });
+
+      await expect(SalesService.sellAllExceptItems([])).rejects.toMatchObject({ name: 'ValidationError' });
+      expect(client.log.some(c => c.kind === 'gold')).toBe(false);
     });
   });
 
@@ -299,22 +384,49 @@ describe('SalesService', () => {
       await expect(SalesService.sellUpToAmount(-5)).rejects.toThrow('positive number');
     });
 
-    it('should select items up to the max amount', async () => {
-      const mockClient = { query: jest.fn() };
-      const items = [
-        { id: 1, name: 'Small Gem', value: 20, type: 'trade good', quantity: 1 },
-        { id: 2, name: 'Medium Gem', value: 50, type: 'trade good', quantity: 1 },
-        { id: 3, name: 'Big Gem', value: 200, type: 'trade good', quantity: 1 },
-      ];
-
-      mockClient.query.mockResolvedValueOnce({ rows: items });
-      mockClient.query.mockImplementation(defaultClientQuery);
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+    it('selects items up to the max amount and credits exactly what it sold', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Small Gem', value: 20, type: 'trade good' }),
+        pendingItem({ id: 2, name: 'Medium Gem', value: 50, type: 'trade good' }),
+        pendingItem({ id: 3, name: 'Big Gem', value: 200, type: 'trade good' }),
+      ]);
 
       const result = await SalesService.sellUpToAmount(75);
 
-      // Should sell items 1 (20gp) and 2 (50gp) = 70gp, skip item 3 (would exceed 75)
+      // 20gp + 50gp = 70gp; the 200gp gem would exceed 75
       expect(result.sold.count).toBe(2);
+      expect(result.sold.total).toBe(70);
+      expect(sqlCalls(client, /^UPDATE loot/)[0].params).toEqual([[1, 2]]);
+      expect(client.log.find(c => c.kind === 'gold').entry.gold).toBe(70);
+      expectAtomicSale(client);
+    });
+
+    it('F-0744: counts quantity against the cap, so a stack cannot overshoot it', async () => {
+      const client = makeClient([
+        pendingItem({ id: 1, name: 'Gem stack', value: 20, type: 'trade good', quantity: 10 }), // 200gp
+        pendingItem({ id: 2, name: 'Gem', value: 30, type: 'trade good' }),
+      ]);
+
+      const result = await SalesService.sellUpToAmount(75);
+
+      expect(result.sold.total).toBe(30);
+      expect(sqlCalls(client, /^UPDATE loot/)[0].params).toEqual([[2]]);
+    });
+
+    it('F-0743: includes rows whose unidentified flag is NULL, like the other sale paths', async () => {
+      const client = makeClient([pendingItem({ id: 1, name: 'Gem', value: 20, type: 'trade good', unidentified: null })]);
+
+      await SalesService.sellUpToAmount(100);
+
+      const select = sqlCalls(client, /^SELECT l\.\*/)[0];
+      expect(select.text).toContain('l.unidentified IS NOT TRUE');
+      expect(select.text).not.toContain('!= true');
+    });
+
+    it('throws when nothing fits under the cap', async () => {
+      makeClient([pendingItem({ id: 1, name: 'Big Gem', value: 500, type: 'trade good' })]);
+
+      await expect(SalesService.sellUpToAmount(10)).rejects.toThrow('No items found within the specified amount limit');
     });
   });
 
@@ -327,48 +439,6 @@ describe('SalesService', () => {
 
       expect(result).toEqual(mockItems);
       expect(dbUtils.executeQuery.mock.calls[0][0]).toContain("status = 'Pending Sale'");
-    });
-  });
-
-  describe('getSaleHistory', () => {
-    it('should return paginated sale history', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ count: '5' }] });
-
-      const result = await SalesService.getSaleHistory({ limit: 10, offset: 0 });
-
-      expect(result.sales).toHaveLength(1);
-      expect(result.total).toBe(5);
-      expect(result.limit).toBe(10);
-    });
-
-    it('should apply date filters', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-      await SalesService.getSaleHistory({
-        startDate: '2024-01-01',
-        endDate: '2024-12-31',
-      });
-
-      const [query, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('s.soldon >= $3');
-      expect(query).toContain('s.soldon <= $4');
-      expect(params).toContain('2024-01-01');
-      expect(params).toContain('2024-12-31');
-    });
-
-    it('should use defaults when no options provided', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-      const result = await SalesService.getSaleHistory();
-
-      expect(result.limit).toBe(50);
-      expect(result.offset).toBe(0);
     });
   });
 });

@@ -329,15 +329,15 @@ const searchLoot = async (req, res) => {
     itemid, modids, value
   };
 
-  const result = await SearchService.executeSearch(filters, limit, offset);
+  const result = await SearchService.executeSearch(filters, limit, offset, { isDM: hasDmRights(req) });
 
   return controllerFactory.sendSuccessResponse(res, {
     items: result.items.map((item) => toPlayerSafeLoot(req, item)),
     pagination: {
       total: result.totalCount,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      hasMore: (parseInt(offset) + parseInt(limit)) < result.totalCount
+      limit: result.limit,
+      offset: result.offset,
+      hasMore: (result.offset + result.limit) < result.totalCount
     }
   }, `Found ${result.items.length} items`);
 };

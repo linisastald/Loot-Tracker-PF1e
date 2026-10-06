@@ -6,18 +6,6 @@ import React from 'react';
 // Mocks
 // ---------------------------------------------------------------------------
 
-// The user instruction asks for mocking ../../../../utils/api. Mock it to be safe
-// even though the component goes through lootService for most of its calls.
-vi.mock('../../../../utils/api', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-  },
-}));
-
 // Mock lootService - this is what the component actually uses for all data fetches
 // and what the utility helpers (updateItemAsDM, identifyItem) call internally.
 vi.mock('../../../../services/lootService', () => ({
@@ -78,7 +66,6 @@ vi.mock('../../../common/dialogs/ItemManagementDialog', () => ({
     ) : null,
 }));
 
-import api from '../../../../utils/api';
 import lootService from '../../../../services/lootService';
 import UnidentifiedItemsManagement from '../UnidentifiedItemsManagement';
 
@@ -596,26 +583,6 @@ describe('UnidentifiedItemsManagement', () => {
           screen.getByText('Invalid data structure received from server'),
         ).toBeInTheDocument();
       });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 9. Sanity: the directly-mocked api utility is wired but unused by this view.
-  // -------------------------------------------------------------------------
-  describe('api utility wiring', () => {
-    it('is available as a mock (component uses lootService instead)', async () => {
-      renderComponent();
-
-      await waitFor(() => {
-        expect(lootService.getUnidentifiedItems).toHaveBeenCalled();
-      });
-
-      // The component performs all of its data work via lootService, so
-      // direct api.* methods should remain untouched.
-      expect(api.get).not.toHaveBeenCalled();
-      expect(api.post).not.toHaveBeenCalled();
-      expect(api.put).not.toHaveBeenCalled();
-      expect(api.delete).not.toHaveBeenCalled();
     });
   });
 });

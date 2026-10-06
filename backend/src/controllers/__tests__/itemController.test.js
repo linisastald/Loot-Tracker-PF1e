@@ -462,6 +462,8 @@ describe('itemController', () => {
       SearchService.executeSearch.mockResolvedValue({
         items: Array(10).fill({ id: 1, name: 'Item' }),
         totalCount: 50,
+        limit: 10,
+        offset: 0,
       });
 
       const req = mockReq({ query: { limit: '10', offset: '0' } });
@@ -472,6 +474,17 @@ describe('itemController', () => {
       const responseData = res.success.mock.calls[0][0];
       expect(responseData.pagination.hasMore).toBe(true);
       expect(responseData.pagination.total).toBe(50);
+      expect(responseData.pagination.limit).toBe(10);
+    });
+
+    it('tells SearchService whether the caller has DM rights in this campaign', async () => {
+      SearchService.executeSearch.mockResolvedValue({ items: [], totalCount: 0, limit: 20, offset: 0 });
+
+      await itemController.searchLoot(mockReq({ query: {}, campaignRole: 'Player', user: { id: 1, role: 'DM' } }), mockRes());
+      await itemController.searchLoot(mockReq({ query: {}, campaignRole: 'DM' }), mockRes());
+
+      expect(SearchService.executeSearch.mock.calls[0][3]).toEqual({ isDM: false });
+      expect(SearchService.executeSearch.mock.calls[1][3]).toEqual({ isDM: true });
     });
   });
 
