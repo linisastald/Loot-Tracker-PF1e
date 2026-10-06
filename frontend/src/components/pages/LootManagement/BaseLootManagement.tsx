@@ -131,6 +131,10 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   const showSplitStack = selectedItems.length === 1 &&
     loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1);
 
+  // A non-DM cannot un-tick Unidentified through the edit dialog (server rule)
+  const selectedEntryUnidentified = selectedItems.length === 1 &&
+    loot.individual.find(item => item.id === selectedItems[0])?.unidentified === true;
+
   // Determine if Update button should be shown
   const showUpdate = selectedItems.length === 1;
 
@@ -239,6 +243,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         onUpdateChange={handleUpdateChange}
         onUpdateSubmit={handleUpdateSubmit}
         error={updateError}
+        lockUnidentified={!isDM && selectedEntryUnidentified}
       />
     </Container>
   );

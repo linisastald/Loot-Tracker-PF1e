@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const ItemParsingService = require('../services/itemParsingService');
 const SearchService = require('../services/searchService');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Get all loot items with optional filtering
@@ -253,7 +254,10 @@ const buildValidatedUpdateData = (updateData, allowedFields) => {
 
 const persistLootUpdate = async (req, res, itemId, filteredData) => {
   const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
+  return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
+};
 
+const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
   if (!updatedItem) {
     throw controllerFactory.createNotFoundError('Loot item not found');
   }
@@ -274,6 +278,34 @@ const updateLootItem = async (req, res) => {
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
   try {
     const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
+
+    // F-1373: players keep broad edit rights, but may not turn an unidentified
+    // item into an identified one here (that goes through Identify or a DM).
+    // Setting it back to unidentified, or re-sending the same value, is fine.
+    const wouldClearUnidentified = !hasDmRights(req) &&
+      filteredData.unidentified !== undefined && filteredData.unidentified !== true;
+    if (wouldClearUnidentified) {
+      const updatedItem = await dbUtils.executeTransaction(async (client) => {
+        const stored = await client.query('SELECT unidentified FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
+        if (stored.rows.length === 0) {
+          throw controllerFactory.createNotFoundError('Loot item not found');
+        }
+        if (stored.rows[0].unidentified === true) {
+          throw controllerFactory.createAuthorizationError(
+            'Only a DM can mark an unidentified item as identified. Use Identify to identify it.'
+          );
+        }
+        const columns = Object.keys(filteredData);
+        const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
+        const updated = await client.query(
+          `UPDATE "loot" SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+          [itemId, ...columns.map((col) => filteredData[col])]
+        );
+        return updated.rows[0];
+      });
+      return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
+    }
+
     return await persistLootUpdate(req, res, itemId, filteredData);
   } catch (error) {
     logger.error(`Error updating loot item ${itemId}:`, error);

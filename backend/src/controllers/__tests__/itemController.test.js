@@ -525,7 +525,13 @@ describe('itemController', () => {
     it('should preserve null for unidentified and masterwork (not coerce to false)', async () => {
       // unidentified NULL means "not magical", distinct from false
       // ("identified magic item"); coercing it corrupted item state.
-      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword' });
+      // A player clearing unidentified is checked against the stored row (F-1373)
+      const client = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [{ unidentified: false }] })
+          .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Sword' }] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
 
       const req = mockReq({
         params: { id: '1' },
@@ -536,9 +542,10 @@ describe('itemController', () => {
 
       await itemController.updateLootItem(req, res);
 
-      const filteredData = dbUtils.updateById.mock.calls[0][2];
-      expect(filteredData.unidentified).toBeNull();
-      expect(filteredData.masterwork).toBeNull();
+      const [sql, params] = client.query.mock.calls[1];
+      expect(sql).toContain('"unidentified" = $');
+      expect(params).toEqual(expect.arrayContaining([null]));
+      expect(params.filter((p) => p === null)).toHaveLength(2);
     });
 
     it('should reject an empty-string quantity instead of writing garbage', async () => {
@@ -631,6 +638,117 @@ describe('itemController', () => {
       expect(res.success).toHaveBeenCalledTimes(1);
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.status).toBe('Kept Party');
+    });
+  });
+
+  // F-1373: players may edit loot broadly, but must not flip unidentified
+  // from true to false through the general edit endpoint (use Identify / a DM).
+  describe('updateLootItem - identify restriction', () => {
+    const txWithStoredRow = (stored, updated = { id: 1, name: 'Ring', unidentified: false }) => {
+      const client = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: stored === null ? [] : [stored] })
+          .mockResolvedValueOnce({ rows: [updated] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      return client;
+    };
+
+    it('rejects a player changing unidentified from true to false with a 403 and writes nothing', async () => {
+      const client = txWithStoredRow({ unidentified: true });
+      const req = mockReq({ params: { id: '1' }, body: { unidentified: false } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+      expect(res.forbidden.mock.calls[0][0]).toMatch(/Identify/);
+      expect(client.query).toHaveBeenCalledTimes(1); // only the lock/read, no UPDATE
+      expect(res.success).not.toHaveBeenCalled();
+    });
+
+    it('also rejects clearing unidentified to null for a player', async () => {
+      txWithStoredRow({ unidentified: true });
+      const req = mockReq({ params: { id: '1' }, body: { unidentified: null } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a player to set an identified item back to unidentified (false -> true)', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, unidentified: true });
+      const req = mockReq({ params: { id: '1' }, body: { unidentified: true } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a player to send the unchanged value (already identified, false -> false)', async () => {
+      const client = txWithStoredRow({ unidentified: false }, { id: 1, name: 'Ring', unidentified: false });
+      const req = mockReq({ params: { id: '1' }, body: { unidentified: false, notes: 'x' } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(client.query).toHaveBeenCalledTimes(2);
+      const [sql, params] = client.query.mock.calls[1];
+      expect(sql).toContain('UPDATE "loot"');
+      expect(params).toContain('x');
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a player to send true -> true', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, unidentified: true });
+      const req = mockReq({ params: { id: '1' }, body: { unidentified: true, notes: 'n' } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns not found when the row does not exist', async () => {
+      txWithStoredRow(null);
+      const req = mockReq({ params: { id: '9' }, body: { unidentified: false } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.notFound).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a DM change unidentified from true to false without a lookup', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, unidentified: false });
+      const req = mockReq({
+        params: { id: '1' },
+        body: { unidentified: false },
+        user: { id: 2, role: 'DM' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(dbUtils.updateById).toHaveBeenCalledWith('loot', 1, { unidentified: false });
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a superadmin change unidentified from true to false', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, unidentified: false });
+      const req = mockReq({ params: { id: '1' }, body: { unidentified: false }, isSuperadmin: true });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledTimes(1);
     });
   });
 
