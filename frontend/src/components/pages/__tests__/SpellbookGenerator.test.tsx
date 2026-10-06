@@ -67,6 +67,29 @@ describe('SpellbookGenerator', () => {
     expect(screen.getByText(/Wizard spellbook — CL 9/)).toBeInTheDocument();
   });
 
+  it.each([['0', 1], ['-3', 1], ['99', 20], ['', 1]])(
+    'clamps caster level %j to %i before posting and shows the clamped value',
+    async (typed, expected) => {
+      renderPage();
+      const field = screen.getByLabelText('Caster level');
+      fireEvent.change(field, { target: { value: typed } });
+      fireEvent.click(screen.getByRole('button', { name: /Generate Spellbook/i }));
+
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith('/loot-generator/spellbook', expect.objectContaining({ casterLevel: expected }))
+      );
+      expect(screen.getByLabelText('Caster level')).toHaveValue(expected);
+    }
+  );
+
+  it('shows the server message when generation fails', async () => {
+    (api.post as any).mockRejectedValueOnce({ response: { data: { message: 'Nope' } } });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /Generate Spellbook/i }));
+
+    expect(await screen.findByText('Nope')).toBeInTheDocument();
+  });
+
   it('sends the generated book to pending loot as a spellbook item', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: /Generate Spellbook/i }));
@@ -79,5 +102,6 @@ describe('SpellbookGenerator', () => {
         items: expect.arrayContaining([expect.objectContaining({ type: 'spellbook' })]),
       }));
     });
+    expect(await screen.findByText('Sent the spellbook to pending loot.')).toBeInTheDocument();
   });
 });
