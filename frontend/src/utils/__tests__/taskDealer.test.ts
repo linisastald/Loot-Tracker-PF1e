@@ -336,6 +336,48 @@ describe('dealTasks rules over many random deals', () => {
   });
 });
 
+describe('dealTasks free space for the ineligible (round 4)', () => {
+  const THREE = [
+    { id: 1, name: 'Fighter Bob' },
+    { id: 2, name: 'Wizard Alice' },
+    { id: 3, name: 'Rogue Cat' },
+  ];
+
+  it('lists a character who is ineligible for every task in a phase and pads them with Free Space', () => {
+    for (let i = 0; i < 50; i++) {
+      const { assignments } = dealTasks({
+        ...base,
+        attendedLastSession: { 1: true, 2: true },
+        definitions: [
+          def('pre', 'Recap', { requires_previous_attendance: true }),
+          def('pre', 'Briefing', { requires_previous_attendance: true }),
+          def('pre', 'Maps', { requires_previous_attendance: true }),
+        ],
+        characters: THREE,
+      });
+      const cat = assignments.pre['Rogue Cat'];
+      expect(cat).toBeDefined();
+      expect(cat.every(task => task === FREE_SPACE)).toBe(true);
+      // padded up to the busiest person's slot count
+      const busiest = Math.max(...Object.values(assignments.pre).map(t => t.length));
+      expect(cat).toHaveLength(busiest);
+      // every task is still dealt
+      const real = Object.values(assignments.pre).flat().filter(t => t !== FREE_SPACE);
+      expect(real.sort()).toEqual(['Briefing', 'Maps', 'Recap']);
+    }
+  });
+
+  it('adds nobody to a phase with nothing to deal', () => {
+    const { assignments } = dealTasks({
+      ...base,
+      definitions: [def('pre', 'Recap')],
+      characters: THREE,
+    });
+    expect(assignments.during).toEqual({});
+    expect(assignments.post).toEqual({});
+  });
+});
+
 describe('unwrapList', () => {
   it('accepts the envelope, a data-only wrapper, a bare array and junk', () => {
     expect(unwrapList({ data: { data: [1] } })).toEqual([1]);

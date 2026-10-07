@@ -122,15 +122,18 @@ export function dealTasks(input: DealInput): DealResult {
   const dealPhase = (phase: TaskPhase): TaskMap => {
     const defs = activeDefs.filter(def => def.phase === phase);
 
-    // People in this phase: every selected character who can take at
-    // least one of its tasks, plus the DM when a task allows it.
-    const candidates: Dealee[] = defs.some(def => def.dm_eligible)
+    // People in this phase: EVERY selected character (one who is ineligible
+    // for all of its tasks still appears, padded with Free Space), plus the
+    // DM when a task allows it. A phase nobody can take any task of is not
+    // dealt at all.
+    if (!defs.some(def => characters.some(person => isEligible(def, person)) ||
+        (def.dm_eligible && isEligible(def, dm)))) {
+      defs.forEach(def => notes.push(`${def.name} (nobody selected can take it)`));
+      return {};
+    }
+    const people: Dealee[] = defs.some(def => def.dm_eligible)
       ? [...characters, dm]
       : [...characters];
-    const people = candidates.filter(person =>
-      defs.some(def => isEligible(def, person))
-    );
-    if (people.length === 0) return {};
 
     // The working maps are keyed by person id, so two characters with the
     // same name (or one called "DM") cannot share a bucket. Names only
