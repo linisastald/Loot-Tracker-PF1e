@@ -181,17 +181,27 @@ const updateSession = async (req, res) => {
                         ? `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled. Reason: ${cancel_reason}`
                         : `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled.`;
 
-                    await discordService.sendMessage({
+                    const pingResult = await discordService.sendMessage({
                         channelId: settings.discord_channel_id,
                         content: cancelMessage,
                         // Only the campaign role may ping, whatever the reason says
                         allowedMentions: { parse: [], roles: [settings.campaign_role_id] }
                     });
 
-                    logger.info('Discord cancellation ping sent', {
-                        sessionId,
-                        channelId: settings.discord_channel_id
-                    });
+                    // sendMessage never throws: a failure comes back as a result
+                    if (pingResult && pingResult.success === false) {
+                        logger.warn('Discord cancellation ping was not delivered', {
+                            sessionId,
+                            channelId: settings.discord_channel_id,
+                            error: pingResult.error?.message,
+                            code: pingResult.error?.code
+                        });
+                    } else {
+                        logger.info('Discord cancellation ping sent', {
+                            sessionId,
+                            channelId: settings.discord_channel_id
+                        });
+                    }
                 } else {
                     logger.warn('Missing Discord settings for cancellation ping', {
                         sessionId,

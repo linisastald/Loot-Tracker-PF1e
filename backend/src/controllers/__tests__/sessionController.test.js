@@ -133,6 +133,23 @@ describe('updateSession', () => {
     expect(discordBroker.sendMessage.mock.calls[0][0].content).toContain('Reason: sick');
     expect(discordBroker.sendMessage.mock.calls[0][0].allowedMentions).toEqual({ parse: [], roles: ['r1'] });
   });
+
+  it('does not claim the cancellation ping was sent when Discord refused it (L-6)', async () => {
+    const logger = require('../../utils/logger');
+    const ServiceResult = require('../../utils/ServiceResult');
+    Session.findById.mockResolvedValue({ ...existing, discord_message_id: '123', status: 'scheduled' });
+    Session.update.mockResolvedValue({ id: 5, title: 'Game' });
+    sessionService.getDiscordSettings.mockResolvedValue({ campaign_role_id: 'r1', discord_channel_id: 'c1' });
+    discordBroker.sendMessage.mockResolvedValue(ServiceResult.failure('rate limited', null, 'DISCORD_RATE_LIMITED'));
+
+    await controller.updateSession(
+      makeReq({ status: 'cancelled', cancel_reason: 'sick' }, { params: { id: '5' } }), makeRes()
+    );
+
+    expect(logger.info).not.toHaveBeenCalledWith('Discord cancellation ping sent', expect.anything());
+    expect(logger.warn).toHaveBeenCalledWith('Discord cancellation ping was not delivered', expect.objectContaining({ sessionId: 5 }));
+    discordBroker.sendMessage.mockReset();
+  });
 });
 
 describe('updateAttendance (legacy endpoint)', () => {

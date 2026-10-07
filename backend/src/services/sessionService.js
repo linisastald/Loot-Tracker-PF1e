@@ -121,12 +121,22 @@ class SessionService {
             }
 
             const discordService = require('./discordBrokerService');
-            await discordService.sendMessage({
+            const result = await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
                 content: buildMessage(settings.campaign_role_id),
                 // Only the campaign role may ping, whatever the text contains
                 allowedMentions: { parse: [], roles: [settings.campaign_role_id] }
             });
+            // sendMessage never throws: a rate limit or rejection comes back as a
+            // failure result, which must not be logged as a delivered ping
+            if (result && result.success === false) {
+                logger.warn(`Discord ${kind} notification was not delivered`, {
+                    ...logContext,
+                    error: result.error?.message,
+                    code: result.error?.code
+                });
+                return;
+            }
             logger.info(`Discord ${kind} notification sent`, logContext);
         } catch (discordError) {
             logger.error(`Failed to send Discord ${kind} notification:`, {

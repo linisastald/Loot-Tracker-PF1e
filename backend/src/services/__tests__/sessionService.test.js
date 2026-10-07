@@ -50,6 +50,8 @@ const attendanceService = require('../attendance/AttendanceService');
 const sessionDiscordService = require('../discord/SessionDiscordService');
 const recurringSessionService = require('../recurring/RecurringSessionService');
 const discordBroker = require('../discordBrokerService');
+const logger = require('../../utils/logger');
+const ServiceResult = require('../../utils/ServiceResult');
 
 // ---- Helpers ----
 
@@ -274,6 +276,51 @@ describe('SessionService', () => {
   // ========================================================================
   // cancelSession
   // ========================================================================
+  // Opus review L-6: sendMessage never throws, it returns a ServiceResult
+  describe('role ping result (cancel / reinstate)', () => {
+    const settings = { campaign_role_id: '123', discord_channel_id: '456' };
+
+    it('logs a warning, not "notification sent", when the cancellation ping fails', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [buildSession({ status: 'cancelled' })] });
+      sessionDiscordService.getDiscordSettings.mockResolvedValueOnce(settings);
+      discordBroker.sendMessage.mockResolvedValueOnce(ServiceResult.failure('rate limited', null, 'DISCORD_RATE_LIMITED'));
+
+      await sessionService.cancelSession(1, 'x');
+
+      expect(logger.info).not.toHaveBeenCalledWith('Discord cancellation notification sent', expect.anything());
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Discord cancellation notification was not delivered'),
+        expect.objectContaining({ sessionId: 1 })
+      );
+    });
+
+    it('logs a warning when the reinstatement ping fails', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [buildSession({ status: 'cancelled' })] })
+        .mockResolvedValueOnce({ rows: [buildSession({ status: 'scheduled' })] });
+      sessionDiscordService.getDiscordSettings.mockResolvedValueOnce(settings);
+      discordBroker.sendMessage.mockResolvedValueOnce(ServiceResult.failure('forbidden', null, 'DISCORD_FORBIDDEN'));
+
+      await sessionService.uncancelSession(1);
+
+      expect(logger.info).not.toHaveBeenCalledWith('Discord reinstatement notification sent', expect.anything());
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Discord reinstatement notification was not delivered'),
+        expect.anything()
+      );
+    });
+
+    it('still logs "notification sent" when the ping is delivered', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [buildSession({ status: 'cancelled' })] });
+      sessionDiscordService.getDiscordSettings.mockResolvedValueOnce(settings);
+      discordBroker.sendMessage.mockResolvedValueOnce(ServiceResult.success());
+
+      await sessionService.cancelSession(1, 'x');
+
+      expect(logger.info).toHaveBeenCalledWith('Discord cancellation notification sent', expect.anything());
+    });
+  });
+
   describe('cancelSession', () => {
     it('should cancel session with reason', async () => {
       const session = buildSession({ status: 'cancelled', cancel_reason: 'DM sick' });
