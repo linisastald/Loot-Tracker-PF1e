@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import api from '../../utils/api';
 import { getErrorMessage } from '../../utils/apiErrors';
+import { useIsDM } from '../../contexts/CampaignContext';
 import {
   Alert,
   Button,
@@ -67,6 +68,11 @@ interface SortState<T> {
 }
 
 // Maximum charges for wands
+interface UseConsumableResponse {
+  data?: { status?: string };
+  message?: string;
+}
+
 const MAX_WAND_CHARGES = 50;
 
 // Sort a copy of the list by the given key. Numbers sort numerically, strings
@@ -207,6 +213,8 @@ const nameColumn = <T extends { name: string }>(): ColumnDef<T> =>
   ({ label: 'Name', sortKey: 'name' as keyof T & string, render: (row) => row.name });
 
 const Consumables: React.FC = () => {
+  // Owner decision (2026-10-06): charges change through use, or by a DM.
+  const isDM = useIsDM();
   const [wands, setWands] = useState<Wand[]>([]);
   const [potions, setPotions] = useState<PotionScroll[]>([]);
   const [scrolls, setScrolls] = useState<PotionScroll[]>([]);
@@ -214,6 +222,7 @@ const Consumables: React.FC = () => {
   const [selectedWand, setSelectedWand] = useState<Wand | null>(null);
   const [newCharges, setNewCharges] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [notice, setNotice] = useState<string>('');
   const [dialogError, setDialogError] = useState<string>('');
   const [openSections, setOpenSections] = useState<OpenSections>({wands: true, potions: true, scrolls: true});
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -243,8 +252,12 @@ const Consumables: React.FC = () => {
   // The type comes from the section the row is rendered in, never from its name.
   const handleUseConsumable = async (itemid: number, type: ConsumableType): Promise<void> => {
     setError('');
+    setNotice('');
     try {
-      await api.post('/consumables/use', {itemid, type});
+      const response = await api.post('/consumables/use', {itemid, type}) as unknown as UseConsumableResponse;
+      if (type === 'wand' && response?.data?.status === 'Trashed') {
+        setNotice(response.message || 'The wand is now empty and was moved to trash.');
+      }
       // Refresh after server processes the update
       await fetchConsumables();
     } catch (err) {
@@ -309,7 +322,7 @@ const Consumables: React.FC = () => {
           <Box>{renderChargeProgress(wand.charges)}</Box>
         </Tooltip>
       ) : (
-        <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button>
+        isDM ? <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button> : null
       ),
     },
   ];
@@ -322,6 +335,11 @@ const Consumables: React.FC = () => {
 
   return (
     <Container maxWidth={false} component="main">
+      {notice && (
+        <Alert severity="info" onClose={() => setNotice('')} sx={{ mb: 2 }}>
+          {notice}
+        </Alert>
+      )}
       {error && (
         <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
           {error}
@@ -414,15 +432,15 @@ const Consumables: React.FC = () => {
             fullWidth
             value={newCharges}
             onChange={(e) => setNewCharges(e.target.value)}
-            slotProps={{ htmlInput: {min: 1, max: MAX_WAND_CHARGES} }}
-            helperText={`Max ${MAX_WAND_CHARGES} charges`}
+            slotProps={{ htmlInput: {min: 0, max: MAX_WAND_CHARGES} }}
+            helperText={`0 to ${MAX_WAND_CHARGES} charges; 0 trashes the wand`}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseChargesDialog}>Cancel</Button>
           <Button
             onClick={handleUpdateCharges}
-            disabled={!newCharges || parseInt(newCharges) < 1 || parseInt(newCharges) > MAX_WAND_CHARGES}
+            disabled={!/^[0-9]+$/.test(newCharges) || parseInt(newCharges) > MAX_WAND_CHARGES}
           >
             Update
           </Button>

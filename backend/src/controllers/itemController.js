@@ -191,11 +191,33 @@ const persistLootUpdate = async (req, res, itemId, filteredData) => {
   return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
 };
 
+// Owner decision (2026-10-06): wand charges are set when the loot is entered
+// and afterwards change only by use (Consumables) or by a DM. A player edit
+// dialog re-sends the stored value, so an unchanged value is accepted (and
+// ignored, because charges is not a player-updatable field); a changed value
+// is refused with an explanation instead of being silently dropped.
+const normalizeCharges = (value) => (value === null || value === undefined || value === '' ? null : Number(value));
+
+const rejectPlayerChargesChange = async (itemId, sentCharges) => {
+  const stored = await dbUtils.executeQuery('SELECT charges FROM loot WHERE id = $1', [itemId]);
+  if (stored.rows.length === 0) {
+    throw controllerFactory.createNotFoundError('Loot item not found');
+  }
+  if (normalizeCharges(sentCharges) !== normalizeCharges(stored.rows[0].charges)) {
+    throw controllerFactory.createAuthorizationError(
+      'Wand charges can only change through use; ask your DM to adjust them.'
+    );
+  }
+};
+
 /**
  * Update loot item — player-safe fields only.
  */
 const updateLootItem = async (req, res) => {
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
+  if (!hasDmRights(req) && req.body && req.body.charges !== undefined) {
+    await rejectPlayerChargesChange(itemId, req.body.charges);
+  }
   const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
 
   // F-1373: players keep broad edit rights, but may not turn an unidentified
