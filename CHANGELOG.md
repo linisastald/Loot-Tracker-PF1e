@@ -24,7 +24,7 @@ All notable changes to this project are documented in this file.
 - **DM-only actions:** deleting crew, outposts and ships; Balance on the gold page (Distribute stays open to players); Search History; marking an item Sold outside the sale buttons; any edit or status change of a sold item.
 - **A DM who sets a wand to 0 charges in the item dialog is asked to confirm, and the wand is then trashed.**
 - **Generated wands come with 1 to 50 charges**, most often between 6 and 39.
-- **Generated spellbooks are stored as type magic.**
+- **Generated spellbooks are stored as type magic and linked to the catalog Spellbook item**, which now has the subtype spellbook along with the Compact and Traveling Spellbook (migration 080). Spellbooks generated before this are not relinked.
 - **Two session tasks in the same phase cannot share a name.**
 - **Everyone selected on the Tasks page appears in every phase**; someone who cannot take any task in a phase gets Free Space.
 - **The first account on an empty install is the DM and superadmin**, whatever role the form asked for.
@@ -82,7 +82,7 @@ All notable changes to this project are documented in this file.
 - Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker compose file and deploy script, `update_containers.sh`), the archived migrations folder, and the old Python utility scripts.
 
 ### Notes
-- Includes database migrations 059 to 079, which run automatically on server start. None of 061 to 079 had been run against a real database when this was written.
+- Includes database migrations 059 to 080, which run automatically on server start. None of 061 to 080 had been run against a real database when this was written.
 - Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), check the production settings listed under Changed (the server will not start without them), and check for users with no campaign membership, who lose access.
 
 ## [0.15.2]
