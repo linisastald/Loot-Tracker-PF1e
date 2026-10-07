@@ -264,6 +264,41 @@ describe('create', () => {
   });
 });
 
+describe('duplicate names in a phase (round 4)', () => {
+  it('refuses creating a task whose name already exists in the phase and campaign', async () => {
+    SessionTask.nameExists.mockResolvedValue(true);
+    const res = createMockRes();
+
+    await controller.create(createMockReq({ body: { phase: 'post', name: '  snack RUN ' } }), res);
+
+    expect(SessionTask.nameExists).toHaveBeenCalledWith(1, 'post', 'snack RUN', null);
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('already exists'));
+    expect(SessionTask.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses renaming a task onto another task name, excluding the row itself', async () => {
+    SessionTask.nameExists.mockResolvedValue(true);
+    const res = createMockRes();
+
+    await controller.update(createMockReq({ params: { id: '10' }, body: { phase: 'during', name: 'Recap' } }), res);
+
+    expect(SessionTask.nameExists).toHaveBeenCalledWith(1, 'during', 'Recap', 10);
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('already exists'));
+    expect(SessionTask.update).not.toHaveBeenCalled();
+  });
+
+  it('lets a task keep its own name (the model excludes its own id)', async () => {
+    SessionTask.nameExists.mockResolvedValue(false);
+    SessionTask.update.mockResolvedValue(task());
+    const res = createMockRes();
+
+    await controller.update(createMockReq({ params: { id: '10' }, body: { phase: 'during', name: 'Loot Master' } }), res);
+
+    expect(SessionTask.update).toHaveBeenCalled();
+    expect(res.success).toHaveBeenCalled();
+  });
+});
+
 describe('update', () => {
   it('updates and returns the task', async () => {
     SessionTask.update.mockResolvedValue(task({ name: 'Renamed' }));

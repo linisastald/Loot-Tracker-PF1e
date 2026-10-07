@@ -33,6 +33,28 @@ const fieldIndex = (field) => EDITABLE_FIELDS.indexOf(field);
 describe('SessionTask model', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  describe('nameExists', () => {
+    it('compares trimmed, case-insensitive, within phase and campaign, excluding the given id', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 4 }] });
+
+      await expect(SessionTask.nameExists(3, 'pre', '  Recap ', 10)).resolves.toBe(true);
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain('campaign_id = $1');
+      expect(sql).toContain('phase = $2');
+      expect(sql).toContain('LOWER(BTRIM(name)) = LOWER(BTRIM($3))');
+      expect(sql).toContain('id <> $4');
+      expect(params).toEqual([3, 'pre', 'Recap', 10]);
+    });
+
+    it('does not exclude any row when creating, and is false with no match', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await expect(SessionTask.nameExists(3, 'pre', 'Recap', null)).resolves.toBe(false);
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([3, 'pre', 'Recap', null]);
+    });
+  });
+
   it('edits phase, name, and every task option', () => {
     expect(EDITABLE_FIELDS).toEqual(['phase', 'name', ...TASK_OPTION_FIELDS]);
     expect(EDITABLE_FIELDS).toEqual(expect.arrayContaining([

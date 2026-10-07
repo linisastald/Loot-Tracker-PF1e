@@ -47,6 +47,28 @@ exports.getAll = async (campaignId) => {
 };
 
 /**
+ * Whether another task in the same phase and campaign already has this name
+ * (trimmed, case-insensitive). `excludeId` is the task being edited, so a row
+ * may keep its own name; pass null when creating.
+ * @param {number} campaignId
+ * @param {string} phase
+ * @param {string} name
+ * @param {number|null} excludeId
+ * @return {Promise<boolean>}
+ */
+exports.nameExists = async (campaignId, phase, name, excludeId) => {
+  const result = await dbUtils.executeQuery(
+    `SELECT id FROM session_task_definition
+     WHERE campaign_id = $1 AND phase = $2
+       AND LOWER(BTRIM(name)) = LOWER(BTRIM($3))
+       AND ($4::int IS NULL OR id <> $4)
+     LIMIT 1`,
+    [campaignId, phase, name.trim(), excludeId]
+  );
+  return result.rows.length > 0;
+};
+
+/**
  * Create a task at the end of its phase's list. Any option left out of
  * `data` takes its default from TASK_OPTION_DEFAULTS.
  * @param {number} campaignId

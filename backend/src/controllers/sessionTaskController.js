@@ -173,11 +173,21 @@ const getAll = async (req, res) => {
   controllerFactory.sendSuccessResponse(res, tasks, 'Session tasks retrieved');
 };
 
+/** Refuse a name already used by another task in the same phase (owner decision, round 4). */
+const assertNameFree = async (campaignId, input, excludeId) => {
+  if (await SessionTask.nameExists(campaignId, input.phase, input.name, excludeId)) {
+    throw controllerFactory.createValidationError(
+      `A task named "${input.name}" already exists in this phase`
+    );
+  }
+};
+
 /** Create a task at the end of its phase (DM only). */
 const create = async (req, res) => {
   const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
   await assertFixedCharacter(input);
+  await assertNameFree(campaignId, input, null);
   const task = await SessionTask.create(campaignId, input);
   controllerFactory.sendCreatedResponse(res, task, 'Session task created');
 };
@@ -188,6 +198,7 @@ const update = async (req, res) => {
   const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
   await assertFixedCharacter(input);
+  await assertNameFree(campaignId, input, id);
   const task = await SessionTask.update(campaignId, id, input);
   if (!task) {
     throw controllerFactory.createNotFoundError('Session task not found');
