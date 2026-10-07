@@ -476,9 +476,13 @@ bash build_image.sh --branch master --tag latest
 - Build happens in worktree to preserve current branch
 
 ### Deployment
+The repository does not ship a compose file for the application. Images are built with
+`build_image.sh` (`docker/Dockerfile.backend` builds frontend and backend into one container), and the
+production and test instances run from TrueNAS app definitions kept outside version control
+(`docker/truenas-*.yaml`, gitignored). The Discord broker has its own compose file at the repo root:
 ```bash
-# Using docker-compose
-docker-compose -f docker/docker-compose.yml up -d
+# Discord broker
+docker-compose -f docker-compose.discord-broker.yml up -d
 
 # Update running containers
 ./update_containers.sh
