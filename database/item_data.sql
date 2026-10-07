@@ -1256,7 +1256,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1354, 'Common Meal', 'gear', 0, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1355, 'Commset', 'other', 6000, NULL, 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1356, 'Communique Ring', 'magic', 6000, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1357, 'Compact Spellbook', 'gear', 50, NULL, 1, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1357, 'Compact Spellbook', 'gear', 50, 'spellbook', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1358, 'Companion Cold-Weather Outfit', 'gear', 15, NULL, 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1359, 'Compartment Holy Symbol', 'other', 5, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1360, 'Compass', 'gear', 10, NULL, 0.5, NULL);
@@ -5558,7 +5558,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6465, 'Specialty Smoke Pellet, Smog', 'gear', 40, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6470, 'Speech Resin', 'gear', 410, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6471, 'Speed Sheath', 'gear', 10, NULL, 1, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6472, 'Spellbook', 'gear', 15, NULL, 3, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6472, 'Spellbook', 'gear', 15, 'spellbook', 3, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6475, 'Spell Component', 'gear', 0, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6476, 'Spell Component Pouch', 'gear', 5, NULL, 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6477, 'Spell Focus', 'gear', 0, NULL, 0, NULL);
@@ -6085,7 +6085,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7077, 'Traveling Bee Hive', 'gear', 10, NULL, 10, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7078, 'Traveling Garden', 'gear', 200, NULL, 500, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7079, 'Traveling Kettle', 'weapon', 5, 'light', 2, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7081, 'Traveling Spellbook', 'gear', 10, NULL, 1, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7081, 'Traveling Spellbook', 'gear', 10, 'spellbook', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7082, 'Treant', 'magic', 25750, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7083, 'Treasure Hunter''s Goggles', 'magic', 6400, NULL, 0, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7085, 'Trebuchet', 'weapon', NULL, 'ranged', NULL, NULL);
