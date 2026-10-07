@@ -48,16 +48,46 @@ const parseOptionalDate = (value, field) => {
 };
 
 /**
+ * Optional hire date: a campaign-calendar date as 'YYYY-MM-DD' (a full ISO timestamp is
+ * cut to its date part, so no timezone shift) or the {year, month, day} object older
+ * clients send. Blank / null / undefined mean "no hire date".
+ * @param {*} value - Raw body value
+ * @return {string|null} 'YYYY-MM-DD' or null
+ */
+const parseHireDate = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  let parts = null;
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(value);
+    parts = match && match.slice(1, 4).map(Number);
+  } else if (typeof value === 'object' && !Array.isArray(value)) {
+    parts = [value.year, value.month, value.day].map(Number);
+  }
+  if (parts) {
+    const [year, month, day] = parts;
+    const probe = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isInteger(year) && year >= 1000 && year <= 9999
+        && probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day) {
+      return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  throw controllerFactory.createValidationError('Hire date must be a valid date (YYYY-MM-DD)');
+};
+
+/**
  * Create a new crew member
  */
 const createCrew = async (req, res) => {
-  const { name, race, age, description, location_type, location_id, ship_position } = req.body;
+  const { name, race, age, description, location_type, location_id, ship_position, hire_date } = req.body;
 
   if (!name) {
     throw controllerFactory.createValidationError('Crew member name is required');
   }
 
   const locationId = await validateLocation(location_type, location_id);
+  const hireDate = parseHireDate(hire_date);
 
   const crewData = {
     name,
@@ -67,6 +97,7 @@ const createCrew = async (req, res) => {
     location_type,
     location_id: locationId,
     ship_position: location_type === 'ship' ? ship_position : null,
+    hire_date: hireDate,
     is_alive: true
   };
 
@@ -137,6 +168,10 @@ const updateCrew = async (req, res) => {
   if (updateData.location_type !== undefined && updateData.location_id !== undefined
       && !(await Crew.locationExists(updateData.location_type, updateData.location_id))) {
     throw controllerFactory.createValidationError(`Selected ${updateData.location_type} does not exist`);
+  }
+
+  if (updateData.hire_date !== undefined) {
+    updateData.hire_date = parseHireDate(updateData.hire_date);
   }
 
   // Clear ship_position if moving to outpost

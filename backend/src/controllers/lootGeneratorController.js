@@ -4,7 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
 const lootGeneratorService = require('../services/lootGenerator/lootGeneratorService');
-const { crKey } = require('../services/lootGenerator/treasureTables');
+const { crKey, NPC_GEAR_SOURCES, DEFAULT_NPC_GEAR_SOURCE } = require('../services/lootGenerator/treasureTables');
 const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/treasureFlavor');
 const spellbookService = require('../services/lootGenerator/spellbookService');
 const Spellbook = require('../models/Spellbook');
@@ -81,7 +81,7 @@ const validateCommitItem = (it, index) => {
  * Generate a treasure preview from a list of enemies (no DB writes). DM only.
  */
 const generate = async (req, res) => {
-  const { enemies, track, modifier, unidentified, environment } = req.body;
+  const { enemies, track, modifier, unidentified, environment, npcGearSource } = req.body;
 
   if (!Array.isArray(enemies) || enemies.length === 0) {
     throw controllerFactory.createValidationError('At least one enemy is required');
@@ -105,7 +105,12 @@ const generate = async (req, res) => {
     };
   });
 
-  const options = {};
+  // Where 'npc_gear' enemies get their gp value: the CRB NPC Gear table (default) or PC wealth
+  if (npcGearSource !== undefined && !NPC_GEAR_SOURCES.includes(npcGearSource)) {
+    throw controllerFactory.createValidationError(`npcGearSource must be one of: ${NPC_GEAR_SOURCES.join(', ')}`);
+  }
+
+  const options = { npcGearSource: npcGearSource || DEFAULT_NPC_GEAR_SOURCE };
   if (ALLOWED_TRACKS.includes(track)) options.track = track;
   const mod = parseFloat(modifier);
   if (mod > 0) options.modifier = Math.min(mod, 100);

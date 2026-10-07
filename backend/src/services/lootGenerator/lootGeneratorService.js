@@ -12,7 +12,7 @@
 const campaignSettings = require('../../utils/campaignSettings');
 const { calculateFinalValue } = require('../calculateFinalValue');
 const {
-  getTreasureGp, getNpcGearGp, GEM_TIERS, ART_TIERS, TREASURE_MULTIPLIERS,
+  getTreasureGp, getNpcGearGp, NPC_GEAR_SOURCES, DEFAULT_NPC_GEAR_SOURCE, GEM_TIERS, ART_TIERS, TREASURE_MULTIPLIERS,
   XP_BY_CR, crKey, crToNum, xpToCr,
 } = require('./treasureTables');
 const catalog = require('./lootCatalog');
@@ -344,7 +344,9 @@ const poolItems = (rows) => {
 /**
  * Generate a treasure preview (no DB writes) for a list of enemies.
  * @param {Array} enemies - [{ name?, creatureType, cr, count, treasure, spellcaster? }]
- * @param {object} options - { track?, modifier?, unidentified? }
+ * @param {object} options - { track?, modifier?, unidentified?, environment?, npcGearSource? }
+ *   npcGearSource: 'npc' (CRB Table 14-9, default) or 'pc' (Character Wealth by Level)
+ *   picks the value table for 'npc_gear' enemies
  */
 const generate = async (enemies, options = {}) => {
   const settings = await getTreasureSettings();
@@ -352,6 +354,7 @@ const generate = async (enemies, options = {}) => {
   const modifier = options.modifier > 0 ? options.modifier : settings.modifier;
   const unidentified = options.unidentified !== false;
   const environment = ENVIRONMENTS[options.environment] ? options.environment : 'dungeon';
+  const npcGearSource = NPC_GEAR_SOURCES.includes(options.npcGearSource) ? options.npcGearSource : DEFAULT_NPC_GEAR_SOURCE;
 
   // --- Encounter aggregation ---
   // The enemy list is ONE encounter: treasure-weighted XP sums into an effective
@@ -375,7 +378,7 @@ const generate = async (enemies, options = {}) => {
     const enemyCats = enemy.spellcaster ? boostCaster(profile.cats) : profile.cats;
 
     if (treasure === 'npc_gear') {
-      const gp = getNpcGearGp(enemy.cr) * count * modifier;
+      const gp = getNpcGearGp(enemy.cr, npcGearSource) * count * modifier;
       npcGearGp += gp;
       accumCats(cats, enemyCats, gp);
     } else {

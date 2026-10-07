@@ -9,6 +9,7 @@ import {
     Divider,
     FormControl,
     FormControlLabel,
+    FormHelperText,
     Grid,
     IconButton,
     InputLabel,
@@ -44,6 +45,12 @@ const TREASURE_TYPES = [
     {value: 'double', label: 'Double'},
     {value: 'triple', label: 'Triple'},
     {value: 'npc_gear', label: 'NPC Gear'},
+];
+
+// Where the gp value of "NPC Gear" enemies comes from (sent as npcGearSource)
+const NPC_GEAR_SOURCE_OPTIONS = [
+    {value: 'npc', label: 'NPC gear table (default)'},
+    {value: 'pc', label: 'PC wealth by level'},
 ];
 
 const TRACK_OPTIONS = [
@@ -139,6 +146,7 @@ const LootGenerator: React.FC = () => {
     const [track, setTrack] = useState<string>('medium');
     const [modifier, setModifier] = useState<string>('1');
     const [environment, setEnvironment] = useState<string>('dungeon');
+    const [npcGearSource, setNpcGearSource] = useState<string>('npc');
     const [environments, setEnvironments] = useState<EnvOption[]>(DEFAULT_ENVIRONMENTS);
     const [unidentified, setUnidentified] = useState<boolean>(true);
     const [preview, setPreview] = useState<Preview | null>(null);
@@ -200,6 +208,7 @@ const LootGenerator: React.FC = () => {
             modifier: parseFloat(modifier),
             unidentified,
             environment,
+            npcGearSource,
         };
         setGenerating(true);
         try {
@@ -358,6 +367,19 @@ const LootGenerator: React.FC = () => {
                         </TableBody>
                     </Table>
                 </TableContainer>
+                {enemies.some(e => e.treasure === 'npc_gear') && (
+                    <FormControl size="small" sx={{mt: 2, minWidth: 240, maxWidth: 520}}>
+                        <InputLabel id="npc-gear-source-label">NPC gear values</InputLabel>
+                        <Select labelId="npc-gear-source-label" label="NPC gear values" value={npcGearSource}
+                                onChange={(e: SelectChangeEvent) => setNpcGearSource(e.target.value)}>
+                            {NPC_GEAR_SOURCE_OPTIONS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                        </Select>
+                        <FormHelperText>
+                            NPC gear table is what a typical NPC carries (Core Rulebook Table 14-9); PC wealth by level
+                            gives PC-sized gear, roughly three times as much.
+                        </FormHelperText>
+                    </FormControl>
+                )}
                 <Box sx={{mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap'}}>
                     <Button startIcon={<AddIcon/>} onClick={addEnemy} sx={{textTransform: 'none'}}>Add enemy</Button>
                     <Box sx={{flexGrow: 1}}/>

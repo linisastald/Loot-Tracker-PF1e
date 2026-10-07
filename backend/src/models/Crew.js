@@ -1,6 +1,12 @@
 // src/models/Crew.js
 const dbUtils = require('../utils/dbUtils');
 
+// hire_date is a DATE. pg would turn it into a JS Date (and JSON would shift it by the
+// server's timezone offset), so every query returns it as a plain 'YYYY-MM-DD' string.
+// The alias repeats the column name on purpose: with SELECT * / RETURNING * the later
+// column wins when pg builds the row object, so no other column has to be listed.
+const hireDateText = (prefix = '') => `to_char(${prefix}hire_date, 'YYYY-MM-DD') AS hire_date`;
+
 /**
  * Shared crew + location-name listing used by the living and deceased queries.
  * @param {Object} opts
@@ -11,7 +17,7 @@ const dbUtils = require('../utils/dbUtils');
  */
 const listWithLocation = async ({ alive, alias, orderBy }) => {
   const query = `
-    SELECT c.*,
+    SELECT c.*, ${hireDateText('c.')},
            CASE
              WHEN c.location_type = 'ship' THEN s.name
              WHEN c.location_type = 'outpost' THEN o.name
@@ -38,8 +44,8 @@ const updateOne = async (setClause, values, crewId) => {
   const query = `
     UPDATE crew
     SET ${setClause}, updated_at = CURRENT_TIMESTAMP
-    WHERE id = $${values.length + 1}
-    RETURNING *
+    WHERE id = ${values.length + 1}
+    RETURNING *, ${hireDateText()}
   `;
   const result = await dbUtils.executeQuery(query, [...values, crewId]);
   return result.rows.length > 0 ? result.rows[0] : null;
@@ -60,7 +66,7 @@ exports.getAllWithLocation = async () =>
  */
 exports.getByLocation = async (locationType, locationId) => {
   const query = `
-    SELECT * FROM crew
+    SELECT *, ${hireDateText()} FROM crew
     WHERE location_type = $1 AND location_id = $2 AND is_alive = true
     ORDER BY
       CASE
@@ -93,9 +99,9 @@ exports.getDeceased = async () =>
  */
 exports.create = async (crewData) => {
   const query = `
-    INSERT INTO crew (name, race, age, description, location_type, location_id, ship_position, is_alive)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING *
+    INSERT INTO crew (name, race, age, description, location_type, location_id, ship_position, is_alive, hire_date)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    RETURNING *, ${hireDateText()}
   `;
 
   const values = [
@@ -106,7 +112,8 @@ exports.create = async (crewData) => {
     crewData.location_type,
     crewData.location_id,
     crewData.location_type === 'ship' ? crewData.ship_position : null,
-    true
+    true,
+    crewData.hire_date || null
   ];
 
   const result = await dbUtils.executeQuery(query, values);
@@ -133,7 +140,7 @@ exports.update = async (id, crewData) => {
 
   return updateOne(
     `name = $1, race = $2, age = $3, description = $4, location_type = $5,
-        location_id = $6, ship_position = $7`,
+        location_id = $6, ship_position = $7, hire_date = $8`,
     [
       pick('name'),
       blankToNull(pick('race')),
@@ -141,7 +148,8 @@ exports.update = async (id, crewData) => {
       blankToNull(pick('description')),
       locationType,
       pick('location_id'),
-      locationType === 'ship' ? blankToNull(pick('ship_position')) : null
+      locationType === 'ship' ? blankToNull(pick('ship_position')) : null,
+      blankToNull(pick('hire_date'))
     ],
     id
   );
@@ -202,7 +210,7 @@ exports.delete = async (id) => {
  * @return {Promise<Object|null>} Crew member or null
  */
 exports.findById = async (id) => {
-  const query = 'SELECT * FROM crew WHERE id = $1';
+  const query = `SELECT *, ${hireDateText()} FROM crew WHERE id = $1`;
   const result = await dbUtils.executeQuery(query, [id]);
   return result.rows.length > 0 ? result.rows[0] : null;
 };

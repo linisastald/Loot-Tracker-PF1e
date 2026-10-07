@@ -105,4 +105,30 @@ describe('ShipDialog', () => {
       expect(screen.getByRole('option', { name: status })).toBeInTheDocument();
     });
   });
+
+  describe('captain, flag and notes', () => {
+    it('shows inputs for all three, filled from the ship being edited', () => {
+      render(<Harness initial={{ captain_name: 'Cap Kettle', flag_description: 'A red skull', ship_notes: 'Leaks a bit' }} />);
+      expect(screen.getByLabelText('Captain')).toHaveValue('Cap Kettle');
+      expect(screen.getByLabelText('Flag')).toHaveValue('A red skull');
+      expect(screen.getByLabelText('Ship Notes')).toHaveValue('Leaks a bit');
+    });
+
+    it('writes what is typed into the ship form', async () => {
+      const user = userEvent.setup();
+      let latest: ShipForm = NEW_SHIP_FORM;
+      render(<Harness onState={(s) => { latest = s; }} />);
+      await user.type(screen.getByLabelText('Captain'), 'Cap');
+      await user.type(screen.getByLabelText('Flag'), 'Skull');
+      await user.type(screen.getByLabelText('Ship Notes'), 'Fast');
+      expect(latest.captain_name).toBe('Cap');
+      expect(latest.flag_description).toBe('Skull');
+      expect(latest.ship_notes).toBe('Fast');
+    });
+
+    it('limits the captain to the 255 characters the database stores', () => {
+      render(<Harness />);
+      expect(screen.getByLabelText('Captain')).toHaveAttribute('maxlength', '255');
+    });
+  });
 });

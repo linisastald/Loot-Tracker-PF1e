@@ -34,11 +34,24 @@ describe('createOriginCheck', () => {
   });
 });
 
-describe('wildcard entry (kept for compatibility, flagged as unsafe)', () => {
-  it('still allows any origin when * is listed, and hasWildcard reports it', async () => {
-    const check = createOriginCheck(['*']);
-    const result = await new Promise(resolve => check('https://anything.example', (err, ok) => resolve({ err, ok })));
-    expect(result.ok).toBe(true);
+describe('wildcard entry (no longer honoured)', () => {
+  const run = (check, origin) => new Promise(resolve => check(origin, (err, ok) => resolve({ err, ok })));
+
+  it('rejects a cross-origin request even when * is listed', async () => {
+    const { err, ok } = await run(createOriginCheck(['*']), 'https://anything.example');
+    expect(ok).toBeUndefined();
+    expect(err.status).toBe(403);
+  });
+
+  it('still allows a listed origin alongside a stray *', async () => {
+    expect((await run(createOriginCheck(['*', 'https://a.example']), 'https://a.example')).ok).toBe(true);
+  });
+
+  it('still allows requests with no Origin header when * is listed', async () => {
+    expect(await run(createOriginCheck(['*']), undefined)).toEqual({ err: null, ok: true });
+  });
+
+  it('hasWildcard still reports the entry so startup checks can refuse it', () => {
     expect(hasWildcard(['*'])).toBe(true);
     expect(hasWildcard(['https://a.example'])).toBe(false);
   });

@@ -167,6 +167,7 @@ CREATE TABLE crew (
     location_id INTEGER, -- references ships.id or outposts.id
     ship_position VARCHAR(100), -- captain, first mate, etc (null if at outpost)
     is_alive BOOLEAN DEFAULT true,
+    hire_date DATE,
     death_date DATE,
     departure_date DATE,
     departure_reason TEXT,

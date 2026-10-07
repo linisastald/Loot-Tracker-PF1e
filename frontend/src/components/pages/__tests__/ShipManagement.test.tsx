@@ -37,6 +37,12 @@ vi.mock('../../../data/shipData', () => ({
   SHIP_IMPROVEMENTS: {},
 }));
 
+// DM gating comes from the current campaign role
+const campaign = vi.hoisted(() => ({ isDM: true }));
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => campaign.isDM,
+}));
+
 import ShipManagement from '../ShipManagement';
 import shipService from '../../../services/shipService';
 
@@ -50,6 +56,7 @@ const renderComponent = () =>
 describe('ShipManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    campaign.isDM = true;
   });
 
   it('renders loading state initially', () => {
@@ -229,8 +236,45 @@ describe('ShipManagement', () => {
       await waitFor(() => expect(shipService.updateShip).toHaveBeenCalled());
       const payload = vi.mocked(shipService.updateShip).mock.calls[0][1];
       expect(payload.current_hp).toBe(50);
-      ['plunder', 'officers', 'captain_name', 'ship_notes', 'infamy', 'cargo_manifest'].forEach((key) => {
+      ['plunder', 'officers', 'infamy', 'cargo_manifest'].forEach((key) => {
         expect(payload).not.toHaveProperty(key);
+      });
+    });
+
+    it('sends the stored captain, notes and flag back unchanged on an edit', async () => {
+      vi.mocked(shipService.getAllShips).mockResolvedValueOnce({
+        data: {
+          ships: [{
+            id: 6, name: 'Keeper', status: 'Active', current_hp: 10, max_hp: 10,
+            captain_name: 'Cap Kettle', ship_notes: 'Leaks', flag_description: 'Red skull',
+          }],
+        },
+      });
+      vi.mocked(shipService.updateShip).mockResolvedValueOnce({ data: {} });
+      const user = userEvent.setup();
+      renderComponent();
+      await screen.findByText('Keeper');
+      await user.click(screen.getByTitle('Edit'));
+      await user.click(await screen.findByRole('button', { name: 'Save Ship' }));
+      await waitFor(() => expect(shipService.updateShip).toHaveBeenCalled());
+      expect(vi.mocked(shipService.updateShip).mock.calls[0][1]).toMatchObject({
+        captain_name: 'Cap Kettle', ship_notes: 'Leaks', flag_description: 'Red skull',
+      });
+    });
+
+    it('sends empty strings (not undefined) for a ship that has none, so they can be cleared', async () => {
+      vi.mocked(shipService.getAllShips).mockResolvedValueOnce({
+        data: { ships: [{ id: 7, name: 'Bare', status: 'Active', current_hp: 10, max_hp: 10, captain_name: null }] },
+      });
+      vi.mocked(shipService.updateShip).mockResolvedValueOnce({ data: {} });
+      const user = userEvent.setup();
+      renderComponent();
+      await screen.findByText('Bare');
+      await user.click(screen.getByTitle('Edit'));
+      await user.click(await screen.findByRole('button', { name: 'Save Ship' }));
+      await waitFor(() => expect(shipService.updateShip).toHaveBeenCalled());
+      expect(vi.mocked(shipService.updateShip).mock.calls[0][1]).toMatchObject({
+        captain_name: '', ship_notes: '', flag_description: '',
       });
     });
   });
@@ -365,5 +409,22 @@ describe('ShipManagement', () => {
       expect(await screen.findByText('Ship 01')).toBeInTheDocument();
       expect(screen.getByText('Ship 12')).toBeInTheDocument();
     });
+  });
+});
+
+describe('ShipManagement for a player (not a DM)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.isDM = false;
+  });
+
+  it('hides the delete control but keeps edit', async () => {
+    vi.mocked(shipService.getAllShips).mockResolvedValue({
+      data: { ships: [{ id: 5, name: 'Doomed', status: 'Active', current_hp: 10, max_hp: 10 }] },
+    });
+    renderComponent();
+    await screen.findByText('Doomed');
+    expect(screen.queryByTitle('Delete')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Edit').length).toBeGreaterThan(0);
   });
 });

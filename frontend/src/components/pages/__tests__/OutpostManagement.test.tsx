@@ -23,6 +23,12 @@ vi.mock('../../../utils/timezoneUtils', () => ({
   formatInCampaignTimezone: vi.fn().mockReturnValue('May 10, 2024'),
 }));
 
+// DM gating comes from the current campaign role
+const campaign = vi.hoisted(() => ({ isDM: true }));
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => campaign.isDM,
+}));
+
 import OutpostManagement from '../OutpostManagement';
 import outpostService from '../../../services/outpostService';
 import crewService from '../../../services/crewService';
@@ -50,6 +56,7 @@ const withOutposts = (...outposts: unknown[]) =>
 describe('OutpostManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    campaign.isDM = true;
     withOutposts();
   });
 
@@ -237,5 +244,31 @@ describe('OutpostManagement', () => {
     expect(crewService.getCrewByLocation).toHaveBeenCalledWith('outpost', 1);
     expect(await screen.findByText('Ameiko')).toBeInTheDocument();
     expect(screen.getByText('1 crew members stationed')).toBeInTheDocument();
+  });
+});
+
+describe('OutpostManagement for a player (not a DM)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.isDM = false;
+    withOutposts(fort, thistle);
+  });
+
+  it('hides the delete control but keeps view details and edit', async () => {
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+    expect(screen.queryByTitle('Delete')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Edit')).toHaveLength(2);
+    expect(screen.getAllByTitle('View Details')).toHaveLength(2);
+  });
+});
+
+describe('OutpostManagement for a DM', () => {
+  it('shows the delete control on every row', async () => {
+    campaign.isDM = true;
+    withOutposts(fort, thistle);
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+    expect(screen.getAllByTitle('Delete')).toHaveLength(2);
   });
 });

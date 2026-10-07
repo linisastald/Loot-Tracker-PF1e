@@ -3,6 +3,13 @@
 // require tree (we log via Winston, not dotenv's stdout banner). Must run before
 // any require that loads dotenv. dotenv honors this env var natively.
 process.env.DOTENV_CONFIG_QUIET = 'true';
+
+// Refuse to start in production with unsafe configuration (weak or missing secrets, no
+// restricted database role, wildcard CORS). This runs before anything else is loaded so
+// nothing connects to the database first; every problem is listed at once.
+require('dotenv').config();
+require('./src/config/startupChecks').enforceStartupChecks(process.env);
+
 const express = require('express');
 const compression = require('compression');
 const cors = require('cors');
@@ -19,6 +26,7 @@ const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { errorHandler, apiNotFoundHandler } = require('./src/middleware/errorHandler');
 const { parseAllowedOrigins, createOriginCheck, hasWildcard } = require('./src/config/cors');
+const { mountBodyParsers } = require('./src/config/bodyParsers');
 const { detectHostIp } = require('./src/utils/hostIp');
 const sessionSchedulerService = require('./src/services/scheduler/SessionSchedulerService');
 const discordBrokerService = require('./src/services/discordBrokerService');
@@ -82,7 +90,7 @@ process.env.HOST_IP = hostIp;
 // Configure CORS
 const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
 if (hasWildcard(allowedOrigins)) {
-  logger.warn("ALLOWED_ORIGINS contains '*': every site may make credentialed cross-origin requests. List the exact origins instead.");
+  logger.error("ALLOWED_ORIGINS contains '*', which is NOT honoured: only exactly listed origins are allowed. List the real origins, comma-separated (production refuses to start with '*').");
 }
 const corsOptions = {
   origin: createOriginCheck(allowedOrigins),
@@ -140,24 +148,9 @@ const limiter = rateLimit({
 // Compress responses (gzip/deflate)
 app.use(compression());
 
-// Apply middlewares with size limits to prevent DoS attacks
-app.use(express.json({
-  limit: '10mb',  // Limit JSON body size
-  strict: true    // Only accept arrays and objects
-}));
-app.use(express.urlencoded({
-  extended: true,
-  limit: '10mb'   // Limit URL-encoded body size
-}));
-
-// Express 5 leaves req.body undefined when no body was parsed (Express 4
-// defaulted it to {}). Restore that invariant so handlers that read
-// req.body.<field> on a bodyless request (e.g. a POST with no payload) don't
-// throw and 500.
-app.use((req, res, next) => {
-  if (req.body === undefined) req.body = {};
-  next();
-});
+// Body parsers with size limits to prevent DoS attacks: 1 MB everywhere, a larger
+// limit only on the routes that post whole arrays of items (see config/bodyParsers.js)
+mountBodyParsers(app);
 
 app.use(cookieParser());
 
@@ -199,7 +192,11 @@ const { generateCsrfToken, doubleCsrfProtection: csrfProtection } = doubleCsrf({
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
 });
 
-// Health check endpoint (no middleware needed)
+// The general limiter also covers the three public routes mounted before the global
+// '/api' limiter below. A container health probe (every 30 s) is far under its limit.
+app.use(['/api/health', '/api/csrf-token', '/api/config'], limiter);
+
+// Health check endpoint (no further middleware needed)
 app.get('/api/health', (req, res) => {
   // Basic health check - verify database connection
   pool.query('SELECT 1', (err, result) => {

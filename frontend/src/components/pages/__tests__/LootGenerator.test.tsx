@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -106,6 +106,50 @@ describe('LootGenerator', () => {
         coins: expect.any(Object),
       }));
       expect(screen.getByText(/Committed 2 item stack/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('NPC gear value source', () => {
+    const chooseNpcGear = async () => {
+      fireEvent.mouseDown(screen.getByRole('combobox', { name: 'treasure type' }));
+      fireEvent.click(await screen.findByRole('option', { name: 'NPC Gear' }));
+    };
+    const generatePayload = () => {
+      const call = (api.post as any).mock.calls.find((c: unknown[]) => c[0] === '/loot-generator/generate');
+      return call[1];
+    };
+
+    it('is hidden until an enemy uses the NPC Gear treasure type', () => {
+      renderPage();
+      expect(screen.queryByLabelText('NPC gear values')).not.toBeInTheDocument();
+    });
+
+    it('appears once NPC Gear is chosen, defaulting to the NPC table, with a line of help', async () => {
+      renderPage();
+      await chooseNpcGear();
+      const select = screen.getByRole('combobox', { name: 'NPC gear values' });
+      expect(select).toHaveTextContent('NPC gear table (default)');
+      expect(screen.getByText(/Table 14-9/)).toBeInTheDocument();
+      expect(screen.getByText(/PC wealth by level/i, { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('sends npcGearSource "npc" by default', async () => {
+      renderPage();
+      await chooseNpcGear();
+      fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/loot-generator/generate', expect.any(Object)));
+      expect(generatePayload().npcGearSource).toBe('npc');
+    });
+
+    it('sends npcGearSource "pc" when PC wealth by level is chosen', async () => {
+      renderPage();
+      await chooseNpcGear();
+      fireEvent.mouseDown(screen.getByRole('combobox', { name: 'NPC gear values' }));
+      const list = await screen.findByRole('listbox');
+      fireEvent.click(within(list).getByRole('option', { name: 'PC wealth by level' }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/loot-generator/generate', expect.any(Object)));
+      expect(generatePayload().npcGearSource).toBe('pc');
     });
   });
 });
