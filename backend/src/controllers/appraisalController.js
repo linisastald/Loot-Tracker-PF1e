@@ -182,20 +182,32 @@ const getUnidentifiedItems = async (req, res) => {
   }
 };
 
+/** Body fields from the old client-side roll contract; never accepted any more. */
+const CLIENT_ROLL_FIELDS = ['spellcraftRolls', 'spellcraftRoll', 'spellcraftTotal', 'roll', 'rolls', 'total'];
+
 /**
  * Identify items
  */
 const identifyItems = async (req, res) => {
-  const { items, characterId, spellcraftRolls, dmIdentify } = req.body;
+  const { items, characterId, spellcraftBonus, dmIdentify } = req.body;
+  const isDmIdentification = dmIdentify === true && hasDmRights(req);
+
+  // The server rolls the d20 for a player identification; the client sends only
+  // its Spellcraft bonus. A hand-made request cannot supply the roll or the total.
+  if (!isDmIdentification && CLIENT_ROLL_FIELDS.some((field) => req.body[field] !== undefined)) {
+    throw controllerFactory.createValidationError(
+      'The server rolls the d20 for identification. Send only spellcraftBonus, not a roll or total.'
+    );
+  }
 
   try {
     const result = await IdentificationService.identifyItems({
       items,
       characterId,
-      spellcraftRolls,
+      spellcraftBonus,
       // DM identification (no roll, auto-success) is decided server-side: the
       // client intent only counts when the caller really has DM rights.
-      dmIdentify: dmIdentify === true && hasDmRights(req),
+      dmIdentify: isDmIdentification,
       // Used to check that a non-DM only identifies as their own character
       actor: { userId: req.user.id, isDM: hasDmRights(req) }
     });

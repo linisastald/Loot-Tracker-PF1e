@@ -24,6 +24,8 @@ const createMockRes = () => ({
 
 const okResult = { identified: [], failed: [], count: { success: 0, failed: 0, alreadyAttempted: 0, total: 1 } };
 
+let lastRes;
+
 describe('appraisalController.identifyItems', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -31,15 +33,18 @@ describe('appraisalController.identifyItems', () => {
   });
 
   const run = async (reqOverrides) => {
-    const req = { body: { items: [1], characterId: 5, spellcraftRolls: [99], dmIdentify: true }, params: {}, query: {}, ...reqOverrides };
-    await appraisalController.identifyItems(req, createMockRes());
-    return IdentificationService.identifyItems.mock.calls[0][0];
+    const req = { body: { items: [1], characterId: 5, spellcraftBonus: 7, dmIdentify: true }, params: {}, query: {}, ...reqOverrides };
+    const res = createMockRes();
+    await appraisalController.identifyItems(req, res);
+    lastRes = res;
+    return IdentificationService.identifyItems.mock.calls[0] && IdentificationService.identifyItems.mock.calls[0][0];
   };
 
   it('ignores dmIdentify from a Player', async () => {
     const arg = await run({ user: { id: 2, role: 'Player' }, campaignRole: 'Player' });
     expect(arg.dmIdentify).toBe(false);
-    expect(arg.spellcraftRolls).toEqual([99]);
+    expect(arg.spellcraftBonus).toBe(7);
+    expect(arg).not.toHaveProperty('spellcraftRolls');
   });
 
   it('ignores dmIdentify from a stale JWT DM role without campaign DM rights', async () => {
@@ -60,7 +65,7 @@ describe('appraisalController.identifyItems', () => {
   it('a DM that does not send the flag identifies as a normal roller', async () => {
     const arg = await run({
       user: { id: 1, role: 'DM' }, campaignRole: 'DM',
-      body: { items: [1], characterId: 5, spellcraftRolls: [15] },
+      body: { items: [1], characterId: 5, spellcraftBonus: 3 },
     });
     expect(arg.dmIdentify).toBe(false);
   });
@@ -71,5 +76,45 @@ describe('appraisalController.identifyItems', () => {
     IdentificationService.identifyItems.mockClear();
     const dm = await run({ user: { id: 1, role: 'DM' }, campaignRole: 'DM' });
     expect(dm.actor).toEqual({ userId: 1, isDM: true });
+  });
+
+  // Owner decision (2026-10-06): the server rolls the d20; there is no client roll or take 10.
+  describe('server-side roll contract', () => {
+    const player = { user: { id: 2, role: 'Player' }, campaignRole: 'Player' };
+
+    it.each(['spellcraftRolls', 'spellcraftRoll', 'spellcraftTotal', 'roll', 'rolls', 'total'])(
+      'rejects a player request that supplies %s', async (field) => {
+        const arg = await run({
+          ...player,
+          body: { items: [1], characterId: 5, spellcraftBonus: 3, [field]: field === 'spellcraftRolls' || field === 'rolls' ? [20] : 20 },
+        });
+        expect(arg).toBeUndefined();
+        expect(lastRes.validationError).toHaveBeenCalledTimes(1);
+        expect(lastRes.validationError.mock.calls[0][0]).toMatch(/server rolls the d20/i);
+        expect(IdentificationService.identifyItems).not.toHaveBeenCalled();
+      });
+
+    it('rejects a roll from a DM who is not using dmIdentify', async () => {
+      const arg = await run({
+        user: { id: 1, role: 'DM' }, campaignRole: 'DM',
+        body: { items: [1], characterId: 5, spellcraftBonus: 3, spellcraftRolls: [20] },
+      });
+      expect(arg).toBeUndefined();
+      expect(lastRes.validationError).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the DM path through unchanged and ignores leftover roll fields', async () => {
+      const arg = await run({
+        user: { id: 1, role: 'DM' }, campaignRole: 'DM',
+        body: { items: [1], characterId: null, dmIdentify: true, spellcraftRolls: [20] },
+      });
+      expect(arg.dmIdentify).toBe(true);
+      expect(arg).not.toHaveProperty('spellcraftRolls');
+    });
+
+    it('passes only the bonus on for a player', async () => {
+      const arg = await run({ ...player, body: { items: [1, 2], characterId: 5, spellcraftBonus: 12 } });
+      expect(arg).toMatchObject({ items: [1, 2], characterId: 5, spellcraftBonus: 12, dmIdentify: false });
+    });
   });
 });

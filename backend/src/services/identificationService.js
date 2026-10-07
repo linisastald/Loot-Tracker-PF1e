@@ -3,6 +3,7 @@ const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const ValidationService = require('./validationService');
 const controllerFactory = require('../utils/controllerFactory');
+const { rollD20 } = require('../utils/dice');
 
 /** Columns of an unidentified loot row that a non-DM may see. */
 const PLAYER_UNIDENTIFIED_COLUMNS =
@@ -16,10 +17,33 @@ const PLAYER_UNIDENTIFIED_COLUMNS =
  */
 const DM_IDENTIFICATION_ROLL = 99;
 
+/** Sane range for a character's Spellcraft bonus (skill ranks, ability, traits, items). */
+const MIN_SPELLCRAFT_BONUS = -10;
+const MAX_SPELLCRAFT_BONUS = 60;
+
 /**
  * Service for handling item identification logic
  */
 class IdentificationService {
+  /**
+   * Validate the Spellcraft bonus a player sends. The server rolls the d20, so
+   * the bonus is the only number the client contributes to an identify check.
+   * @param {*} value - The bonus sent by the client
+   * @returns {number} - The bonus as an integer
+   * @throws {Error} - If it is not a whole number from -10 to +60
+   */
+  static validateSpellcraftBonus(value) {
+    const isWholeNumber = (typeof value === 'number' && Number.isInteger(value)) ||
+      (typeof value === 'string' && /^-?[0-9]+$/.test(value.trim()));
+    const bonus = isWholeNumber ? Number(value) : NaN;
+    if (!Number.isInteger(bonus) || bonus < MIN_SPELLCRAFT_BONUS || bonus > MAX_SPELLCRAFT_BONUS) {
+      throw controllerFactory.createValidationError(
+        `Spellcraft bonus must be a whole number from ${MIN_SPELLCRAFT_BONUS} to ${MAX_SPELLCRAFT_BONUS}`
+      );
+    }
+    return bonus;
+  }
+
   /**
    * Get current Golarion date
    * @param {Object} client - Database client
@@ -163,17 +187,14 @@ class IdentificationService {
   static async identifySingleItem(client, identificationData) {
     const { itemId, characterId, golarionDate, dmIdentify = false } = identificationData;
     const isDMIdentification = dmIdentify === true;
-    const spellcraftRoll = isDMIdentification ? DM_IDENTIFICATION_ROLL : identificationData.spellcraftRoll;
 
     // Validate inputs
     ValidationService.validateItemId(itemId);
 
-    // Only validate the roll for player identifications; a DM identification
-    // (explicit server-authorised flag) is an automatic success.
-    // Note: spellcraftRoll is the total (d20 + bonus), so it can exceed 20
-    if (!isDMIdentification) {
-      ValidationService.validateRequiredNumber(spellcraftRoll, 'spellcraft roll', { min: 1 });
-    }
+    // A player identification is a server-side check: the client contributes
+    // only its Spellcraft bonus. Any roll or total it might send is never read.
+    // A DM identification (explicit server-authorised flag) is an automatic success.
+    const bonus = isDMIdentification ? null : this.validateSpellcraftBonus(identificationData.spellcraftBonus);
 
     // Fetch the loot item details
     const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
@@ -203,6 +224,11 @@ class IdentificationService {
       }
     }
 
+    // The server rolls the d20 (after the once-per-day check, so a blocked
+    // attempt never consumes a roll); the total is what is compared and recorded.
+    const roll = isDMIdentification ? null : rollD20();
+    const spellcraftRoll = isDMIdentification ? DM_IDENTIFICATION_ROLL : roll + bonus;
+
     // Calculate effective caster level and required DC
     const effectiveCasterLevel = await this.calculateEffectiveCasterLevel(client, item, lootItem);
     const requiredDC = this.calculateRequiredDC(effectiveCasterLevel);
@@ -231,6 +257,7 @@ class IdentificationService {
         oldName: lootItem.name,
         newName,
         spellcraftRoll,
+        ...(isDMIdentification ? {} : { roll, bonus, total: spellcraftRoll }),
         requiredDC,
         cursedDetected: lootItem.cursed && spellcraftRoll >= requiredDC + 10
       };
@@ -240,6 +267,7 @@ class IdentificationService {
         id: itemId,
         name: lootItem.name,
         spellcraftRoll,
+        ...(isDMIdentification ? {} : { roll, bonus, total: spellcraftRoll }),
         requiredDC
       };
     }
@@ -251,13 +279,14 @@ class IdentificationService {
    * @returns {Promise<Object>} - Identification results
    */
   static async identifyItems(identifyData) {
-    const { items, characterId, spellcraftRolls, dmIdentify = false, actor = {} } = identifyData;
+    const { items, characterId, spellcraftBonus, dmIdentify = false, actor = {} } = identifyData;
 
     // Validate inputs
     ValidationService.validateItems(items);
     if (dmIdentify !== true) {
       // Players must identify as a character: the once-per-day rule is keyed on it.
       ValidationService.validateCharacterId(characterId);
+      this.validateSpellcraftBonus(spellcraftBonus);
     } else if (characterId) {
       ValidationService.validateCharacterId(characterId);
     }
@@ -286,7 +315,7 @@ class IdentificationService {
           const result = await this.identifySingleItem(client, {
             itemId: items[i],
             characterId,
-            spellcraftRoll: Array.isArray(spellcraftRolls) ? spellcraftRolls[i] : undefined,
+            spellcraftBonus,
             golarionDate,
             dmIdentify
           });

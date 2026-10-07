@@ -94,10 +94,12 @@ describe('Identify', () => {
     expect(screen.getByLabelText(/Spellcraft/i)).toBeInTheDocument();
   });
 
-  it('shows Take 10 checkbox for non-DM users', () => {
+  it('has no Take 10 option: the server rolls the d20 (owner decision 2026-10-06)', () => {
     renderIdentify({ isDM: false });
 
-    expect(screen.getByLabelText(/Take 10/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Take 10/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/take 10/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Spellcraft bonus/i)).toBeInTheDocument();
   });
 
   it('hides spellcraft input and Take 10 for DM users', () => {
@@ -144,9 +146,10 @@ describe('Identify', () => {
       expect(payload.dmIdentify).toBe(true);
       expect(payload.characterId).toBeNull();
       expect(payload.spellcraftRolls).toBeUndefined();
+      expect(payload.spellcraftBonus).toBeUndefined();
     });
 
-    it('a player sends rolls and no dmIdentify', async () => {
+    it('a player sends the bonus, never a roll, and no dmIdentify', async () => {
       localStorage.setItem('spellcraftBonus', '5');
       renderIdentify();
       const btn = await screen.findByRole('button', { name: /Identify All/i });
@@ -157,7 +160,8 @@ describe('Identify', () => {
       const payload = (lootService.identifyItems as any).mock.calls[0][0];
       expect(payload.dmIdentify).toBeUndefined();
       expect(payload.characterId).toBe(10);
-      expect(payload.spellcraftRolls).toHaveLength(1);
+      expect(payload.spellcraftBonus).toBe(5);
+      expect(payload).not.toHaveProperty('spellcraftRolls');
     });
   });
 
@@ -181,10 +185,9 @@ describe('Identify', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Identify$/i }));
     };
 
-    it('sends only the selected items with Take 10 plus the spellcraft bonus', async () => {
+    it('sends only the selected items and the spellcraft bonus', async () => {
       localStorage.setItem('spellcraftBonus', '7');
       renderIdentify();
-      fireEvent.click(screen.getByLabelText(/Take 10/i));
 
       await selectAndIdentify('Unknown Wand');
 
@@ -192,13 +195,13 @@ describe('Identify', () => {
       expect((lootService.identifyItems as any).mock.calls[0][0]).toEqual({
         items: [8],
         characterId: 10,
-        spellcraftRolls: [17],
+        spellcraftBonus: 7,
       });
     });
 
-    it('rolls a d20 plus the bonus per item when not taking 10', async () => {
+    it('never rolls in the browser: the request carries one bonus whatever Math.random says', async () => {
       localStorage.setItem('spellcraftBonus', '4');
-      vi.spyOn(Math, 'random').mockReturnValue(0.5); // d20 = 11
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
       renderIdentify();
 
       await selectAndIdentify('Unknown Ring', 'Unknown Wand');
@@ -206,8 +209,26 @@ describe('Identify', () => {
       await waitFor(() => expect(lootService.identifyItems).toHaveBeenCalled());
       const payload = (lootService.identifyItems as any).mock.calls[0][0];
       expect(payload.items).toEqual([7, 8]);
-      expect(payload.spellcraftRolls).toEqual([15, 15]);
+      expect(payload.spellcraftBonus).toBe(4);
+      expect(random).not.toHaveBeenCalled();
       vi.restoreAllMocks();
+    });
+
+    it('treats a blank bonus as 0', async () => {
+      renderIdentify();
+      await selectAndIdentify('Unknown Ring');
+      await waitFor(() => expect(lootService.identifyItems).toHaveBeenCalled());
+      expect((lootService.identifyItems as any).mock.calls[0][0].spellcraftBonus).toBe(0);
+    });
+
+    it.each(['61', '-11', '2.5'])('refuses a bonus of %s without calling the server', async (bonus) => {
+      localStorage.setItem('spellcraftBonus', bonus);
+      renderIdentify();
+
+      await selectAndIdentify('Unknown Ring');
+
+      expect(await screen.findByText(/Spellcraft bonus must be a whole number from -10 to 60/i)).toBeInTheDocument();
+      expect(lootService.identifyItems).not.toHaveBeenCalled();
     });
 
     it('requires an active character for a player', async () => {
@@ -233,9 +254,9 @@ describe('Identify', () => {
       (lootService.identifyItems as any).mockResolvedValue({
         data: {
           identified: [
-            { id: 7, oldName: 'Unknown Ring', newName: 'Ring of Protection +1', spellcraftRoll: 30, cursedDetected: true },
+            { id: 7, oldName: 'Unknown Ring', newName: 'Ring of Protection +1', spellcraftRoll: 30, roll: 18, bonus: 12, total: 30, requiredDC: 20, cursedDetected: true },
           ],
-          failed: [{ id: 8, name: 'Unknown Wand', spellcraftRoll: 5 }],
+          failed: [{ id: 8, name: 'Unknown Wand', spellcraftRoll: 5, roll: 2, bonus: 3, total: 5, requiredDC: 20 }],
         },
       });
       renderIdentify();
@@ -243,6 +264,12 @@ describe('Identify', () => {
       await selectAndIdentify('Unknown Ring', 'Unknown Wand');
 
       expect(await screen.findByText('Ring of Protection +1')).toBeInTheDocument();
+      // The page shows the server's roll, bonus, total and the DC
+      expect(screen.getByRole('cell', { name: '18' })).toBeInTheDocument();
+      expect(screen.getByRole('cell', { name: '12' })).toBeInTheDocument();
+      expect(screen.getByRole('cell', { name: '30' })).toBeInTheDocument();
+      expect(screen.getAllByRole('cell', { name: '20' })).toHaveLength(2);
+      expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
       expect(screen.getByText('CURSED DETECTED!')).toBeInTheDocument();
       expect(screen.getByText('Failed (roll too low)')).toBeInTheDocument();
       expect(screen.getByText(/Successfully identified 1 item\(s\)\. Failed to identify 1 item\(s\)\./)).toBeInTheDocument();

@@ -46,8 +46,11 @@ interface AppraisalData {
 interface IdentificationData {
   items: number[];
   characterId: number | null;
-  /** Omitted for a DM identification (the server ignores rolls in that case). */
-  spellcraftRolls?: number[];
+  /**
+   * The character's Spellcraft bonus (whole number, -10 to 60). The server rolls
+   * the d20; the client never sends a roll or a total. Omitted for a DM identification.
+   */
+  spellcraftBonus?: number;
   /** DM intent: identify without a roll. Only honoured by the server for DMs. */
   dmIdentify?: boolean;
 }

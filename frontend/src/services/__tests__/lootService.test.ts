@@ -306,7 +306,7 @@ describe('lootService', () => {
       const data = {
         items: [1, 2],
         characterId: 5,
-        spellcraftRolls: [22, 18],
+        spellcraftBonus: 7,
       };
       await lootService.identifyItems(data);
       expect(api.post).toHaveBeenCalledWith('/appraisal/identify', data);
@@ -316,7 +316,7 @@ describe('lootService', () => {
       const data = {
         items: [3],
         characterId: null,
-        spellcraftRolls: [25],
+        spellcraftBonus: 7,
       };
       await lootService.identifyItems(data);
       expect(api.post).toHaveBeenCalledWith('/appraisal/identify', data);
