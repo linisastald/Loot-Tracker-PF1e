@@ -1,11 +1,11 @@
 /**
- * Guards migration 075 (provable seed-data corrections, F-0897 F-0898 F-0907 F-0908 F-0909 F-0924 F-0927):
+ * Guards migration 069 (provable seed-data corrections, F-0897 F-0898 F-0907 F-0908 F-0909 F-0924 F-0927):
  * the migration and database/{item,mod,spells}_data.sql must agree. Reads files only; no database.
  */
 const fs = require('fs');
 const path = require('path');
 
-const MIGRATION = path.join(__dirname, '../../../migrations/075_correct_seed_data.sql');
+const MIGRATION = path.join(__dirname, '../../../migrations/069_correct_seed_data.sql');
 const DB = path.join(__dirname, '../../../../database');
 const migrationSql = fs.readFileSync(MIGRATION, 'utf8');
 const lines = f => fs.readFileSync(path.join(DB, f), 'utf8').split(/\r?\n/);
@@ -69,7 +69,7 @@ const plusRows = migrationRows('id, name, target, old_plus, new_plus');
 const potionRows = migrationRows('id, name');
 const typeRows = migrationRows('id, name, old_type, new_type');
 
-describe('migration 075 (seed data corrections)', () => {
+describe('migration 069 (seed data corrections)', () => {
   test('uses the migration naming pattern, is transactional and reports counts', () => {
     expect(path.basename(MIGRATION)).toMatch(/^\d+_.+\.sql$/);
     expect(migrationSql).toMatch(/^BEGIN;$/m);

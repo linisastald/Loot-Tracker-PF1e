@@ -1,4 +1,4 @@
--- Migration: 076_drop_unused_tables.sql
+-- Migration: 070_drop_unused_tables.sql
 -- Description: Owner-approved removal of three tables the application no longer uses
 --   (code review findings F-0885, F-0889): fame, fame_history, golarion_calendar_notes.
 --
@@ -18,7 +18,7 @@
 --   A fresh install still creates the three tables in database/init.sql, because migrations
 --   040, 044, 045, 047 and 051 alter or read them unguarded; this migration then removes them,
 --   so a fresh install and production end in the same schema (same approach as session_messages
---   in 074).
+--   in 068).
 --
 -- Idempotent: every statement is IF EXISTS or guarded, and is a no-op on the second run.
 --
@@ -32,7 +32,7 @@
 --     WHERE gn.start_year = gcn.year AND gn.start_month = gcn.month AND gn.start_day = gcn.day
 --       AND gn.note = gcn.note);
 -- Preview on production (rolls everything back):
---   sed 's/^COMMIT;$/ROLLBACK;/' backend/migrations/076_drop_unused_tables.sql | psql -d <db> -v ON_ERROR_STOP=1
+--   sed 's/^COMMIT;$/ROLLBACK;/' backend/migrations/070_drop_unused_tables.sql | psql -d <db> -v ON_ERROR_STOP=1
 
 BEGIN;
 

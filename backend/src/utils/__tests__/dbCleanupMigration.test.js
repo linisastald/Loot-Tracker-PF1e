@@ -1,14 +1,14 @@
 /**
- * Guards migration 074 (W01 database cleanup) and the matching edits to database/init.sql.
+ * Guards migration 068 (W01 database cleanup) and the matching edits to database/init.sql.
  * Reads files only; no database. Both must agree on what was changed so that a fresh install
- * (init.sql + seed files + migrations 001..074) ends in the same schema as production.
+ * (init.sql + seed files + migrations 001..068) ends in the same schema as production.
  */
 const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '../../../..');
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-const MIGRATION_REL = 'backend/migrations/074_db_cleanup_and_fixes.sql';
+const MIGRATION_REL = 'backend/migrations/068_db_cleanup_and_fixes.sql';
 
 const mig = fs.existsSync(path.join(root, MIGRATION_REL)) ? read(MIGRATION_REL) : '';
 const init = read('database/init.sql');
@@ -21,7 +21,7 @@ const stripComments = (sql) => sql.split(/\r?\n/).filter(l => !/^\s*--/.test(l))
 const migCode = stripComments(mig);
 const initCode = stripComments(init);
 
-describe('migration 074 exists and is wrapped like 061-067', () => {
+describe('migration 068 exists and is wrapped like 061-067', () => {
   it('is present, transactional and idempotent in style', () => {
     expect(mig).not.toBe('');
     expect(migCode).toMatch(/^BEGIN;/m);
@@ -31,7 +31,7 @@ describe('migration 074 exists and is wrapped like 061-067', () => {
 });
 
 describe('unused session objects (owner-approved cleanup)', () => {
-  it('074 drops the view first, then both tables, without CASCADE', () => {
+  it('068 drops the view first, then both tables, without CASCADE', () => {
     const view = migCode.search(/DROP VIEW IF EXISTS upcoming_sessions;/);
     const notes = migCode.search(/DROP TABLE IF EXISTS session_notes;/);
     const messages = migCode.search(/DROP TABLE IF EXISTS session_messages;/);
@@ -58,9 +58,9 @@ describe('unused session objects (owner-approved cleanup)', () => {
     }
   });
 
-  it('init.sql keeps session_messages only because migrations 029/044/045/047/051 alter it, and 074 drops it', () => {
+  it('init.sql keeps session_messages only because migrations 029/044/045/047/051 alter it, and 068 drops it', () => {
     // Removing it from init.sql would make migration 029 (ALTER TABLE session_messages) fail
-    // on a fresh install. 074 removes it again, so the end state matches production.
+    // on a fresh install. 068 removes it again, so the end state matches production.
     expect(initCode).toMatch(/CREATE TABLE session_messages/);
     expect(migCode).toMatch(/DROP TABLE IF EXISTS session_messages;/);
     expect(initCode).not.toMatch(/CREATE TABLE session_notes/);
@@ -76,7 +76,7 @@ describe('redundant indexes', () => {
     expect(initCode).not.toMatch(new RegExp(`CREATE (UNIQUE )?INDEX (IF NOT EXISTS )?${name}\\b`));
   });
 
-  it.each(dropped)('074 drops %s only when the unique index that covers it exists', (name) => {
+  it.each(dropped)('068 drops %s only when the unique index that covers it exists', (name) => {
     expect(migCode).toContain(`'${name}'`);
   });
 
@@ -84,7 +84,7 @@ describe('redundant indexes', () => {
     expect(initCode).toMatch(/CREATE INDEX idx_fame_history_character_id\b/);
   });
 
-  it('F-0053: appraisal(characterid, appraised_on) index is in init.sql and 074 with the same definition', () => {
+  it('F-0053: appraisal(characterid, appraised_on) index is in init.sql and 068 with the same definition', () => {
     const def = /ON appraisal\(characterid, appraised_on\)/;
     expect(initCode).toMatch(new RegExp('idx_appraisal_character_time ' + def.source));
     expect(migCode).toMatch(new RegExp('CREATE INDEX IF NOT EXISTS idx_appraisal_character_time ' + def.source));
@@ -92,7 +92,7 @@ describe('redundant indexes', () => {
 });
 
 describe('city.size CHECK (F-0041)', () => {
-  it('074 allows every size City.js offers', () => {
+  it('068 allows every size City.js offers', () => {
     const sizes = [...citySrc.matchAll(/^\s*'([A-Za-z ]+)': \{ baseValue/gm)].map(m => m[1]);
     expect(sizes).toEqual(expect.arrayContaining(['Thorp', 'Hamlet', 'Metropolis']));
     const check = /ADD CONSTRAINT city_size_check CHECK \(size IN \(([^)]*)\)\)/.exec(migCode);
@@ -103,7 +103,7 @@ describe('city.size CHECK (F-0041)', () => {
 });
 
 describe('golarion_holidays tenant scoping (F-0048, F-0890)', () => {
-  it('074 defaults campaign_id from the GUC, enables RLS and adds per-command policies', () => {
+  it('068 defaults campaign_id from the GUC, enables RLS and adds per-command policies', () => {
     expect(migCode).toMatch(/ALTER TABLE golarion_holidays ALTER COLUMN campaign_id SET DEFAULT/);
     expect(migCode).toMatch(/ALTER TABLE golarion_holidays ENABLE ROW LEVEL SECURITY;/);
     for (const cmd of ['select', 'insert', 'update', 'delete']) {
@@ -122,7 +122,7 @@ describe('golarion_holidays tenant scoping (F-0048, F-0890)', () => {
 });
 
 describe('gold_totals_view (F-0877)', () => {
-  it('074 coalesces each SUM individually and keeps security_invoker', () => {
+  it('068 coalesces each SUM individually and keeps security_invoker', () => {
     expect(migCode).toMatch(/CREATE OR REPLACE VIEW gold_totals_view/);
     expect(migCode).toMatch(/COALESCE\(SUM\(platinum\), 0\)/);
     expect(migCode).toMatch(/10 \* COALESCE\(SUM\(platinum\), 0\)/);
@@ -132,7 +132,7 @@ describe('gold_totals_view (F-0877)', () => {
 
 describe("'Evade!' imposition text (F-0870)", () => {
   const good = "The PCs'' ship and its entire crew are teleported 100 feet in any direction.";
-  it('seed file and 074 use the same corrected description and the old text is gone', () => {
+  it('seed file and 068 use the same corrected description and the old text is gone', () => {
     expect(impositionsSeed).toContain(good);
     expect(impositionsSeed).not.toContain("ship''s100 feet");
     expect(migCode).toContain(good);
@@ -185,27 +185,27 @@ describe('init.sql tenant policies', () => {
   });
 });
 
-describe('migration 076: unused fame / fame_history / golarion_calendar_notes tables', () => {
-  const M076 = 'backend/migrations/076_drop_unused_tables.sql';
-  const mig076 = fs.existsSync(path.join(root, M076)) ? stripComments(read(M076)) : '';
+describe('migration 070: unused fame / fame_history / golarion_calendar_notes tables', () => {
+  const M070 = 'backend/migrations/070_drop_unused_tables.sql';
+  const mig070 = fs.existsSync(path.join(root, M070)) ? stripComments(read(M070)) : '';
   const tables = ['fame_history', 'fame', 'golarion_calendar_notes'];
 
   it('is transactional, uses no CASCADE and drops fame_history before fame', () => {
-    expect(mig076).not.toBe('');
-    expect(mig076).toMatch(/^BEGIN;/m);
-    expect(mig076).toMatch(/^COMMIT;/m);
-    expect(mig076).not.toMatch(/\bCASCADE\b/i);
-    const hist = mig076.search(/DROP TABLE IF EXISTS fame_history;/);
-    const fame = mig076.search(/DROP TABLE IF EXISTS fame;/);
+    expect(mig070).not.toBe('');
+    expect(mig070).toMatch(/^BEGIN;/m);
+    expect(mig070).toMatch(/^COMMIT;/m);
+    expect(mig070).not.toMatch(/\bCASCADE\b/i);
+    const hist = mig070.search(/DROP TABLE IF EXISTS fame_history;/);
+    const fame = mig070.search(/DROP TABLE IF EXISTS fame;/);
     expect(hist).toBeGreaterThanOrEqual(0);
     expect(fame).toBeGreaterThan(hist);
-    expect(mig076).toMatch(/DROP TABLE IF EXISTS golarion_calendar_notes;/);
+    expect(mig070).toMatch(/DROP TABLE IF EXISTS golarion_calendar_notes;/);
   });
 
-  it('init.sql keeps creating the tables (migrations 040/044/045/047/051 touch them unguarded) and 076 removes them', () => {
+  it('init.sql keeps creating the tables (migrations 040/044/045/047/051 touch them unguarded) and 070 removes them', () => {
     for (const t of tables) {
       expect(initCode).toMatch(new RegExp(`CREATE TABLE ${t} \\(`));
-      expect(mig076).toMatch(new RegExp(`DROP TABLE IF EXISTS ${t};`));
+      expect(mig070).toMatch(new RegExp(`DROP TABLE IF EXISTS ${t};`));
     }
     for (const n of ['044_add_campaigns', '045_enable_rls', '047_campaign_id_guc_default']) {
       expect(read(`backend/migrations/${n}.sql`)).toMatch(/ALTER TABLE fame\b/);

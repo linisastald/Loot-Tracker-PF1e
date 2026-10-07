@@ -21,12 +21,12 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - **An RSVP can no longer cancel a session through a database trigger**; cancellation only happens through the scheduled confirmation check.
-- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 075).
-- **Fresh installs get the same schema as production:** extended ship columns (migration 064) and `mod.casterlevel` (migration 077).
+- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069).
+- **Fresh installs get the same schema as production:** extended ship columns (migration 064) and `mod.casterlevel` (migration 071).
 - **Discord session announcements are retried** instead of being marked sent when Discord is not configured.
 
 ### Removed
-- Unused database tables `fame`, `fame_history` and `golarion_calendar_notes` (migration 076), obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file) and stale utility scripts.
+- Unused database tables `fame`, `fame_history` and `golarion_calendar_notes` (migration 070), obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file) and stale utility scripts.
 
 ### Notes
 - Includes database migrations 059 onward (numbers are final only at release), which run automatically on server start.

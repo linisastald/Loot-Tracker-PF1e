@@ -1,4 +1,4 @@
--- Migration: 077_mod_casterlevel.sql
+-- Migration: 071_mod_casterlevel.sql
 -- Description: Create mod.casterlevel on fresh installs (finding F-1735).
 --
 -- adminController (mod create/update) and identificationService (caster level of a mod)

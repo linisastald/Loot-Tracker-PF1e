@@ -1,4 +1,4 @@
--- Migration: 078_loot_cursed.sql
+-- Migration: 072_loot_cursed.sql
 -- Description: Create loot.cursed on fresh installs (finding F-0360).
 --
 -- itemCreationController inserts loot.cursed, identificationService reads it and the loot

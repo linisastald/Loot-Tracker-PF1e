@@ -1,4 +1,4 @@
--- Migration: 075_correct_seed_data.sql
+-- Migration: 069_correct_seed_data.sql
 -- Description: Provable corrections to the global item, mod and spell catalogs (findings F-0897, F-0898, F-0907,
 -- F-0908, F-0909, F-0924, F-0927). The same corrections are made in database/item_data.sql, mod_data.sql and
 -- spells_data.sql for fresh installs, where this migration therefore updates 0 rows.
@@ -117,7 +117,7 @@ BEGIN
       AND s.type = f.old_type;
     GET DIAGNOSTICS n_type = ROW_COUNT;
 
-    RAISE NOTICE 'Migration 075: item values % of 6, mod names % of 5, mod plus % of 1, spell potion flags % of 4, spell types % of 7 (rows already corrected or edited by an admin are skipped)',
+    RAISE NOTICE 'Migration 069: item values % of 6, mod names % of 5, mod plus % of 1, spell potion flags % of 4, spell types % of 7 (rows already corrected or edited by an admin are skipped)',
         n_item, n_mod_name, n_mod_plus, n_potion, n_type;
 END $$;
 

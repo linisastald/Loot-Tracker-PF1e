@@ -1,4 +1,4 @@
--- Migration: 074_db_cleanup_and_fixes.sql
+-- Migration: 068_db_cleanup_and_fixes.sql
 -- Description: W01 database sweep, forward fixes that cannot be made by editing applied
 --   migrations. Findings: F-0041, F-0048, F-0890, F-0053, F-0877, F-0870, F-0878, F-0886.
 --   Also the owner-approved removal of three objects the application no longer uses.
@@ -37,7 +37,7 @@
 -- cross-campaign mode for the data statements so they do not depend on that, as in 067.
 --
 -- UNTESTED against a real database. Preview on production (rolls everything back):
---   sed 's/^COMMIT;$/ROLLBACK;/' backend/migrations/074_db_cleanup_and_fixes.sql | psql -d <db> -v ON_ERROR_STOP=1
+--   sed 's/^COMMIT;$/ROLLBACK;/' backend/migrations/068_db_cleanup_and_fixes.sql | psql -d <db> -v ON_ERROR_STOP=1
 -- Check what would be discarded first:
 --   SELECT 'session_messages' AS t, count(*) FROM session_messages
 --   UNION ALL SELECT 'session_notes', count(*) FROM session_notes;
