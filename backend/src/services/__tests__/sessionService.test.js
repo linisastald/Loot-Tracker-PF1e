@@ -264,6 +264,14 @@ describe('SessionService', () => {
       expect(sessionDiscordService.updateSessionMessage).toHaveBeenCalledWith(1);
     });
 
+    it('only confirms a session that is still scheduled (never flips a cancelled one back) (L-10)', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [buildSession({ status: 'confirmed' })] });
+
+      await sessionService.confirmSession(1);
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/WHERE id = $1s+AND status = 'scheduled'/);
+    });
+
     it('should not update Discord if session not found', async () => {
       dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -318,6 +326,33 @@ describe('SessionService', () => {
       await sessionService.cancelSession(1, 'x');
 
       expect(logger.info).toHaveBeenCalledWith('Discord cancellation notification sent', expect.anything());
+    });
+  });
+
+  // Opus review L-10: the scheduler decided on a stale attendance count
+  describe('cancelSession is atomic and guarded (L-10)', () => {
+    it('puts the cancellable status and the still-short-of-minimum check in the UPDATE itself', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [buildSession({ status: 'cancelled' })] });
+      sessionDiscordService.getDiscordSettings.mockResolvedValueOnce({ campaign_role_id: '1', discord_channel_id: '2' });
+      discordBroker.sendMessage.mockResolvedValueOnce(ServiceResult.success());
+
+      await sessionService.cancelSession(1, 'short');
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain("status = 'scheduled'");
+      expect(sql).toMatch(/SELECT COUNT(DISTINCT user_id)s+FROM session_attendance/);
+      expect(sql).toMatch(/status = 'accepted's*) < minimum_players/);
+      expect(params).toEqual([1, 'short']);
+    });
+
+    it('does nothing (no embed update, no ping) when the session just filled up or changed status', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const result = await sessionService.cancelSession(1, 'short');
+
+      expect(result).toBeNull();
+      expect(sessionDiscordService.updateSessionMessage).not.toHaveBeenCalled();
+      expect(discordBroker.sendMessage).not.toHaveBeenCalled();
     });
   });
 

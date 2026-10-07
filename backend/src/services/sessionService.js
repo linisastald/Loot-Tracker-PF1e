@@ -157,6 +157,7 @@ class SessionService {
             UPDATE game_sessions
             SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
+              AND status = 'scheduled'
             RETURNING *
         `, [sessionId], 'Error confirming session');
 
@@ -169,21 +170,35 @@ class SessionService {
     }
 
     /**
-     * Cancel a session
+     * Automatically cancel a session that is short of its minimum players (the
+     * scheduler is the only caller; a DM cancels through the controller).
+     *
+     * The decision was taken on an attendance count read a few queries earlier,
+     * so the UPDATE re-checks both conditions atomically: the session must still
+     * be 'scheduled' and its accepted attendees must still be below
+     * minimum_players. A session that just filled up (or that a DM just
+     * cancelled/confirmed) is left alone and no ping is sent.
      * @param {number} sessionId - Session ID
      * @param {string} reason - Cancellation reason
-     * @returns {Promise<Object|null>} - Updated session, or null when not found
+     * @returns {Promise<Object|null>} - Updated session, or null when it was not cancellable
      */
     async cancelSession(sessionId, reason) {
         const result = await dbUtils.executeQuery(`
             UPDATE game_sessions
             SET status = 'cancelled', cancelled = TRUE, cancel_reason = $2, updated_at = CURRENT_TIMESTAMP
             WHERE id = $1
+              AND status = 'scheduled'
+              AND (
+                  SELECT COUNT(DISTINCT user_id)
+                  FROM session_attendance
+                  WHERE session_id = $1
+                    AND status = 'accepted'
+              ) < minimum_players
             RETURNING *
         `, [sessionId, reason], 'Error cancelling session');
 
         if (result.rows.length === 0) {
-            logger.warn('Attempted to cancel non-existent session', { sessionId });
+            logger.info('Session was not auto-cancelled: it is gone, no longer scheduled, or now has enough players', { sessionId });
             return null;
         }
 
