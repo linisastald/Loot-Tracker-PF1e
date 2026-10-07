@@ -1,5 +1,6 @@
 // src/controllers/itemController.js
 const dbUtils = require('../utils/dbUtils');
+const { emptyWandFields } = require('./consumablesController');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
@@ -294,6 +295,28 @@ const updateLootItem = async (req, res) => {
   return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
 };
 
+// Owner decision (round 4): a DM who sets a wand's charges to 0 in the general item
+// dialog trashes it, exactly as using the last charge on the Consumables page does
+// (the shared rule lives in consumablesController.emptyWandFields). A 0 on a row
+// that is not a wand keeps its old meaning: the charges are cleared.
+const isZeroCharges = (value) =>
+  (typeof value === 'number' || typeof value === 'string') && String(value).trim() !== '' && Number(value) === 0;
+
+const applyEmptyWandRule = async (itemId, body, filteredData) => {
+  if (!isZeroCharges(body.charges)) return;
+  const lookupItemId = filteredData.itemid ? filteredData.itemid : null;
+  const stored = await dbUtils.executeQuery(
+    'SELECT l.name, i.name AS item_name FROM loot l LEFT JOIN item i ON i.id = COALESCE($2, l.itemid) WHERE l.id = $1',
+    [itemId, lookupItemId]
+  );
+  const row = stored && stored.rows[0];
+  if (!row) return;
+  const isWand = [row.name, row.item_name].some(
+    (n) => typeof n === 'string' && /wand of/i.test(n)
+  );
+  if (isWand) Object.assign(filteredData, emptyWandFields());
+};
+
 /**
  * Update loot item as DM — allows player fields plus DM-only fields.
  */
@@ -305,6 +328,7 @@ const updateLootItemAsDM = async (req, res) => {
     [...PLAYER_ALLOWED_FIELDS, ...DM_ONLY_FIELDS]
   );
   await assertItemTypeAllowed(itemId, filteredData);
+  await applyEmptyWandRule(itemId, req.body, filteredData);
   return persistLootUpdate(req, res, itemId, filteredData);
 };
 

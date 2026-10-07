@@ -16,6 +16,11 @@ const NAME_PREDICATE = {
 // Owner decision (2026-10-06): a wand that reaches 0 charges is trashed.
 const WAND_EMPTY_NOTICE = 'the wand is now empty and was moved to trash';
 
+// Status an emptied wand ends up in. The SQL in useConsumable and updateWandCharges
+// writes the same literal; the general DM item update reuses this function.
+const EMPTY_WAND_STATUS = 'Trashed';
+const emptyWandFields = () => ({ charges: 0, status: EMPTY_WAND_STATUS });
+
 const isPositiveInteger = (value) => Number.isInteger(value) && value > 0;
 
 /**
@@ -197,6 +202,8 @@ const updateWandValidation = {
 
 // Create handlers with validation and error handling
 module.exports = {
+  emptyWandFields,
+
   getConsumables: controllerFactory.createHandler(getConsumables, {
     errorMessage: 'Error fetching consumables'
   }),

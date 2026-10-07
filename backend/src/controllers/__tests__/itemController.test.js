@@ -866,6 +866,44 @@ describe('itemController', () => {
       expect(dbUtils.updateById).not.toHaveBeenCalled();
     });
 
+    describe('setting a wand to 0 charges trashes it (round 4)', () => {
+      const dmReq = (body) => mockReq({ params: { id: '7' }, body, user: { id: 1, role: 'DM' } });
+
+      it('stores charges 0 and status Trashed for a wand', async () => {
+        dbUtils.executeQuery.mockResolvedValue({ rows: [{ name: 'Wand of Light', item_name: null }] });
+        dbUtils.updateById.mockResolvedValue({ id: 7, name: 'Wand of Light' });
+        await itemController.updateLootItemAsDM(dmReq({ charges: 0 }), mockRes());
+        const data = dbUtils.updateById.mock.calls[0][2];
+        expect(data.charges).toBe(0);
+        expect(data.status).toBe('Trashed');
+      });
+
+      it('recognises a wand by its linked catalog item name', async () => {
+        dbUtils.executeQuery.mockResolvedValue({ rows: [{ name: 'Unknown wand', item_name: 'Wand of Light' }] });
+        dbUtils.updateById.mockResolvedValue({ id: 7 });
+        await itemController.updateLootItemAsDM(dmReq({ charges: '0' }), mockRes());
+        expect(dbUtils.updateById.mock.calls[0][2]).toEqual(expect.objectContaining({ charges: 0, status: 'Trashed' }));
+      });
+
+      it('keeps clearing charges to NULL (no trash) on a non-wand', async () => {
+        dbUtils.executeQuery.mockResolvedValue({ rows: [{ name: 'Ring of Protection', item_name: 'Ring of Protection' }] });
+        dbUtils.updateById.mockResolvedValue({ id: 7 });
+        await itemController.updateLootItemAsDM(dmReq({ charges: 0 }), mockRes());
+        const data = dbUtils.updateById.mock.calls[0][2];
+        expect(data.charges).toBeNull();
+        expect(data.status).toBeUndefined();
+      });
+
+      it('does not trash on a positive or empty charges value', async () => {
+        dbUtils.updateById.mockResolvedValue({ id: 7 });
+        await itemController.updateLootItemAsDM(dmReq({ charges: 5 }), mockRes());
+        await itemController.updateLootItemAsDM(dmReq({ charges: '' }), mockRes());
+        expect(dbUtils.updateById.mock.calls[0][2].status).toBeUndefined();
+        expect(dbUtils.updateById.mock.calls[1][2].status).toBeUndefined();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      });
+    });
+
     it('should return not found when item does not exist', async () => {
       dbUtils.updateById.mockResolvedValue(null);
 

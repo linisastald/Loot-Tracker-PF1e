@@ -15,6 +15,7 @@ import {
   TextField
 } from '@mui/material';
 import lootService from '../../../services/lootService';
+import ConfirmDialog from '../ConfirmDialog';
 import {spellcraftDCFor} from '../../../utils/utils';
 import {ITEM_SIZES, ITEM_TYPES, LOOT_STATUSES} from '../../../utils/itemOptions';
 
@@ -78,6 +79,8 @@ const ItemManagementDialog = ({
     // recompute the spellcraft DC when itemid or modids change.
     const [linkedCatalogItem, setLinkedCatalogItem] = useState(null);
     const [error, setError] = useState(null);
+    // Prepared data waiting for the DM to confirm trashing a wand set to 0 charges.
+    const [pendingTrash, setPendingTrash] = useState(null);
     const searchTimer = useRef(null);
     const searchRequestId = useRef(0);
 
@@ -264,6 +267,11 @@ const ItemManagementDialog = ({
         updatedItem?.charges,
     ]);
 
+    // Charges 0 on a wand trashes it (the server does the same as using the last charge).
+    const isWand = [updatedItem?.name, linkedCatalogItem?.name].some(
+        (n) => typeof n === 'string' && /wand of/i.test(n)
+    );
+
     const handleSave = () => {
         try {
             const preparedData = {
@@ -286,6 +294,10 @@ const ItemManagementDialog = ({
                 dm_notes: updatedItem.dm_notes || null,
             };
 
+            if (isWand && preparedData.charges === 0) {
+                setPendingTrash(preparedData);
+                return;
+            }
             onSave(preparedData);
         } catch (error) {
             console.error('Error preparing data for saving:', error);
@@ -402,7 +414,7 @@ const ItemManagementDialog = ({
                     label="Charges"
                     type="number"
                     fullWidth
-                    value={updatedItem.charges || ''}
+                    value={updatedItem.charges ?? ''}
                     onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
                     margin="normal"
                 />
@@ -454,6 +466,20 @@ const ItemManagementDialog = ({
                     Cancel
                 </Button>
             </DialogActions>
+            <ConfirmDialog
+                open={pendingTrash !== null}
+                title="Trash this item?"
+                confirmLabel="Trash item"
+                confirmColor="error"
+                onConfirm={() => {
+                    const data = pendingTrash;
+                    setPendingTrash(null);
+                    onSave(data);
+                }}
+                onClose={() => setPendingTrash(null)}
+            >
+                You have set charges to 0, this will trash this item
+            </ConfirmDialog>
         </Dialog>
     );
 };

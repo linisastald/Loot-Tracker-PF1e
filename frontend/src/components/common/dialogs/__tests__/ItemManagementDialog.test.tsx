@@ -414,6 +414,72 @@ describe('ItemManagementDialog', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Round 4: 0 charges on a wand trashes it, after a confirmation
+  // -------------------------------------------------------------------------
+  describe('setting a wand to 0 charges', () => {
+    const CONFIRM_TEXT = 'You have set charges to 0, this will trash this item';
+    const renderWand = (handleSave: () => void, name = 'Wand of Light') => {
+      render(
+        <ItemManagementDialog
+          open
+          onClose={vi.fn()}
+          onSave={handleSave}
+          item={{ id: 9, name, itemid: null, modids: [], charges: 7, quantity: 1 }}
+        />
+      );
+    };
+
+    it('asks for confirmation and does not save until confirmed', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave);
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
+      expect(handleSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: /trash item/i }));
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({ charges: 0 }));
+    });
+
+    it('saves nothing when the confirmation is cancelled', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave);
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      await screen.findByText(CONFIRM_TEXT);
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i, hidden: false }));
+
+      expect(handleSave).not.toHaveBeenCalled();
+    });
+
+    it('does not ask for a positive charge count or a non-wand', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave);
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '3' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
+    });
+
+    it('does not ask for a non-wand item', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave, 'Ring of Protection');
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // F-1037: debounced, stale-safe item suggestions
   // -------------------------------------------------------------------------
   describe('item suggestions', () => {
