@@ -138,6 +138,13 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   // Determine if Update button should be shown
   const showUpdate = selectedItems.length === 1;
 
+  // Once an item is sold only a DM can edit it or change its status (the
+  // server refuses with 403), so a player's controls are disabled for a
+  // selection that includes a sold row.
+  const selectionHasSold = !isDM && selectedItems.some(
+    (id) => loot.individual.find((item) => item.id === id)?.status === 'Sold'
+  );
+
   return (
     <Container
       maxWidth={false}
@@ -147,6 +154,12 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         ...config.containerProps?.sx
       }}
     >
+      {selectionHasSold && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Sold items can only be changed by a DM.
+        </Alert>
+      )}
+
       {actionError && (
         <Alert severity="error" onClose={() => setActionError('')} sx={{ mb: 2 }}>
           {actionError}
@@ -189,6 +202,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
               key={index}
               variant={action.variant}
               color={action.color}
+              disabled={selectionHasSold}
               onClick={() => actionHandlers[action.actionKey]()}
             >
               {action.label}
@@ -200,6 +214,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
             <Button
               variant="outlined"
               color="primary"
+              disabled={selectionHasSold}
               onClick={() => handleOpenSplitDialogWrapper(
                 loot.individual.find(item => item.id === selectedItems[0])!
               )}
@@ -212,6 +227,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
             <Button
               variant="outlined"
               color="primary"
+              disabled={selectionHasSold}
               onClick={() => {
                 setUpdateError('');
                 handleUpdateDialogWrapper();

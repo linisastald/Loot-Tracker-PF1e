@@ -206,6 +206,11 @@ const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
   return controllerFactory.sendSuccessResponse(res, toPlayerSafeLoot(req, updatedItem), 'Loot item updated successfully');
 };
 
+// Owner decision (2026-10-06): once an item is sold only a DM can edit it or
+// change its status.
+const SOLD_STATUS = 'Sold';
+const SOLD_DM_ONLY_MESSAGE = 'Sold items can only be changed by a DM';
+
 const persistLootUpdate = async (req, res, itemId, filteredData) => {
   const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
   return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
@@ -241,34 +246,45 @@ const updateLootItem = async (req, res) => {
   const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
   await assertItemTypeAllowed(itemId, filteredData);
 
+  if (hasDmRights(req)) {
+    return persistLootUpdate(req, res, itemId, filteredData);
+  }
+
   // F-1373: players keep broad edit rights, but may not turn an unidentified
   // item into an identified one here (that goes through Identify or a DM).
   // Setting it back to unidentified, or re-sending the same value, is fine.
-  const wouldClearUnidentified = !hasDmRights(req) &&
+  const wouldClearUnidentified =
     filteredData.unidentified !== undefined && filteredData.unidentified !== true;
-  if (wouldClearUnidentified) {
-    const updatedItem = await dbUtils.executeTransaction(async (client) => {
-      const stored = await client.query('SELECT unidentified FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
-      if (stored.rows.length === 0) {
-        throw controllerFactory.createNotFoundError('Loot item not found');
-      }
-      if (stored.rows[0].unidentified === true) {
-        throw controllerFactory.createAuthorizationError(
-          'Only a DM can mark an unidentified item as identified. Use Identify to identify it.'
-        );
-      }
-      const columns = Object.keys(filteredData);
-      const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
-      const updated = await client.query(
-        `UPDATE "loot" SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
-        [itemId, ...columns.map((col) => filteredData[col])]
-      );
-      return updated.rows[0];
-    });
-    return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
-  }
 
-  return persistLootUpdate(req, res, itemId, filteredData);
+  // Opus review M-5: once an item is sold only a DM can edit it or change its
+  // status. A non-DM edit therefore reads the row under a lock, refuses a Sold
+  // row, and writes with the same condition in the UPDATE's WHERE, so a sale
+  // that commits in between cannot be overwritten.
+  const updatedItem = await dbUtils.executeTransaction(async (client) => {
+    const stored = await client.query('SELECT status, unidentified FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
+    if (stored.rows.length === 0) {
+      throw controllerFactory.createNotFoundError('Loot item not found');
+    }
+    if (stored.rows[0].status === SOLD_STATUS) {
+      throw controllerFactory.createAuthorizationError(SOLD_DM_ONLY_MESSAGE);
+    }
+    if (wouldClearUnidentified && stored.rows[0].unidentified === true) {
+      throw controllerFactory.createAuthorizationError(
+        'Only a DM can mark an unidentified item as identified. Use Identify to identify it.'
+      );
+    }
+    const columns = Object.keys(filteredData);
+    const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
+    const updated = await client.query(
+      `UPDATE "loot" SET ${setClauses.join(', ')} WHERE id = $1 AND status IS DISTINCT FROM '${SOLD_STATUS}' RETURNING *`,
+      [itemId, ...columns.map((col) => filteredData[col])]
+    );
+    if (updated.rows.length === 0) {
+      throw controllerFactory.createAuthorizationError(SOLD_DM_ONLY_MESSAGE);
+    }
+    return updated.rows[0];
+  });
+  return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
 };
 
 /**
@@ -329,10 +345,26 @@ const updateLootStatus = async (req, res) => {
       paramIndex++;
     }
 
-    updateQuery += ` WHERE id = ANY($${paramIndex}) RETURNING id, name`;
+    // M-5: a non-DM may not touch a Sold row. The condition is part of the
+    // UPDATE itself (so it is atomic with the write); when fewer rows changed
+    // than were requested the sold ones are named and the whole selection is
+    // refused (throwing rolls the partial update back).
+    const dm = hasDmRights(req);
+    updateQuery += ` WHERE id = ANY($${paramIndex})${dm ? '' : ` AND status IS DISTINCT FROM '${SOLD_STATUS}'`} RETURNING id, name`;
     params.push(lootIds);
 
     const result = await client.query(updateQuery, params);
+
+    if (!dm && result.rows.length < new Set(lootIds).size) {
+      const sold = await client.query(
+        `SELECT id, name FROM loot WHERE id = ANY($1) AND status = '${SOLD_STATUS}'`,
+        [lootIds]
+      );
+      if (sold.rows.length > 0) {
+        const names = sold.rows.map((row) => row.name).join(', ');
+        throw controllerFactory.createAuthorizationError(`${SOLD_DM_ONLY_MESSAGE}: ${names}`);
+      }
+    }
 
     if (result.rows.length === 0) {
       throw controllerFactory.createNotFoundError('No loot items found with the provided IDs');
@@ -420,11 +452,17 @@ const splitItemStack = async (req, res) => {
 
   // The HTTP response is sent after executeTransaction resolves (after COMMIT).
   const txResult = await dbUtils.executeTransaction(async (client) => {
-    const originalResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+    // M-9: lock the row before reading it, so a concurrent sale, use or split
+    // cannot slip in between this read and the writes below (the quantity and
+    // status checked here are those of the locked row).
+    const originalResult = await client.query('SELECT * FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
     const originalItem = originalResult.rows[0];
 
     if (!originalItem) {
       throw controllerFactory.createNotFoundError('Loot item not found');
+    }
+    if (originalItem.status === SOLD_STATUS && !hasDmRights(req)) {
+      throw controllerFactory.createAuthorizationError(SOLD_DM_ONLY_MESSAGE);
     }
 
     const totalSplitQuantity = quantities.reduce((sum, qty) => sum + qty, 0);

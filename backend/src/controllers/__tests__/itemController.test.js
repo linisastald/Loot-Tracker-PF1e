@@ -56,6 +56,29 @@ function mockReq(overrides = {}) {
   return req;
 }
 
+/**
+ * A non-DM edit of a loot row runs in ONE transaction: lock and read the row
+ * (status, unidentified), refuse a Sold row, then a guarded UPDATE. This stubs
+ * that transaction and returns the fake client.
+ */
+const playerTx = (updated = { id: 1 }, stored = { status: 'Kept Party', unidentified: false }) => {
+  const client = {
+    query: jest.fn()
+      .mockResolvedValueOnce({ rows: stored === null ? [] : [stored] })
+      .mockResolvedValueOnce({ rows: updated === null ? [] : [updated] }),
+  };
+  dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+  return client;
+};
+
+/** The column -> value map the guarded UPDATE of a player edit wrote. */
+const written = (client) => {
+  const [sql, params] = client.query.mock.calls[1];
+  const data = {};
+  for (const [, col, idx] of sql.matchAll(/"(\w+)" = \$(\d+)/g)) data[col] = params[Number(idx) - 1];
+  return data;
+};
+
 describe('itemController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -494,7 +517,7 @@ describe('itemController', () => {
   describe('updateLootItem', () => {
     it('should update a loot item with valid player fields', async () => {
       const updatedItem = { id: 1, name: 'Longsword +1', notes: 'cool sword' };
-      dbUtils.updateById.mockResolvedValue(updatedItem);
+      const client = playerTx(updatedItem);
 
       const req = mockReq({
         params: { id: '1' },
@@ -504,8 +527,8 @@ describe('itemController', () => {
 
       await itemController.updateLootItem(req, res);
 
-      expect(dbUtils.updateById).toHaveBeenCalledTimes(1);
-      expect(dbUtils.updateById).toHaveBeenCalledWith('loot', 1, expect.objectContaining({
+      expect(client.query).toHaveBeenCalledTimes(2);
+      expect(written(client)).toEqual(expect.objectContaining({
         name: 'Longsword +1',
         notes: 'cool sword',
       }));
@@ -515,7 +538,7 @@ describe('itemController', () => {
 
     it('should filter out DM-only fields for player updates', async () => {
       const updatedItem = { id: 1, name: 'Sword' };
-      dbUtils.updateById.mockResolvedValue(updatedItem);
+      const client = playerTx(updatedItem);
 
       const req = mockReq({
         params: { id: '1' },
@@ -533,7 +556,7 @@ describe('itemController', () => {
 
       await itemController.updateLootItem(req, res);
 
-      const filteredData = dbUtils.updateById.mock.calls[0][2];
+      const filteredData = written(client);
       expect(filteredData.name).toBe('Sword');
       expect(filteredData.session_date).toBeUndefined();
       expect(filteredData.value).toBeUndefined();
@@ -545,7 +568,7 @@ describe('itemController', () => {
     it('should allow players to update entry-form fields (masterwork, type, size)', async () => {
       // Players can set these at loot entry, so they can correct them too.
       const updatedItem = { id: 1, name: 'Sword' };
-      dbUtils.updateById.mockResolvedValue(updatedItem);
+      const client = playerTx(updatedItem);
 
       const req = mockReq({
         params: { id: '1' },
@@ -556,7 +579,7 @@ describe('itemController', () => {
 
       await itemController.updateLootItem(req, res);
 
-      const filteredData = dbUtils.updateById.mock.calls[0][2];
+      const filteredData = written(client);
       expect(filteredData.masterwork).toBe(true);
       expect(filteredData.type).toBe('weapon');
       expect(filteredData.size).toBe('Medium');
@@ -624,7 +647,7 @@ describe('itemController', () => {
     });
 
     it('should return not found when item does not exist', async () => {
-      dbUtils.updateById.mockResolvedValue(null);
+      playerTx(null, null);
 
       const req = mockReq({
         params: { id: '999' },
@@ -665,7 +688,7 @@ describe('itemController', () => {
     });
 
     it('should accept valid title-case status in update', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1, status: 'Kept Party' });
+      const client = playerTx({ id: 1, status: 'Kept Party' });
 
       const req = mockReq({
         params: { id: '1' },
@@ -676,8 +699,7 @@ describe('itemController', () => {
       await itemController.updateLootItem(req, res);
 
       expect(res.success).toHaveBeenCalledTimes(1);
-      const filteredData = dbUtils.updateById.mock.calls[0][2];
-      expect(filteredData.status).toBe('Kept Party');
+      expect(written(client).status).toBe('Kept Party');
     });
   });
 
@@ -718,7 +740,7 @@ describe('itemController', () => {
     });
 
     it('allows a player to set an identified item back to unidentified (false -> true)', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1, unidentified: true });
+      playerTx({ id: 1, unidentified: true });
       const req = mockReq({ params: { id: '1' }, body: { unidentified: true } });
       const res = mockRes();
 
@@ -744,7 +766,7 @@ describe('itemController', () => {
     });
 
     it('allows a player to send true -> true', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1, unidentified: true });
+      playerTx({ id: 1, unidentified: true });
       const req = mockReq({ params: { id: '1' }, body: { unidentified: true, notes: 'n' } });
       const res = mockRes();
 
@@ -1017,14 +1039,14 @@ describe('itemController', () => {
 
   describe('player-safe responses', () => {
     it('hides DM-only columns in the update response for a player, keeps identity of identified items', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword', dm_notes: 's', cursed: true, spellcraft_dc: 9, itemid: 3, value: 5, unidentified: false });
+      playerTx({ id: 1, name: 'Sword', dm_notes: 's', cursed: true, spellcraft_dc: 9, itemid: 3, value: 5, unidentified: false });
       const res = mockRes();
       await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { name: 'Sword' } }), res);
       expect(res.success.mock.calls[0][0]).toEqual({ id: 1, name: 'Sword', itemid: 3, value: 5, unidentified: false });
     });
 
     it('hides the identity of an unidentified item in the update response for a player', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Ring', itemid: 3, modids: [2], value: 5, charges: 1, unidentified: true });
+      playerTx({ id: 1, name: 'Ring', itemid: 3, modids: [2], value: 5, charges: 1, unidentified: true });
       const res = mockRes();
       await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { notes: 'n' } }), res);
       expect(res.success.mock.calls[0][0]).toEqual({ id: 1, name: 'Ring', unidentified: true });
@@ -1112,7 +1134,7 @@ describe('itemController', () => {
 
     it('accepts an unchanged charges value (the edit dialog re-sends it) and never writes it', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: 10 }] });
-      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Wand', charges: 10 });
+      const client = playerTx({ id: 1, name: 'Wand', charges: 10 });
       const req = mockReq({ params: { id: '1' }, body: { name: 'Wand', charges: '10' } });
       const res = mockRes();
 
@@ -1120,12 +1142,12 @@ describe('itemController', () => {
 
       expect(res.forbidden).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledTimes(1);
-      expect(dbUtils.updateById.mock.calls[0][2]).not.toHaveProperty('charges');
+      expect(written(client)).not.toHaveProperty('charges');
     });
 
     it('accepts an empty charges value when the item has none stored', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: null }] });
-      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword' });
+      playerTx({ id: 1, name: 'Sword' });
       const req = mockReq({ params: { id: '1' }, body: { name: 'Sword', charges: '' } });
       const res = mockRes();
 
@@ -1146,7 +1168,7 @@ describe('itemController', () => {
     });
 
     it('does not query charges when the payload has none', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword' });
+      playerTx({ id: 1, name: 'Sword' });
       const req = mockReq({ params: { id: '1' }, body: { name: 'Sword' } });
       const res = mockRes();
 
@@ -1170,10 +1192,10 @@ describe('itemController', () => {
   // Owner decision (2026-10-06): one canonical list of item types.
   describe('item type validation on loot updates', () => {
     it('normalises a canonical type to lowercase', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1 });
+      const client = playerTx({ id: 1 });
       const req = mockReq({ params: { id: '1' }, body: { type: 'Trade Good' } });
       await itemController.updateLootItem(req, mockRes());
-      expect(dbUtils.updateById.mock.calls[0][2].type).toBe('trade good');
+      expect(written(client).type).toBe('trade good');
     });
 
     it.each([['player', 'updateLootItem'], ['DM', 'updateLootItemAsDM']])(
@@ -1189,19 +1211,176 @@ describe('itemController', () => {
 
     it('keeps a row editable when it already holds a legacy type and the dialog re-sends it', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ type: 'spellbook' }] });
-      dbUtils.updateById.mockResolvedValue({ id: 1 });
+      const client = playerTx({ id: 1 });
       const req = mockReq({ params: { id: '1' }, body: { type: 'spellbook', notes: 'ok' } });
       const res = mockRes();
       await itemController.updateLootItem(req, res);
       expect(res.validationError).not.toHaveBeenCalled();
-      expect(dbUtils.updateById.mock.calls[0][2].type).toBe('spellbook');
+      expect(written(client).type).toBe('spellbook');
     });
 
     it('still lets the type be cleared', async () => {
-      dbUtils.updateById.mockResolvedValue({ id: 1 });
+      const client = playerTx({ id: 1 });
       const req = mockReq({ params: { id: '1' }, body: { type: '', notes: 'x' } });
       await itemController.updateLootItem(req, mockRes());
-      expect(dbUtils.updateById.mock.calls[0][2].type).toBeNull();
+      expect(written(client).type).toBeNull();
+    });
+  });
+  // Opus review (2026-10-06) M-5 / M-9: once an item is sold only a DM may edit
+  // it or change its status; the split locks the row it reads.
+  describe('sold items are DM-only (M-5)', () => {
+    const SOLD_MESSAGE = 'Sold items can only be changed by a DM';
+
+    describe('PATCH /items/status', () => {
+      it('adds the Sold guard to the UPDATE for a non-DM', async () => {
+        const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 1, name: 'Ring' }] }) };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = mockRes();
+
+        await itemController.updateLootStatus(mockReq({ body: { lootIds: [1], status: 'Pending Sale' } }), res);
+
+        expect(client.query.mock.calls[0][0]).toContain("status IS DISTINCT FROM 'Sold'");
+        expect(res.success).toHaveBeenCalledTimes(1);
+      });
+
+      it('rejects the WHOLE selection when part of it is sold, naming the sold items', async () => {
+        const client = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Ring' }] })            // guarded UPDATE: 1 of 2
+            .mockResolvedValueOnce({ rows: [{ id: 2, name: 'Longsword' }] }),      // the sold one
+        };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = mockRes();
+
+        await itemController.updateLootStatus(mockReq({ body: { lootIds: [1, 2], status: 'Pending Sale' } }), res);
+
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.forbidden.mock.calls[0][0]).toContain(SOLD_MESSAGE);
+        expect(res.forbidden.mock.calls[0][0]).toContain('Longsword');
+        expect(res.success).not.toHaveBeenCalled();
+      });
+
+      it('rejects a selection that is entirely sold with 403, not 404', async () => {
+        const client = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [{ id: 2, name: 'Longsword' }] }),
+        };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = mockRes();
+
+        await itemController.updateLootStatus(mockReq({ body: { lootIds: [2], status: 'Kept Party' } }), res);
+
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.notFound).not.toHaveBeenCalled();
+      });
+
+      it('leaves a DM unrestricted: no guard, no extra query', async () => {
+        const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 2, name: 'Longsword' }] }) };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = mockRes();
+
+        await itemController.updateLootStatus(
+          mockReq({ user: { id: 9, role: 'DM' }, body: { lootIds: [2], status: 'Pending Sale' } }), res);
+
+        expect(client.query).toHaveBeenCalledTimes(1);
+        expect(client.query.mock.calls[0][0]).not.toContain('Sold');
+        expect(res.success).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('PUT /items/:id', () => {
+      it('refuses a non-DM edit of a sold row with 403 and writes nothing', async () => {
+        const client = playerTx({ id: 1 }, { status: 'Sold', unidentified: false });
+        const res = mockRes();
+
+        await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { notes: 'x' } }), res);
+
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.forbidden.mock.calls[0][0]).toContain(SOLD_MESSAGE);
+        expect(client.query).toHaveBeenCalledTimes(1);
+      });
+
+      it('refuses un-selling a sold row (status change) for a non-DM', async () => {
+        playerTx({ id: 1 }, { status: 'Sold', unidentified: false });
+        const res = mockRes();
+
+        await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { status: 'Pending Sale' } }), res);
+
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+      });
+
+      it('puts the status condition in the UPDATE itself and rejects when it matched no row (concurrent sale)', async () => {
+        const client = playerTx(null, { status: 'Pending Sale', unidentified: false });
+        const res = mockRes();
+
+        await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { notes: 'x' } }), res);
+
+        expect(client.query.mock.calls[1][0]).toContain("status IS DISTINCT FROM 'Sold'");
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.forbidden.mock.calls[0][0]).toContain(SOLD_MESSAGE);
+      });
+
+      it('locks the row it reads', async () => {
+        const client = playerTx({ id: 1 });
+        await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { notes: 'x' } }), mockRes());
+        expect(client.query.mock.calls[0][0]).toContain('FOR UPDATE');
+      });
+
+      it('lets a DM edit a sold row (player endpoint)', async () => {
+        dbUtils.updateById.mockResolvedValue({ id: 1, name: 'x' });
+        const res = mockRes();
+        await itemController.updateLootItem(
+          mockReq({ params: { id: '1' }, body: { notes: 'x' }, user: { id: 9, role: 'DM' } }), res);
+        expect(res.forbidden).not.toHaveBeenCalled();
+        expect(dbUtils.updateById).toHaveBeenCalledTimes(1);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('POST /items/:id/split', () => {
+      const splitClient = (original) => {
+        const client = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [original] })
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [{ ...original, id: 2, quantity: 1 }] }),
+        };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        return client;
+      };
+      const twoOnes = { newQuantities: [{ quantity: 1 }, { quantity: 1 }] };
+
+      it('locks the original row before reading it (M-9)', async () => {
+        const client = splitClient({ id: 1, name: 'Arrow', quantity: 2, status: 'Kept Party' });
+        await itemController.splitItemStack(mockReq({ params: { id: '1' }, body: twoOnes }), mockRes());
+        expect(client.query.mock.calls[0][0]).toMatch(/FROM loot WHERE id = \$1 FOR UPDATE/);
+      });
+
+      it('re-checks the quantity against the locked row', async () => {
+        splitClient({ id: 1, name: 'Arrow', quantity: 5, status: 'Kept Party' });
+        const res = mockRes();
+        await itemController.splitItemStack(mockReq({ params: { id: '1' }, body: twoOnes }), res);
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+      });
+
+      it('refuses a non-DM split of a sold row and writes nothing', async () => {
+        const client = splitClient({ id: 1, name: 'Arrow', quantity: 2, status: 'Sold' });
+        const res = mockRes();
+        await itemController.splitItemStack(mockReq({ params: { id: '1' }, body: twoOnes }), res);
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.forbidden.mock.calls[0][0]).toContain(SOLD_MESSAGE);
+        expect(client.query).toHaveBeenCalledTimes(1);
+      });
+
+      it('lets a DM split a sold row', async () => {
+        splitClient({ id: 1, name: 'Arrow', quantity: 2, status: 'Sold' });
+        const res = mockRes();
+        await itemController.splitItemStack(
+          mockReq({ user: { id: 9, role: 'DM' }, params: { id: '1' }, body: twoOnes }), res);
+        expect(res.forbidden).not.toHaveBeenCalled();
+        expect(res.success).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

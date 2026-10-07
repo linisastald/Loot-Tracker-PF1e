@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
@@ -279,5 +279,44 @@ describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
 
     expect(await screen.findByText('You can only appraise as your own character')).toBeInTheDocument();
     expect(setSelectedItems).not.toHaveBeenCalledWith([]);
+  });
+});
+
+describe('BaseLootManagement sold rows are DM-only (M-5)', () => {
+  const actionConfig: any = {
+    ...config,
+    actions: [{ label: 'Sell', color: 'primary', variant: 'contained', actionKey: 'sell' }],
+  };
+  const originalIndividual = mockHookReturn.loot.individual;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHookReturn.openUpdateDialog = false;
+    mockHookReturn.loot = { summary: [], individual: [{ id: 42, quantity: 3, status: 'Sold' }] };
+  });
+
+  afterEach(() => {
+    mockHookReturn.loot = { summary: [], individual: originalIndividual };
+  });
+
+  it('disables the status buttons, Split Stack and Update for a player and says why', async () => {
+    mockIsDM = false;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player' } });
+    render(<BaseLootManagement config={actionConfig} />);
+
+    expect(await screen.findByText('Sold items can only be changed by a DM.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sell' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Split Stack' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Update$/ })).toBeDisabled();
+  });
+
+  it('leaves everything enabled for a DM', async () => {
+    mockIsDM = true;
+    useAuthMock.mockReturnValue({ user: { id: 1, role: 'DM' } });
+    render(<BaseLootManagement config={actionConfig} />);
+
+    expect(await screen.findByRole('button', { name: 'Sell' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Split Stack' })).toBeEnabled();
+    expect(screen.queryByText('Sold items can only be changed by a DM.')).not.toBeInTheDocument();
   });
 });
