@@ -600,6 +600,10 @@ const CityServices: React.FC = () => {
                     )}
                     <DetailRow label="Availability">
                       {itemSearchResult.availability.percentage}% ({itemSearchResult.availability.description})
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        House rule. The GameMastery Guide gives a flat 75% for items at or below the
+                        settlement's base value, nothing above it, and no caster-level penalty.
+                      </Typography>
                     </DetailRow>
                     <DetailRow label="Roll">
                       {itemSearchResult.roll_result} / {itemSearchResult.availability.threshold}
