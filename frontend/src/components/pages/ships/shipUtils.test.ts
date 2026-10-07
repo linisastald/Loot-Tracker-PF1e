@@ -73,3 +73,14 @@ describe('getShipStatusChipColor', () => {
     expect(getShipStatusChipColor(undefined)).toBe('default');
   });
 });
+
+describe('a new ship form carries captain, notes and flag', () => {
+  it('starts all three blank so a create request sends them', () => {
+    expect(NEW_SHIP_FORM).toMatchObject({ captain_name: '', ship_notes: '', flag_description: '' });
+  });
+
+  it('fills null stored values with blanks, keeping real ones', () => {
+    const form = toShipForm({ id: 1, name: 'A', captain_name: null, ship_notes: 'n' } as never);
+    expect(form).toMatchObject({ captain_name: '', ship_notes: 'n', flag_description: '' });
+  });
+});

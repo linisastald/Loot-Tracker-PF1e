@@ -168,6 +168,43 @@ const ShipDialog = ({
             />
           </Grid>
 
+          <SectionHeader title="Captain, Flag and Notes" />
+
+          <Grid size={{xs: 12, md: 6}}>
+            <TextField
+              fullWidth
+              label="Captain"
+              value={editingShip.captain_name ?? ''}
+              onChange={(e) => setField('captain_name', e.target.value)}
+              slotProps={{ htmlInput: { maxLength: 255 } }}
+            />
+          </Grid>
+
+          <Grid size={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="Flag"
+              helperText="Describe the ship's flag"
+              value={editingShip.flag_description ?? ''}
+              onChange={(e) => setField('flag_description', e.target.value)}
+              slotProps={{ htmlInput: { maxLength: 10000 } }}
+            />
+          </Grid>
+
+          <Grid size={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={3}
+              label="Ship Notes"
+              value={editingShip.ship_notes ?? ''}
+              onChange={(e) => setField('ship_notes', e.target.value)}
+              slotProps={{ htmlInput: { maxLength: 10000 } }}
+            />
+          </Grid>
+
           <SectionHeader title="Combat Statistics" />
 
           <NumberField

@@ -93,7 +93,8 @@ export type ShipForm = Pick<Ship,
   'name' | 'location' | 'status' | 'ship_type' | 'size' | 'cost' | 'max_speed' | 'acceleration' |
   'propulsion' | 'min_crew' | 'max_crew' | 'cargo_capacity' | 'max_passengers' | 'decks' | 'weapons' |
   'weapon_types' | 'is_squibbing' | 'ramming_damage' | 'base_ac' | 'touch_ac' | 'hardness' | 'max_hp' |
-  'current_hp' | 'cmb' | 'cmd' | 'saves' | 'initiative' | 'sails_oars' | 'sailing_check_bonus' | 'improvements'
+  'current_hp' | 'cmb' | 'cmd' | 'saves' | 'initiative' | 'sails_oars' | 'sailing_check_bonus' | 'improvements' |
+  'captain_name' | 'ship_notes' | 'flag_description'
 >;
 
 export const SHIP_STATUSES = ['PC Active', 'Active', 'Docked', 'Lost', 'Sunk'] as const;
@@ -186,6 +187,9 @@ export const NEW_SHIP_FORM: ShipForm = {
   sails_oars: DEFAULT_SHIP.sails_oars,
   sailing_check_bonus: DEFAULT_SHIP.sailing_check_bonus,
   improvements: [],
+  captain_name: DEFAULT_SHIP.captain_name,
+  ship_notes: DEFAULT_SHIP.ship_notes,
+  flag_description: DEFAULT_SHIP.flag_description,
 };
 
 /** A stored ship with gaps (null / missing columns) filled from DEFAULT_SHIP. A stored 0 or false is kept. */
