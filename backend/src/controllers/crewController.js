@@ -164,10 +164,23 @@ const updateCrew = async (req, res) => {
     }
     updateData.location_id = locationId;
   }
-  // Only check the target exists when the caller supplies the whole pair.
-  if (updateData.location_type !== undefined && updateData.location_id !== undefined
-      && !(await Crew.locationExists(updateData.location_type, updateData.location_id))) {
-    throw controllerFactory.createValidationError(`Selected ${updateData.location_type} does not exist`);
+  // Whenever either half of the location is sent, the resulting (type, id) pair
+  // must exist; the half that was not sent comes from the stored crew member
+  // (otherwise a bare type change pairs the new type with the old ship's id).
+  if (updateData.location_type !== undefined || updateData.location_id !== undefined) {
+    let locationType = updateData.location_type;
+    let locationId = updateData.location_id;
+    if (locationType === undefined || locationId === undefined) {
+      const stored = await Crew.findById(id);
+      if (!stored) {
+        throw controllerFactory.createNotFoundError('Crew member not found');
+      }
+      locationType = locationType ?? stored.location_type;
+      locationId = locationId ?? stored.location_id;
+    }
+    if (!(await Crew.locationExists(locationType, locationId))) {
+      throw controllerFactory.createValidationError(`Selected ${locationType} does not exist`);
+    }
   }
 
   if (updateData.hire_date !== undefined) {

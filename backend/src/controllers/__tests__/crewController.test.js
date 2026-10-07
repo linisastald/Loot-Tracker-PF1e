@@ -597,6 +597,59 @@ describe('crewController', () => {
       expect(Crew.moveToLocation).not.toHaveBeenCalled();
     });
 
+    // Opus review L-11: a partial location update is validated against the stored other half
+    describe('updateCrew with only one of location_type / location_id', () => {
+      beforeEach(() => {
+        Crew.findById.mockResolvedValue({ ...mockCrew, location_type: 'ship', location_id: 4 });
+      });
+
+      it('checks the new type against the stored id (ship 4 is not outpost 4)', async () => {
+        Crew.locationExists.mockResolvedValue(false);
+        const res = createMockRes();
+        await crewController.updateCrew(
+          createMockReq({ params: { id: '1' }, body: { location_type: 'outpost' }, user: { id: 1 } }), res);
+        expect(Crew.locationExists).toHaveBeenCalledWith('outpost', 4);
+        expect(res.validationError).toHaveBeenCalledWith('Selected outpost does not exist');
+        expect(Crew.update).not.toHaveBeenCalled();
+      });
+
+      it('checks a new id against the stored type', async () => {
+        Crew.locationExists.mockResolvedValue(false);
+        const res = createMockRes();
+        await crewController.updateCrew(
+          createMockReq({ params: { id: '1' }, body: { location_id: 77 }, user: { id: 1 } }), res);
+        expect(Crew.locationExists).toHaveBeenCalledWith('ship', 77);
+        expect(res.validationError).toHaveBeenCalledWith('Selected ship does not exist');
+        expect(Crew.update).not.toHaveBeenCalled();
+      });
+
+      it('lets a valid single-field move through', async () => {
+        Crew.locationExists.mockResolvedValue(true);
+        Crew.update.mockResolvedValue({ ...mockCrew, location_id: 5 });
+        const res = createMockRes();
+        await crewController.updateCrew(
+          createMockReq({ params: { id: '1' }, body: { location_id: 5 }, user: { id: 1 } }), res);
+        expect(Crew.locationExists).toHaveBeenCalledWith('ship', 5);
+        expect(Crew.update).toHaveBeenCalled();
+      });
+
+      it('does no location lookup when neither field is sent', async () => {
+        Crew.update.mockResolvedValue(mockCrew);
+        await crewController.updateCrew(
+          createMockReq({ params: { id: '1' }, body: { name: 'New' }, user: { id: 1 } }), createMockRes());
+        expect(Crew.findById).not.toHaveBeenCalled();
+        expect(Crew.locationExists).not.toHaveBeenCalled();
+      });
+
+      it('answers not found for a missing crew member instead of validating a location', async () => {
+        Crew.findById.mockResolvedValue(null);
+        const res = createMockRes();
+        await crewController.updateCrew(
+          createMockReq({ params: { id: '999' }, body: { location_id: 5 }, user: { id: 1 } }), res);
+        expect(res.notFound).toHaveBeenCalledWith('Crew member not found');
+      });
+    });
+
     it('markCrewDead rejects an invalid date', async () => {
       const res = createMockRes();
       await crewController.markCrewDead(
