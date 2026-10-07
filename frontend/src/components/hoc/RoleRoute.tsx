@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Box, CircularProgress } from '@mui/material';
+import { Alert, Box, Button, CircularProgress } from '@mui/material';
 import { useCampaign } from '../../contexts/CampaignContext';
 
 interface RoleRouteProps {
@@ -15,7 +15,7 @@ interface RoleRouteProps {
  * sensible; the server enforces the role on every endpoint these pages use.
  */
 const RoleRoute: React.FC<RoleRouteProps> = ({ require, children }) => {
-  const { isDM, isSuperadmin, loading } = useCampaign();
+  const { isDM, isSuperadmin, loading, error, campaignRole, refresh } = useCampaign();
 
   // The role is not known until the campaign context has loaded once. Later
   // refreshes (e.g. after saving campaign settings) keep the last known role,
@@ -26,6 +26,23 @@ const RoleRoute: React.FC<RoleRouteProps> = ({ require, children }) => {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}>
         <CircularProgress size={32} aria-label="Loading" />
+      </Box>
+    );
+  }
+
+  // The campaign fetch failed and no role has ever been loaded: this says nothing
+  // about whether the user is allowed, so do not redirect a DM off a DM page;
+  // offer a retry instead. (After one good load the last known role is kept
+  // even when a later refresh fails.)
+  if (error && campaignRole === null && !isSuperadmin) {
+    return (
+      <Box sx={{ maxWidth: 560, mx: 'auto', pt: 8, px: 2 }}>
+        <Alert
+          severity="error"
+          action={<Button color="inherit" size="small" onClick={() => { void refresh(); }}>Retry</Button>}
+        >
+          Could not load your campaign information, so this page cannot be shown yet.
+        </Alert>
       </Box>
     );
   }
