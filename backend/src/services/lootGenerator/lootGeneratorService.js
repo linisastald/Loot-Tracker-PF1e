@@ -16,7 +16,7 @@ const {
   XP_BY_CR, crKey, crToNum, xpToCr,
 } = require('./treasureTables');
 const catalog = require('./lootCatalog');
-const { randInt, weightedIndex } = require('./random');
+const { randInt, weightedIndex, randWandCharges } = require('./random');
 const { describeGem, describeArt, ENVIRONMENTS } = require('./treasureFlavor');
 
 const MIN_ITEM_VALUE = 2;
@@ -175,11 +175,11 @@ const sampleCatalogItem = async (category, bandMin, bandMax, unidentified) => {
 
   // Wands: the catalog stores their PER-CHARGE value, so a found wand needs a
   // charge count and its value scaled accordingly. Found wands are rarely full
-  // (50), so the count is random; value scales with the actual charges. Reject
+  // (50), so the count is random (1-50, weighted away from both ends); value scales with the actual charges. Reject
   // if the resulting value overshoots the band.
   let charges = null;
   if (typeof row.name === 'string' && row.name.toLowerCase().startsWith('wand of')) {
-    charges = randInt(1, 50);
+    charges = randWandCharges();
     value *= charges;
     if (value > bandMax) return null;
   }

@@ -37,4 +37,14 @@ const weightedIndex = (weights) => {
   return last;
 };
 
-module.exports = { randInt, clamp, pickRandom, weightedIndex };
+// Charges for a found wand: a whole number 1-50 where every value is possible but
+// the near-empty (1-5) and near-full (40-50) ends are clearly rarer than 6-39
+// (owner decision). Each end value has weight 1, each middle value weight 5, so
+// a middle value is five times as likely as an end value. One Math.random() call.
+const WAND_CHARGE_WEIGHTS = Array.from({ length: 50 }, (_, i) => {
+  const n = i + 1;
+  return n <= 5 || n >= 40 ? 1 : 5;
+});
+const randWandCharges = () => weightedIndex(WAND_CHARGE_WEIGHTS) + 1;
+
+module.exports = { randInt, clamp, pickRandom, weightedIndex, randWandCharges };
