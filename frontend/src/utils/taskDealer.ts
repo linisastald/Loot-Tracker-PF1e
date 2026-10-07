@@ -207,9 +207,10 @@ export function dealTasks(input: DealInput): DealResult {
       }
     });
 
-    // Pass 2: deal the rest to whoever holds the fewest tasks. "Must
-    // deal" first, then "High", then normal, so the ones squeezed out (if
-    // any) are always normal-priority. Within a priority the most
+    // Pass 2: deal the rest to whoever holds the fewest tasks. Priority only
+    // sets the order (2 first, then 1, then normal): earlier tasks land on
+    // people with free slots, later ones are the extras when there are more
+    // tasks than slots. Nothing is ever left out. Within a priority the most
     // constrained tasks (fewest eligible people, e.g. Recap) go first so
     // they are never crowded out while someone else still has a free
     // slot; ties are shuffled so the order isn't always alphabetical.
@@ -248,17 +249,11 @@ export function dealTasks(input: DealInput): DealResult {
         notes.push(`${def.name} (nobody left who can take it)`);
         return;
       }
+      // A task with someone eligible is ALWAYS dealt. People still under the
+      // even share go first; when they are all full it goes to whoever holds
+      // the fewest tasks, who then carries an extra one.
       let open = candidatesFor.filter(person => count(person) < cap);
-      if (open.length === 0) {
-        if (priorityOf(def) === 2) {
-          open = candidatesFor;
-        } else {
-          notes.push(
-            `${def.name} (everyone is full - set it to "Must deal" to force it)`
-          );
-          return;
-        }
-      }
+      if (open.length === 0) open = candidatesFor;
       const target = open.reduce(
         (best, person) => (count(person) < count(best) ? person : best),
         open[0]
@@ -266,9 +261,11 @@ export function dealTasks(input: DealInput): DealResult {
       tasksOf(target).push(def.name);
     });
 
-    // Free Space padding up to the slot count
+    // Free Space padding: everyone shows as many slots as the busiest
+    // person, so someone with few or no tasks can hold several Free Spaces.
+    const slots = Math.max(cap, ...order.map(count));
     order.forEach(person => {
-      while (count(person) < cap) tasksOf(person).push(FREE_SPACE);
+      while (count(person) < slots) tasksOf(person).push(FREE_SPACE);
     });
 
     const result: TaskMap = {};

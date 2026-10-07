@@ -130,7 +130,7 @@ const TaskMetaChips: React.FC<TaskMetaChipsProps> = ({
             color="error"
             variant="outlined"
             icon={<PriorityHighIcon />}
-            label="Must deal"
+            label="Dealt first"
           />
         )}
         {label && (

@@ -6,7 +6,7 @@
 
 export type TaskPhase = 'pre' | 'during' | 'post';
 
-/** 0 normal, 1 high, 2 must deal. */
+/** 0 normal, 1 high, 2 first. Sets dealing order only; every task is always dealt. */
 export type TaskPriority = 0 | 1 | 2;
 
 export interface TaskDefinition {

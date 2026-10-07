@@ -274,7 +274,7 @@ describe('dealTasks rules over many random deals', () => {
     }
   });
 
-  it('always deals a must-deal task even when its only eligible person is full', () => {
+  it('always deals every task that has an eligible person, even past the even share', () => {
     for (let i = 0; i < ROUNDS; i++) {
       const { assignments, notes } = dealTasks({
         ...base,
@@ -295,15 +295,25 @@ describe('dealTasks rules over many random deals', () => {
         ],
         characters: FOUR,
       });
+      // Only Bob can take three of the four tasks, so he holds all three;
+      // nothing is left out and nothing is reported as not dealt.
       expect(assignments.pre['Fighter Bob']).toEqual(
-        expect.arrayContaining(['Recap', 'Continue the cliffhanger'])
+        expect.arrayContaining([
+          'Recap',
+          'Continue the cliffhanger',
+          'Remind everyone of the NPC names',
+        ])
       );
-      expect(Object.values(assignments.pre).flat()).not.toContain(
-        'Remind everyone of the NPC names'
+      expect(Object.values(assignments.pre).flat()).toContain('Get Dice Trays');
+      expect(notes).toEqual([]);
+      // Everyone shows the same number of slots; Free Space fills the gaps,
+      // so a player can hold more than one Free Space.
+      Object.values(assignments.pre).forEach(tasks =>
+        expect(tasks).toHaveLength(3)
       );
       expect(
-        notes.some(n =>
-          n.startsWith('Remind everyone of the NPC names (everyone is full')
+        Object.values(assignments.pre).some(
+          tasks => tasks.filter(t => t === FREE_SPACE).length > 1
         )
       ).toBe(true);
     }

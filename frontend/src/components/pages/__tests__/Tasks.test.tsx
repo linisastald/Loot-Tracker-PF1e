@@ -618,11 +618,10 @@ describe('Tasks', () => {
     expect(screen.queryByText(/not dealt/i)).not.toBeInTheDocument();
   });
 
-  it('always deals a must-deal task even when the only eligible person is already full', async () => {
-    // Only Bob attended last session. Four tasks for four people means one
-    // slot each; three of the tasks can only go to Bob. The two must-deal
-    // ones still go out (Bob ends up with three), the normal one is reported
-    // as not dealt.
+  it('always deals every task that has an eligible person, even past the even share', async () => {
+    // Only Bob attended last session. Four tasks for four people would mean
+    // one slot each, but three of the tasks can only go to Bob, so he gets
+    // all three and nothing is reported as not dealt.
     mockGetWithCharacters(
       FOUR_CHARACTERS,
       [1],
@@ -638,11 +637,10 @@ describe('Tasks', () => {
 
     const assignments = await assignAndReadHistory();
     expect(assignments.pre['Fighter Bob']).toEqual(
-      expect.arrayContaining(['Recap', 'Continue the cliffhanger'])
+      expect.arrayContaining(['Recap', 'Continue the cliffhanger', 'Remind everyone of the NPC names'])
     );
-    expect(Object.values(assignments.pre).flat()).not.toContain('Remind everyone of the NPC names');
-    expect(
-      await screen.findByText(/remind everyone of the npc names \(everyone is full/i)
-    ).toBeInTheDocument();
+    expect(Object.values(assignments.pre).flat()).toContain('Get Dice Trays');
+    expect(screen.queryByText(/everyone is full/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/not dealt/i)).not.toBeInTheDocument();
   });
 });

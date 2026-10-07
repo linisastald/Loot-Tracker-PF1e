@@ -23,7 +23,7 @@ const TASK_OPTION_DEFAULTS = Object.freeze({
   announce_label: null,              // "<label>: <name>" in the next announcement
   sticky: false,                     // last session's holder keeps it
   avoid_repeat: false,               // never last session's holder
-  priority: 0,                       // 0 normal, 1 high, 2 must deal
+  priority: 0,                       // 0 normal, 1 high, 2 first (order only; every task is always dealt)
   is_active: true,                   // inactive tasks are never dealt
   description: null,                 // instructions shown with the task
   fixed_character_id: null,          // always this character when present

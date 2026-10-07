@@ -90,17 +90,17 @@ const PRIORITY_OPTIONS: Array<{
   {
     value: 0,
     label: 'Normal',
-    help: 'Dealt after high-priority tasks; may be left out if everyone is full.',
+    help: 'Dealt after higher-priority tasks. Every task is always dealt; when there are more tasks than people, the later ones are the extras someone doubles up on.',
   },
   {
     value: 1,
     label: 'High',
-    help: 'Dealt before normal tasks, so it is never the one squeezed out.',
+    help: 'Dealt before normal tasks.',
   },
   {
     value: 2,
-    label: 'Must deal',
-    help: 'Always dealt, even if someone ends up with an extra task.',
+    label: 'First',
+    help: 'Dealt before everything else, to the people with the fewest tasks.',
   },
 ];
 
