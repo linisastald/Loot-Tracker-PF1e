@@ -54,6 +54,26 @@ const NPC_GEAR_BY_LEVEL = {
   15: 45000, 16: 58500, 17: 75000, 18: 96000, 19: 123000, 20: 159000,
 };
 
+// Character Wealth by Level (Core Rulebook, "Table: Character Wealth by Level" in
+// Game Mastering > Placing Treasure; coreRulebook/gamemastering.html) - the gp a
+// PC of that level is expected to own. This is the OTHER selectable source for the
+// "NPC gear" treasure type: the Core Rulebook says an NPC with gear "equivalent to
+// that of a PC" counts as CR +1, so a DM may choose to hand out PC-level gear.
+// It was the generator's only NPC-gear source before Table 14-9 became the default.
+// Level 1 has no row in that table (it points to the starting-gold table); 150 gp,
+// the average class starting gold, is used.
+const PC_WEALTH_BY_LEVEL = {
+  1: 150, 2: 1000, 3: 3000, 4: 6000, 5: 10500, 6: 16000, 7: 23500, 8: 33000,
+  9: 46000, 10: 62000, 11: 82000, 12: 108000, 13: 140000, 14: 185000,
+  15: 240000, 16: 315000, 17: 410000, 18: 530000, 19: 685000, 20: 880000,
+};
+
+// Selectable value sources for the "NPC gear" treasure type.
+//   'npc' - Table 14-9: NPC Gear (default, what a typical NPC carries)
+//   'pc'  - Character Wealth by Level (PC-equivalent gear)
+const NPC_GEAR_SOURCES = ['npc', 'pc'];
+const DEFAULT_NPC_GEAR_SOURCE = 'npc';
+
 // Treasure-line multipliers from monster stat blocks (Treasure: none /
 // incidental / standard / double / triple). "NPC gear" is handled separately
 // (it draws from NPC_GEAR_BY_LEVEL rather than the per-encounter value).
@@ -156,11 +176,14 @@ const getTreasureGp = (cr, track, multiplier) => {
   return Math.round(base * mult);
 };
 
-// NPC-gear gp for a creature at the given CR (CRB Table 14-9, heroic column,
-// for the nearest integer CR, floored at level 1's value).
-const getNpcGearGp = (cr) => {
+// NPC-gear gp for a creature at the given CR, for the nearest integer CR (floored
+// at level 1, capped at level 20). `source` picks the table: 'npc' (default, CRB
+// Table 14-9 heroic column) or 'pc' (Character Wealth by Level); anything else
+// falls back to the default.
+const getNpcGearGp = (cr, source = DEFAULT_NPC_GEAR_SOURCE) => {
   const num = Math.max(1, Math.min(20, Math.round(Number(cr) || 0)));
-  return NPC_GEAR_BY_LEVEL[num] ?? NPC_GEAR_BY_LEVEL[1];
+  const table = source === 'pc' ? PC_WEALTH_BY_LEVEL : NPC_GEAR_BY_LEVEL;
+  return table[num] ?? table[1];
 };
 
 module.exports = {
@@ -173,4 +196,8 @@ module.exports = {
   xpToCr,
   getTreasureGp,
   getNpcGearGp,
+  NPC_GEAR_BY_LEVEL,
+  PC_WEALTH_BY_LEVEL,
+  NPC_GEAR_SOURCES,
+  DEFAULT_NPC_GEAR_SOURCE,
 };
