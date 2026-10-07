@@ -11,12 +11,24 @@
 --    Only official rows (is_custom = false, campaign_id IS NULL) that still hold the
 --    seeded values are changed.
 --
--- 2. Catalog wands the rules do not allow. A wand can hold a spell of 4th level or
---    lower (Core Rulebook, Magic Items: Wands). Ten global catalog rows are wands of
---    5th- or 6th-level spells and are removed. A row is deleted only when it still has
---    the seeded id and name, is a global row, and nothing references it: no loot row
---    (loot.itemid) and no item search (item_search.item_id, which would otherwise be
---    deleted by its ON DELETE CASCADE). Referenced rows are left in place and reported.
+-- 2. Catalog wands of spells above 4th level. A wand can hold a spell of 4th level or
+--    lower (Core Rulebook, Magic Items: Wands).
+--    a. Dispel Good and Dispel Law are 5th level for every class that has them
+--       (cleric 5 only), so no wand of them can exist. Those two global catalog rows are
+--       removed. A row is deleted only when it still has the seeded id and name, is a
+--       global row, and nothing references it: no loot row (loot.itemid) and no item
+--       search (item_search.item_id, which would otherwise be deleted by its
+--       ON DELETE CASCADE). Referenced rows are left in place and reported.
+--    b. Eight other wands looked illegal because the spell is 5th or 6th level for a
+--       wizard, cleric or druid, but a bard, paladin or ranger casts it as a 4th-level
+--       spell, so the wand is legal: Animal Growth (ranger 4), Break Enchantment
+--       (bard 4, paladin 4), Commune with Nature (ranger 4), Dispel Chaos and Dispel
+--       Evil (paladin 4), Dominate Person, Hold Monster and Legend Lore (bard 4).
+--       They were priced as 4th-level wizard wands (420 gp per charge, caster level 7).
+--       They are repriced like the other bard/paladin/ranger 4th-level wands in 065:
+--       caster level 10, 4 x 10 x 15 = 600 gp per charge (wand values are PER CHARGE),
+--       plus 250 gp per charge for Legend Lore's incense. Only global rows still holding
+--       the old value are changed.
 --
 -- RLS: golarion_holidays, loot and item_search have tenant policies keyed on the
 -- app.current_campaign GUC. The migration runner connects as the table owner, but the
@@ -35,6 +47,7 @@ DECLARE
     step_rows INTEGER;
     deleted_wands INTEGER;
     kept_wands TEXT;
+    repriced_wands INTEGER;
 BEGIN
     PERFORM set_config('app.current_campaign', 'all', true);
 
@@ -62,19 +75,11 @@ BEGIN
     GET DIAGNOSTICS step_rows = ROW_COUNT;
     holiday_rows := holiday_rows + step_rows;
 
-    -- 2. Wands above 4th level
+    -- 2a. Wands no class can make (cleric 5 only)
     CREATE TEMP TABLE _wands_to_remove (id INTEGER PRIMARY KEY, name TEXT NOT NULL) ON COMMIT DROP;
     INSERT INTO _wands_to_remove (id, name) VALUES
-        (7294, 'Wand of Animal Growth'),
-        (7320, 'Wand of Break Enchantment'),
-        (7339, 'Wand of Commune with Nature'),
-        (7385, 'Wand of Dispel Chaos'),
-        (7386, 'Wand of Dispel Evil'),
         (7387, 'Wand of Dispel Good'),
-        (7388, 'Wand of Dispel Law'),
-        (7396, 'Wand of Dominate Person'),
-        (7455, 'Wand of Hold Monster'),
-        (7478, 'Wand of Legend Lore');
+        (7388, 'Wand of Dispel Law');
 
     SELECT string_agg(i.name, ', ' ORDER BY i.name) INTO kept_wands
       FROM item i
@@ -92,8 +97,28 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM item_search s WHERE s.item_id = i.id);
     GET DIAGNOSTICS deleted_wands = ROW_COUNT;
 
-    RAISE NOTICE 'Migration 073: corrected % of 2 holiday rows; removed % of 10 wand rows',
-        holiday_rows, deleted_wands;
+    -- 2b. Legal 4th-level bard/paladin/ranger wands: per-charge price and caster level
+    UPDATE item AS i
+       SET value = f.new_value::numeric,
+           casterlevel = 10
+      FROM (VALUES
+        (7294, 'Wand of Animal Growth', 600),
+        (7320, 'Wand of Break Enchantment', 600),
+        (7339, 'Wand of Commune with Nature', 600),
+        (7385, 'Wand of Dispel Chaos', 600),
+        (7386, 'Wand of Dispel Evil', 600),
+        (7396, 'Wand of Dominate Person', 600),
+        (7455, 'Wand of Hold Monster', 600),
+        (7478, 'Wand of Legend Lore', 850)
+      ) AS f(id, name, new_value)
+     WHERE i.id = f.id
+       AND i.name = f.name
+       AND i.campaign_id IS NULL
+       AND i.value IS NOT DISTINCT FROM 420::numeric;
+    GET DIAGNOSTICS repriced_wands = ROW_COUNT;
+
+    RAISE NOTICE 'Migration 073: corrected % of 2 holiday rows; removed % of 2 wand rows; repriced % of 8 wand rows',
+        holiday_rows, deleted_wands, repriced_wands;
     IF kept_wands IS NOT NULL THEN
         RAISE NOTICE 'Migration 073: kept because loot or a search references them: %', kept_wands;
     END IF;

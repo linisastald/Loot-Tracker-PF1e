@@ -46,7 +46,7 @@ All notable changes to this project are documented in this file.
 - **Sessions page**: "Your Status" and the attendance list work, cards show their start time, and late/early RSVPs count as attending everywhere.
 - **Unidentified items show the right Spellcraft DC and names**, and the Character Ledger's "Value of Loot" is no longer always 0.
 - **Smaller fixes**: Discord "Unlink", the forgot-password success message, the split dialog, Character Management for campaign DMs, duplicate character names on the Tasks page, a campaign with no holidays can add its first, calendar dates no longer drift by a day, and concurrent "next day" clicks no longer lose an update.
-- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069). Ten catalog wands of 5th- and 6th-level spells, which the rules do not allow, are removed where nothing references them (migration 073).
+- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069). Two catalog wands no class can make (Dispel Good, Dispel Law) are removed where nothing references them, and eight wands that are 4th-level bard, paladin or ranger spells are repriced to 600 gp per charge at caster level 10 (migration 073).
 - **Two official holidays corrected** (migration 073): First Crusader Day is on 6 Arodus, and 19 Calistril is Loyalty Day.
 - **Fresh installs get the same schema as production:** extended ship columns (migration 064), `mod.casterlevel` (migration 071) and `loot.cursed` (migration 072).
 

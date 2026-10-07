@@ -1,7 +1,8 @@
 /**
  * Guards migration 073 (owner-decided data corrections) against the seed data:
- * the ten wands of 5th/6th-level spells are gone from the item seed, the
- * migration removes exactly those rows (and only unreferenced global ones), and
+ * the two wands no class can make are gone from the item seed and removed by the
+ * migration (only unreferenced global rows), the eight wands that are legal as
+ * 4th-level bard/paladin/ranger spells are repriced per charge, and
  * the two holiday fixes are guarded on the values migration 041 seeded.
  */
 const fs = require('fs');
@@ -15,22 +16,44 @@ const seedLines = read('database/item_data.sql').split(/\r?\n/);
 const holidaySeed = read('backend/migrations/041_add_golarion_holidays.sql');
 
 const REMOVED_WANDS = [
-  [7294, 'Wand of Animal Growth'],
-  [7320, 'Wand of Break Enchantment'],
-  [7339, 'Wand of Commune with Nature'],
-  [7385, 'Wand of Dispel Chaos'],
-  [7386, 'Wand of Dispel Evil'],
   [7387, 'Wand of Dispel Good'],
   [7388, 'Wand of Dispel Law'],
-  [7396, 'Wand of Dominate Person'],
-  [7455, 'Wand of Hold Monster'],
-  [7478, 'Wand of Legend Lore'],
+];
+
+// Legal as 4th-level bard / paladin / ranger spells: caster level 10, 4 x 10 x 15 = 600 gp
+// per charge; Legend Lore adds 250 gp of incense per charge.
+const REPRICED_WANDS = [
+  [7294, 'Wand of Animal Growth', 600],
+  [7320, 'Wand of Break Enchantment', 600],
+  [7339, 'Wand of Commune with Nature', 600],
+  [7385, 'Wand of Dispel Chaos', 600],
+  [7386, 'Wand of Dispel Evil', 600],
+  [7396, 'Wand of Dominate Person', 600],
+  [7455, 'Wand of Hold Monster', 600],
+  [7478, 'Wand of Legend Lore', 850],
 ];
 
 describe('migration 073: wands above 4th level', () => {
-  it('lists exactly the ten wand rows, by id and name', () => {
+  it('removes exactly the two wands no class can make, by id and name', () => {
     const listed = [...migration.matchAll(/\((\d+), '(Wand of [^']+)'\)/g)].map((m) => [Number(m[1]), m[2]]);
     expect(listed).toEqual(REMOVED_WANDS);
+  });
+
+  it('reprices exactly the eight legal wands, guarded on the old per-charge value', () => {
+    const listed = [...migration.matchAll(/\((\d+), '(Wand of [^']+)', (\d+)\)/g)].map((m) => [Number(m[1]), m[2], Number(m[3])]);
+    expect(listed).toEqual(REPRICED_WANDS);
+    expect(migration).toMatch(/SET value = f\.new_value::numeric,\s+casterlevel = 10/);
+    expect(migration).toMatch(/i\.value IS NOT DISTINCT FROM 420::numeric/);
+  });
+
+  it.each(REPRICED_WANDS)('seed has item %i (%s) at %i gp per charge, caster level 10', (id, name, value) => {
+    const rows = seedLines.filter((line) => line.includes(`VALUES (${id}, '${name}', 'magic', `));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain(`'magic', ${value}, 'wand', 0.0625, 10);`);
+  });
+
+  it('never stores a full-wand price for the repriced rows', () => {
+    REPRICED_WANDS.forEach(([, , value]) => expect(value).toBeLessThan(1000));
   });
 
   it.each(REMOVED_WANDS)('seed no longer contains item %i (%s)', (id, name) => {
