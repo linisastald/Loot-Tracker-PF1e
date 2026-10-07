@@ -192,7 +192,7 @@ describe('userController', () => {
       expect(bcrypt.hash).toHaveBeenCalledWith('NewPass456', 10);
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE users SET password'),
-        ['$2b$10$newhashedpassword', 1]
+        ['$2b$10$newhashedpassword', expect.any(Date), 1]
       );
       expect(res.success).toHaveBeenCalledWith(null, 'Password changed successfully');
     });
@@ -214,7 +214,15 @@ describe('userController', () => {
       await userController.changePassword(req, res);
 
       const updateSql = dbUtils.executeQuery.mock.calls[1][0];
-      expect(updateSql).toContain('password_changed_at = NOW()');
+      // Opus review (L-1): stamped from the APPLICATION clock (the one that signs
+      // the JWT iat), whole seconds, so DB clock skew can never reject the cookie
+      // issued by the same request.
+      expect(updateSql).not.toContain('NOW()');
+      expect(updateSql).toContain('password_changed_at = $2');
+      const stamp = dbUtils.executeQuery.mock.calls[1][1][1];
+      expect(stamp).toBeInstanceOf(Date);
+      expect(stamp.getMilliseconds()).toBe(0);
+      expect(Math.abs(Date.now() - stamp.getTime())).toBeLessThan(5000);
       expect(jwt.sign).toHaveBeenCalledWith(
         { id: mockUser.id, username: mockUser.username, role: mockUser.role },
         'test-secret',

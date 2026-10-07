@@ -428,7 +428,7 @@ describe('authController hardening', () => {
       expect(sql).toContain('expires_at > NOW()');
       expect(sql).toContain('RETURNING user_id');
       expect(params).toEqual([sha256('rawtoken')]);
-      expect(client.query.mock.calls[1][1]).toEqual(['newhash', 1]);
+      expect(client.query.mock.calls[1][1]).toEqual(['newhash', expect.any(Date), 1]);
       expect(res.success).toHaveBeenCalled();
     });
 

@@ -4,7 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { hasDmRights } = require('../utils/roleUtils');
-const { issueAuthCookie } = require('../utils/authSession');
+const { issueAuthCookie, passwordChangeTimestamp } = require('../utils/authSession');
 const { assertPasswordPolicy, hashPassword } = require('../utils/passwordPolicy');
 const campaignContext = require('../utils/campaignContext');
 const ValidationService = require('../services/validationService');
@@ -123,8 +123,8 @@ const changePassword = async (req, res) => {
     // Hash and update the new password
     const hashedPassword = await hashPassword(newPassword);
     await dbUtils.executeQuery(
-        'UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2',
-        [hashedPassword, userId]
+        'UPDATE users SET password = $1, password_changed_at = $2 WHERE id = $3',
+        [hashedPassword, passwordChangeTimestamp(), userId]
     );
 
     // Every other session of this user ends with the change (see verifyToken);

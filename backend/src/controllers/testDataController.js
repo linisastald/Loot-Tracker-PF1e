@@ -5,6 +5,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const {hashPassword} = require('../utils/passwordPolicy');
+const {passwordChangeTimestamp} = require('../utils/authSession');
 const fixtures = require('../utils/testDataFixtures');
 
 /** Host of the one deployment where test data may be generated. */
@@ -49,8 +50,8 @@ const seedUsers = async (client, passwordHash, campaignId) => {
     // Accounts from an earlier run keep their old password otherwise, and the
     // password returned to the caller would not work
     await client.query(
-        'UPDATE users SET password = $1, password_changed_at = NOW() WHERE username = ANY($2)',
-        [passwordHash, fixtures.TEST_USERNAMES]
+        'UPDATE users SET password = $1, password_changed_at = $2 WHERE username = ANY($3)',
+        [passwordHash, passwordChangeTimestamp(), fixtures.TEST_USERNAMES]
     );
 
     const users = await client.query(

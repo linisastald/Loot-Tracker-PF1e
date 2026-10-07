@@ -352,8 +352,8 @@ describe('testDataController.generateTestData', () => {
 
       const { password } = res.success.mock.calls[0][0].testCredentials;
       const [update] = callsMatching(client, 'UPDATE users SET password');
-      expect(String(update[0])).toContain('password_changed_at = NOW()');
-      expect(update[1]).toEqual([`hashed:${password}`, USERNAMES]);
+      expect(String(update[0])).toContain('password_changed_at = $2');
+      expect(update[1]).toEqual([`hashed:${password}`, expect.any(Date), USERNAMES]);
     });
 
     it('never writes the password (or its hash) to the logs', async () => {

@@ -46,4 +46,14 @@ const isTokenRevokedByPasswordChange = (decoded, passwordChangedAt) => {
     return decoded.iat < changedAtSeconds;
 };
 
-module.exports = {AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange};
+/**
+ * Timestamp to store in users.password_changed_at. It comes from the
+ * APPLICATION clock (the clock that stamps the JWT `iat`), truncated to whole
+ * seconds, never from the database's NOW(): with the database host's clock
+ * ahead of the app's, NOW() would make the cookie issued by the very request
+ * that changed the password look older than the change and reject it.
+ * @returns {Date}
+ */
+const passwordChangeTimestamp = () => new Date(Math.floor(Date.now() / 1000) * 1000);
+
+module.exports = {AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange, passwordChangeTimestamp};

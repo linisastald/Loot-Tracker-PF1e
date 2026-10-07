@@ -13,7 +13,7 @@ const { CODE_PATTERN, CODE_FORMAT_MESSAGE } = require('../utils/inviteCode');
 const { AUTH } = require('../config/constants');
 const { assertPasswordPolicy, hashPassword } = require('../utils/passwordPolicy');
 const ValidationService = require('../services/validationService');
-const { AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange } = require('../utils/authSession');
+const { AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange, passwordChangeTimestamp } = require('../utils/authSession');
 require('dotenv').config();
 
 /** Valid values for the registration_mode setting. */
@@ -174,7 +174,8 @@ const registerUser = async (req, res) => {
 
     let invite = null;
     if (inviteCode) {
-        if (!CODE_PATTERN.test(inviteCode.trim().toUpperCase())) {
+        const normalizedCode = inviteCode.trim().toUpperCase();
+        if (!CODE_PATTERN.test(normalizedCode)) {
             throw controllerFactory.createValidationError(CODE_FORMAT_MESSAGE);
         }
         // CROSS-CAMPAIGN LOOKUP REQUIRED: /auth/register is unauthenticated,
@@ -182,7 +183,7 @@ const registerUser = async (req, res) => {
         // campaign-2 invite would be invisible here. This is the one place
         // 'all' mode is required on a request path: the code itself is the
         // credential, and it determines which campaign membership is granted.
-        invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(inviteCode));
+        invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(normalizedCode));
 
         assertRedeemable(invite);
     }
@@ -227,32 +228,33 @@ const registerUser = async (req, res) => {
     let user;
     try {
         user = await campaignContext.runWithCampaign('all', () => dbUtils.executeTransaction(async (client) => {
-            // Role clamp (security): users.role and the membership role are only
-            // ever 'DM' or 'Player'. 'DM' is honored exclusively for the very
-            // first account on a fresh install (the users table is completely
-            // empty, the same condition /auth/check-dm reports). Any existing
-            // row blocks it, so deleting or demoting the last DM never reopens
-            // DM self-registration. Invites never carry a role.
+            // First-run bootstrap (security + usability): the very first account
+            // on a fresh install (the users table is completely empty, the same
+            // condition /auth/check-dm reports) is ALWAYS created as DM and
+            // superadmin, whatever role the form sent, so a fresh install has
+            // someone who can reach global settings and create campaigns. Any
+            // existing row blocks it, so deleting or demoting the last DM never
+            // reopens DM self-registration. Every later account is a Player:
+            // users.role and the membership role are only ever 'DM' or
+            // 'Player', invites never carry a role, and a requested 'DM' is
+            // clamped. (A proper first-run setup wizard is planned.)
             //
             // The check runs INSIDE the transaction, behind a transaction-scoped
             // advisory lock, so two concurrent first registrations cannot both
-            // see an empty table and both become DM.
-            let userRole = 'Player';
-            if (requestedRole === 'DM') {
-                await client.query('SELECT pg_advisory_xact_lock($1)', [FIRST_DM_BOOTSTRAP_LOCK_KEY]);
-                const anyUser = await client.query('SELECT 1 FROM users LIMIT 1');
-                if (anyUser.rows.length === 0) {
-                    userRole = 'DM';
-                } else {
-                    logger.warn(`Registration for '${username}' requested DM role but accounts already exist; clamping to Player`);
-                }
-            } else if (requestedRole && requestedRole !== 'Player') {
+            // see an empty table and both become DM/superadmin.
+            await client.query('SELECT pg_advisory_xact_lock($1)', [FIRST_DM_BOOTSTRAP_LOCK_KEY]);
+            const anyUser = await client.query('SELECT 1 FROM users LIMIT 1');
+            const isFirstAccount = anyUser.rows.length === 0;
+            const userRole = isFirstAccount ? 'DM' : 'Player';
+            if (!isFirstAccount && requestedRole === 'DM') {
+                logger.warn(`Registration for '${username}' requested DM role but accounts already exist; clamping to Player`);
+            } else if (!isFirstAccount && requestedRole && requestedRole !== 'Player') {
                 logger.warn(`Registration for '${username}' requested invalid role '${requestedRole}'; clamping to Player`);
             }
 
             const result = await client.query(
-                'INSERT INTO users (username, password, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, joined, email',
-                [username, hashedPassword, userRole, email]
+                'INSERT INTO users (username, password, role, email, is_superadmin) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, role, joined, email',
+                [username, hashedPassword, userRole, email, isFirstAccount]
             );
             const createdUser = result.rows[0];
 
@@ -631,8 +633,8 @@ const resetPassword = async (req, res) => {
         }
 
         const updated = await client.query(
-            'UPDATE users SET password = $1, password_changed_at = NOW(), login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
-            [hashedPassword, consumed.rows[0].user_id]
+            'UPDATE users SET password = $1, password_changed_at = $2, login_attempts = 0, locked_until = NULL WHERE id = $3 RETURNING username',
+            [hashedPassword, passwordChangeTimestamp(), consumed.rows[0].user_id]
         );
         return updated.rows[0]?.username;
     });

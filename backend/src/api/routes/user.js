@@ -7,6 +7,7 @@ const settingsController = require('../../controllers/settingsController');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 const rateLimit = require('express-rate-limit');
+const { body } = require('express-validator');
 const logger = require('../../utils/logger');
 
 // Change-password and change-email both ask for the current password, so a
@@ -45,6 +46,10 @@ router.put('/update-any-character', verifyToken, checkRole(['DM']), userControll
 // Moved here from the CSRF-exempt /api/auth mount (Phase 5b): state-changing
 // superadmin action, so it needs CSRF protection. checkRole gates the route;
 // the controller additionally enforces superadmin-only.
-router.post('/generate-manual-reset-link', verifyToken, checkRole(['DM']), authController.generateManualResetLink);
+// The username is normalised exactly like registration/login/forgot-password
+// (trim + HTML-escape): accounts are stored in the escaped form, so a raw name
+// such as O'Brien would never match. Non-strings are left for the controller.
+const normalizeUsername = body('username').if(body('username').isString()).trim().escape();
+router.post('/generate-manual-reset-link', verifyToken, checkRole(['DM']), normalizeUsername, authController.generateManualResetLink);
 
 module.exports = router;

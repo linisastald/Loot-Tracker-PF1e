@@ -89,6 +89,22 @@ describe('user routes', () => {
       expect(res.body.body).toEqual({ username: 'player1' });
     });
 
+    it('trims and HTML-escapes the username like registration and login do (accounts are stored escaped)', async () => {
+      const res = await request(app)
+        .post('/api/user/generate-manual-reset-link')
+        .send({ username: "  O'Brien<x>  " });
+
+      expect(res.body.body.username).toBe('O&#x27;Brien&lt;x&gt;');
+    });
+
+    it('leaves a non-string username alone so the controller can reject it', async () => {
+      const res = await request(app)
+        .post('/api/user/generate-manual-reset-link')
+        .send({ username: { $ne: 'x' } });
+
+      expect(res.body.body.username).toEqual({ $ne: 'x' });
+    });
+
     it('is registered behind a checkRole(DM) gate', () => {
       // The route table was built at require time; checkRole must have been
       // used to construct the route's middleware (superadmin enforcement is

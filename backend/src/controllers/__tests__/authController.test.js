@@ -405,9 +405,12 @@ describe('authController', () => {
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 1, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                      // advisory lock
+            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })   // an account already exists
+            .mockResolvedValueOnce({
+              rows: [{ id: 1, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            }),
           release: jest.fn(),
         };
         return await callback(txClient);
@@ -417,10 +420,11 @@ describe('authController', () => {
 
       expect(bcrypt.hash).toHaveBeenCalled();
 
-      // DECIDED: general registration grants no membership — only the user
-      // INSERT runs, no user_campaign insert
-      expect(txClient.query).toHaveBeenCalledTimes(1);
-      expect(txClient.query.mock.calls[0][0]).toContain('INSERT INTO users');
+      // DECIDED: general registration grants no membership — only the lock,
+      // the empty-table check and the user INSERT run, no user_campaign insert
+      expect(txClient.query).toHaveBeenCalledTimes(3);
+      expect(txClient.query.mock.calls[2][0]).toContain('INSERT INTO users');
+      expect(txClient.query.mock.calls[2][1][4]).toBe(false); // is_superadmin
 
       expect(res.cookie).toHaveBeenCalledWith(
         'authToken',
@@ -475,6 +479,9 @@ describe('authController', () => {
       const userInsertCall = txClient.query.mock.calls[2];
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('DM');
+      // Opus review (M-1): the first account is also the superadmin, in the same INSERT
+      expect(userInsertCall[0]).toContain('is_superadmin');
+      expect(userInsertCall[1][4]).toBe(true);
 
       // SPECIAL CASE: bootstrap without invite grants campaign-1 DM
       // membership so a fresh single-campaign install bootstraps usable
@@ -521,6 +528,7 @@ describe('authController', () => {
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('Player');
 
+      expect(userInsertCall[1][4]).toBe(false); // never superadmin once accounts exist
       // No invite, not bootstrap: lock + DM check + user insert only
       expect(txClient.query).toHaveBeenCalledTimes(3);
 
@@ -532,7 +540,7 @@ describe('authController', () => {
       );
     });
 
-    it('should clamp an arbitrary body role to Player without checking for a DM', async () => {
+    it('should clamp an arbitrary body role to Player when accounts already exist', async () => {
       const req = createMockReq({ body: { ...validBody, role: 'Superadmin' } });
       const res = createMockRes();
 
@@ -544,9 +552,12 @@ describe('authController', () => {
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 9, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })
+            .mockResolvedValueOnce({
+              rows: [{ id: 9, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            }),
           release: jest.fn(),
         };
         return await callback(txClient);
@@ -554,16 +565,51 @@ describe('authController', () => {
 
       await authController.registerUser(req, res);
 
-      // Non-'DM' values never trigger the DM-exists lookup
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
 
-      // ... nor the advisory lock — the first tx query is the user INSERT
-      const userInsertCall = txClient.query.mock.calls[0];
+      const userInsertCall = txClient.query.mock.calls[2];
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('Player');
+      expect(userInsertCall[1][4]).toBe(false);
 
       // No invite, not bootstrap: no membership insert
-      expect(txClient.query).toHaveBeenCalledTimes(1);
+      expect(txClient.query).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([
+      ['Player', 'the default Player role'],
+      [undefined, 'no role at all'],
+      ['Superadmin', 'an invalid role'],
+    ])('makes the FIRST account on an empty install DM + superadmin + campaign-1 DM even when the form sent %s (%s)', async (sentRole) => {
+      const req = createMockReq({ body: { ...validBody, ...(sentRole ? { role: sentRole } : {}) } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: 'open' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      let txClient;
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        txClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })   // advisory lock
+            .mockResolvedValueOnce({ rows: [] })   // users table is empty
+            .mockResolvedValueOnce({ rows: [{ id: 1, username: 'newplayer', role: 'DM', email: 'new@example.com' }] })
+            .mockResolvedValueOnce({ rows: [] }),
+          release: jest.fn(),
+        };
+        return await callback(txClient);
+      });
+
+      await authController.registerUser(req, res);
+
+      const insert = txClient.query.mock.calls[2];
+      expect(insert[1][2]).toBe('DM');
+      expect(insert[1][4]).toBe(true);
+      const membership = txClient.query.mock.calls[3];
+      expect(membership[0]).toContain('INSERT INTO user_campaign');
+      expect(membership[0]).toContain("'DM'");
     });
 
     it('should reject registration with duplicate username', async () => {
@@ -737,6 +783,8 @@ describe('authController', () => {
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                  // advisory lock
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })        // an account already exists
             .mockResolvedValueOnce({
               rows: [{ id: 5, username: 'newuser', role: 'Player', email: 'new@test.com' }],
             })
@@ -762,13 +810,13 @@ describe('authController', () => {
       expect(allModeCalls.length).toBeGreaterThanOrEqual(2);
 
       // Membership is granted in the INVITE's campaign (2), role Player
-      const membershipCall = txClient.query.mock.calls[1];
+      const membershipCall = txClient.query.mock.calls[3];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
       expect(membershipCall[1]).toEqual([5, 2]);
       expect(membershipCall[0]).toContain("'Player'");
 
       // Invite is marked used by id, guarded by is_used = FALSE (race safety)
-      const inviteCall = txClient.query.mock.calls[2];
+      const inviteCall = txClient.query.mock.calls[4];
       expect(inviteCall[0]).toContain('UPDATE invites');
       expect(inviteCall[0]).toContain('is_used = FALSE');
       expect(inviteCall[1]).toEqual([5, 42]);
@@ -779,6 +827,22 @@ describe('authController', () => {
         }),
         'User registered successfully'
       );
+    });
+
+    it('looks the invite up by the trimmed, upper-cased code it validated (lower-case input)', async () => {
+      const req = createMockReq({
+        body: { username: 'newuser', password: 'StrongPass1!', email: 'new@test.com', inviteCode: ' validc0d ' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: 'invite-only' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] }); // stop after the lookup: username taken
+      Invite.findByCode.mockResolvedValue({ id: 42, is_used: false, expires_at: null, campaign_id: 2 });
+
+      await authController.registerUser(req, res);
+
+      expect(Invite.findByCode).toHaveBeenCalledWith('VALIDC0D');
     });
 
     it('should redeem a provided invite even in open mode (invited user lands in their campaign)', async () => {
@@ -804,6 +868,8 @@ describe('authController', () => {
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                  // advisory lock
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })        // an account already exists
             .mockResolvedValueOnce({
               rows: [{ id: 11, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
             })
@@ -816,12 +882,12 @@ describe('authController', () => {
 
       await authController.registerUser(req, res);
 
-      const membershipCall = txClient.query.mock.calls[1];
+      const membershipCall = txClient.query.mock.calls[3];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
       expect(membershipCall[1]).toEqual([11, 3]);
       expect(membershipCall[0]).toContain("'Player'");
 
-      const inviteCall = txClient.query.mock.calls[2];
+      const inviteCall = txClient.query.mock.calls[4];
       expect(inviteCall[0]).toContain('UPDATE invites');
       expect(inviteCall[1]).toEqual([11, 7]);
 
@@ -923,6 +989,8 @@ describe('authController', () => {
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         const txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                  // advisory lock
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })        // an account already exists
             .mockResolvedValueOnce({
               rows: [{ id: 14, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
             })
@@ -1435,9 +1503,11 @@ describe('authController', () => {
 
       expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
       expect(mockClient.query).toHaveBeenCalledWith(
-        'UPDATE users SET password = $1, password_changed_at = NOW(), login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
-        ['newhashedpassword', 1]
+        'UPDATE users SET password = $1, password_changed_at = $2, login_attempts = 0, locked_until = NULL WHERE id = $3 RETURNING username',
+        ['newhashedpassword', expect.any(Date), 1]
       );
+      const stamp = mockClient.query.mock.calls[1][1][1];
+      expect(stamp.getMilliseconds()).toBe(0); // app clock, whole seconds (L-1)
       expect(res.success).toHaveBeenCalled();
     });
 
