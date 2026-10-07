@@ -10,7 +10,7 @@ vi.mock('../../../services/crewService', () => ({
     getAllCrew: vi.fn().mockResolvedValue({
       data: {
         crew: [
-          { id: 1, name: 'Barnabas Bligh', race: 'Human', age: 34, location_id: 1, location_type: 'ship', ship_position: 'Crew' },
+          { id: 1, name: 'Barnabas Bligh', race: 'Human', age: 34, location_id: 1, location_type: 'ship', ship_position: 'Crew', hire_date: '4721-03-02' },
           { id: 2, name: 'Crimson Cogward', race: 'Human', age: 29, location_id: 1, location_type: 'ship', ship_position: 'Rigger' },
           // Outpost id 1 deliberately shares its id with ship id 1
           { id: 4, name: 'Dockhand Dune', race: 'Human', age: 40, location_id: 1, location_type: 'outpost', ship_position: null },
@@ -378,5 +378,60 @@ describe('CrewManagement for a DM', () => {
     renderCrewManagement();
     await screen.findByText('Barnabas Bligh');
     expect(screen.getAllByTitle('Delete')).toHaveLength(3);
+  });
+});
+
+describe('CrewManagement hire date', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.isDM = true;
+  });
+
+  it('shows the stored hire date in a Hired column, and a dash when there is none', async () => {
+    renderCrewManagement();
+    await screen.findByText('Barnabas Bligh');
+    expect(screen.getByRole('columnheader', { name: 'Hired' })).toBeInTheDocument();
+    const withDate = screen.getByText('Barnabas Bligh').closest('tr') as HTMLElement;
+    expect(within(withDate).getByText('4721-03-02')).toBeInTheDocument();
+    const without = screen.getByText('Crimson Cogward').closest('tr') as HTMLElement;
+    expect(within(without).queryByText(/\d{4}-\d{2}-\d{2}/)).not.toBeInTheDocument();
+  });
+
+  it('prefills the edit dialog with the stored hire date and sends it back as a plain date string', async () => {
+    const user = userEvent.setup();
+    renderCrewManagement();
+    const row = (await screen.findByText('Barnabas Bligh')).closest('tr') as HTMLElement;
+    await user.click(within(row).getByTitle('Edit'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Hire Date')).toHaveValue('4721-03-02');
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(crewService.updateCrew).toHaveBeenCalled());
+    expect(crewService.updateCrew).toHaveBeenCalledWith(1, expect.objectContaining({ hire_date: '4721-03-02' }));
+  });
+
+  it('leaves the field blank for a crew member with no hire date and sends null, not today', async () => {
+    const user = userEvent.setup();
+    renderCrewManagement();
+    const row = (await screen.findByText('Crimson Cogward')).closest('tr') as HTMLElement;
+    await user.click(within(row).getByTitle('Edit'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Hire Date')).toHaveValue('');
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+    await waitFor(() => expect(crewService.updateCrew).toHaveBeenCalled());
+    expect(crewService.updateCrew).toHaveBeenCalledWith(2, expect.objectContaining({ hire_date: null }));
+  });
+
+  it('defaults a new crew member to the current Golarion date', async () => {
+    const user = userEvent.setup();
+    renderCrewManagement();
+    await user.click(await screen.findByRole('button', { name: /Add Crew Member/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Hire Date')).toHaveValue('4722-01-15');
+    await user.type(within(dialog).getByLabelText(/^Name/), 'Newbie Nate');
+    await user.click(within(dialog).getByLabelText(/Location/));
+    await user.click(await screen.findByRole('option', { name: /Man's Promise/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(crewService.createCrew).toHaveBeenCalled());
+    expect(crewService.createCrew).toHaveBeenCalledWith(expect.objectContaining({ hire_date: '4722-01-15' }));
   });
 });

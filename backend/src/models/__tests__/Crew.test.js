@@ -108,7 +108,7 @@ describe('Crew model', () => {
   describe('update', () => {
     const existingRow = {
       id: 1, name: 'Bosun', race: 'Human', age: 30, description: 'Gruff',
-      location_type: 'ship', location_id: 4, ship_position: 'bosun',
+      location_type: 'ship', location_id: 4, ship_position: 'bosun', hire_date: '4722-01-15',
     };
 
     it('should clear ship_position when moving to outpost', async () => {
@@ -134,7 +134,7 @@ describe('Crew model', () => {
       await Crew.update(1, { name: 'Renamed' });
 
       const values = dbUtils.executeQuery.mock.calls[1][1];
-      expect(values).toEqual(['Renamed', 'Human', 30, 'Gruff', 'ship', 4, 'bosun', 1]);
+      expect(values).toEqual(['Renamed', 'Human', 30, 'Gruff', 'ship', 4, 'bosun', '4722-01-15', 1]);
     });
 
     it('turns an explicitly blank optional field into NULL', async () => {

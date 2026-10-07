@@ -19,7 +19,7 @@ import crewService from '../../services/crewService';
 import shipService from '../../services/shipService';
 import outpostService from '../../services/outpostService';
 import { STANDARD_RACES, generateRandomName, generateRandomRace, generateRandomAge } from '../../data/raceData';
-import { getTodayInInputFormat, golarionToInputFormat, inputFormatToGolarion } from '../../utils/golarionDate';
+import { getTodayInInputFormat } from '../../utils/golarionDate';
 import { getErrorMessage } from '../../utils/apiErrors';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useIsDM } from '../../contexts/CampaignContext';
@@ -39,7 +39,7 @@ interface CrewMember {
   location_id: number;
   location_type: 'ship' | 'outpost';
   ship_position?: string;
-  hire_date?: any;
+  hire_date?: string | null;
   death_date?: string;
   departure_date?: string;
   last_known_location?: string;
@@ -317,11 +317,8 @@ const CrewManagement: React.FC = () => {
       description: crewMember.description || '',
       location_id: locationKey(crewMember.location_type, crewMember.location_id),
       ship_position: crewMember.ship_position || '',
-      hire_date: crewMember.hire_date ? golarionToInputFormat(
-        crewMember.hire_date.year || new Date(crewMember.hire_date).getFullYear(),
-        crewMember.hire_date.month || new Date(crewMember.hire_date).getMonth() + 1,
-        crewMember.hire_date.day || new Date(crewMember.hire_date).getDate()
-      ) : currentGolarionDate
+      // Stored hire dates come back as plain YYYY-MM-DD; a crew member with none stays blank
+      hire_date: formatStoredDate(crewMember.hire_date ?? undefined)
     });
     setSelectedCrew(crewMember);
     setCrewDialogOpen(true);
@@ -356,7 +353,7 @@ const CrewManagement: React.FC = () => {
       location_type: selectedLocation.type,
       location_id: selectedLocation.id,
       ship_position: selectedLocation.type === 'ship' ? editingCrew.ship_position : null,
-      hire_date: inputFormatToGolarion(editingCrew.hire_date)
+      hire_date: editingCrew.hire_date || null
     };
 
     await runAction(
@@ -419,7 +416,7 @@ const CrewManagement: React.FC = () => {
     const baseCrewRoll = Math.floor(Math.random() * 4) + 1; // 1d4
     const numberOfCrew = baseCrewRoll + 2; // +2 for final result of 3-6
 
-    const hireDate = inputFormatToGolarion(currentGolarionDate);
+    const hireDate = currentGolarionDate || null;
     const description = `${method.description} via ${method.label} check`;
 
     // One request per recruit; remember how many landed so a mid-way failure is reportable
@@ -503,7 +500,7 @@ const CrewManagement: React.FC = () => {
     return (
       <Container maxWidth="lg">
         <Paper sx={{ p: { xs: 1.5, md: 3 }, mb: 3 }}>
-          <TableSkeleton rows={6} columns={5} />
+          <TableSkeleton rows={6} columns={6} />
         </Paper>
       </Container>
     );
@@ -553,6 +550,7 @@ const CrewManagement: React.FC = () => {
                   <TableCell>Race</TableCell>
                   <TableCell>Location</TableCell>
                   <TableCell>Position</TableCell>
+                  <TableCell>Hired</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -600,6 +598,11 @@ const CrewManagement: React.FC = () => {
                         <Typography sx={{
                           color: "text.secondary"
                         }}>-</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {crewMember.hire_date ? formatStoredDate(crewMember.hire_date) : (
+                        <Typography sx={{ color: "text.secondary" }}>-</Typography>
                       )}
                     </TableCell>
                     <TableCell>
