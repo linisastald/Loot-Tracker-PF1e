@@ -312,6 +312,35 @@ describe('ItemManagementDialog', () => {
     });
   });
 
+  // A generated spellbook is linked to the catalog 'Spellbook' (15 gp, blank book) only
+  // to mark its subtype; its own value (book + spells) and no Spellcraft DC must survive
+  // opening and saving the dialog.
+  it('does not overwrite a linked spellbook value or invent a spellcraft DC', async () => {
+    (lootService.getItemsByIds as any).mockResolvedValueOnce({
+      data: {
+        items: [{ id: 6472, name: 'Spellbook', type: 'gear', subtype: 'spellbook', value: 15, weight: 3, casterlevel: null }],
+        count: 1,
+      },
+    });
+
+    render(
+      <ItemManagementDialog
+        open
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        item={{ id: 9, name: 'Spellbook (Wizard, CL 9)', type: 'magic', itemid: 6472, modids: [], value: 1200 }}
+      />
+    );
+
+    await waitFor(() => expect(lootService.getItemsByIds).toHaveBeenCalledWith([6472]));
+    await waitFor(() => expect((screen.getByLabelText('Item') as HTMLInputElement).value).toBe('Spellbook'));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(lootService.calculateValue).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Value') as HTMLInputElement).value).toBe('1200');
+    expect((screen.getByLabelText('Spellcraft DC') as HTMLInputElement).value).toBe('');
+  });
+
   it('does not auto-calculate value when no base item is linked', async () => {
     render(
       <ItemManagementDialog

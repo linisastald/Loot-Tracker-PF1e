@@ -62,6 +62,11 @@ const OptionSelect = ({label, field, item, onChange, options}) => (
 
 const asOptions = (values) => values.map((value) => ({value, label: value}));
 
+// A spellbook loot row is linked to the catalog 'Spellbook' (a blank 15 gp book) only to
+// mark its subtype. Its own value (book plus spells) and its lack of a Spellcraft DC must
+// not be recomputed from that catalog row.
+const isSpellbookLink = (catalogItem) => catalogItem?.subtype === 'spellbook';
+
 const ItemManagementDialog = ({
                                   open,
                                   onClose,
@@ -145,7 +150,7 @@ const ItemManagementDialog = ({
     // long as the item and mods are still the ones the dialog was opened with,
     // so simply opening the dialog and editing notes cannot overwrite it.
     useEffect(() => {
-        if (!open || !linkedCatalogItem) return;
+        if (!open || !linkedCatalogItem || isSpellbookLink(linkedCatalogItem)) return;
         const selectedModIds = Array.isArray(updatedItem?.modids) ? updatedItem.modids : [];
         const identityKey = (itemId, modIds) => `${itemId}|${[...(modIds || [])].sort((a, b) => a - b).join(',')}`;
         const unchanged = identityKey(linkedCatalogItem.id, selectedModIds) === identityKey(item?.itemid, item?.modids);
@@ -222,7 +227,7 @@ const ItemManagementDialog = ({
     // linked item persists until the item/mods/etc. change or the dialog is
     // reopened.
     useEffect(() => {
-        if (!open || !linkedCatalogItem) return;
+        if (!open || !linkedCatalogItem || isSpellbookLink(linkedCatalogItem)) return;
         let cancelled = false;
         const recompute = async () => {
             setCalculatingValue(true);
