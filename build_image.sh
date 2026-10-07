@@ -356,7 +356,10 @@ stop_spinner() {
 if [ "$PULL_ONLY" = true ]; then
     echo "Pulling latest from remote ($GIT_BRANCH)..."
     # --ff-only so the pull can never open an interactive merge-commit editor.
-    git pull --ff-only origin "$GIT_BRANCH"
+    if ! git pull --ff-only origin "$GIT_BRANCH"; then
+        echo "ERROR: git pull --ff-only origin $GIT_BRANCH failed (diverged branch or no network?); nothing was updated" >&2
+        exit 1
+    fi
     echo "Pull complete"
     exit 0
 fi
