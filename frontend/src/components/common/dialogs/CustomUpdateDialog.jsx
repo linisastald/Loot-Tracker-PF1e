@@ -124,18 +124,6 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             </Select>
                         </FormControl>
                     </Grid>
-                    {updatedEntry.charges !== null && updatedEntry.charges !== undefined && updatedEntry.charges !== '' && (
-                        <Grid size={12}>
-                            <TextField
-                                label="Charges"
-                                type="number"
-                                value={updatedEntry.charges}
-                                disabled
-                                fullWidth
-                                helperText="Wand charges are set when the loot is entered and change only through use. Ask your DM to adjust them."
-                            />
-                        </Grid>
-                    )}
                     <Grid size={12}>
                         <TextField
                             label="Notes"

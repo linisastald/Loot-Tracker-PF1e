@@ -72,18 +72,3 @@ describe('CustomUpdateDialog value handling (F-1028, F-1029, F-1030)', () => {
     }
   });
 });
-
-describe('CustomUpdateDialog wand charges (owner decision 2026-10-06)', () => {
-  it('shows charges read-only with an explanation for a wand', () => {
-    render(<CustomUpdateDialog {...baseProps} updatedEntry={{ id: 1, name: 'Wand of Magic Missile', charges: 12 }} />);
-    const field = screen.getByLabelText('Charges');
-    expect(field).toHaveValue(12);
-    expect(field).toBeDisabled();
-    expect(screen.getByText(/only through use/i)).toBeInTheDocument();
-  });
-
-  it('shows no charges field for items without charges', () => {
-    render(<CustomUpdateDialog {...baseProps} updatedEntry={{ id: 1, name: 'Ring', charges: null }} />);
-    expect(screen.queryByLabelText('Charges')).not.toBeInTheDocument();
-  });
-});
