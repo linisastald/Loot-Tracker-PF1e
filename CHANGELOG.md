@@ -8,12 +8,24 @@ All notable changes to this project are documented in this file.
 - **Every session task now carries its own options; nothing about a phase is hardcoded any more.** In DM Settings > Task Management each task can set who can draw it (skip late arrivals, skip early leavers, let the DM draw, require attendance at the last session, or always give it to one named character), how it rotates (stay with last session's holder, or never the same person two sessions running), a priority (normal, high, or first, which only sets the order tasks are dealt in), a character-count range (minimum and maximum), an active switch to park a task without deleting it, a description shown under the task on the Tasks page and in Discord, and an "Announce as" label. Any task with a label is named in the next session's Discord announcement ("Snack Master: Bob", "Recap by: Alice"), which replaces the single fixed Snack Master flag. Existing tasks keep the behaviour they had: pre-session tasks skip late arrivals, post-session tasks let the DM draw, and the snacks task announces "Snack Master".
 - **Session tasks can require attendance at the last session.** With that option on, the Tasks page only deals the task to characters marked "Was at last session", and reports it as not dealt if nobody selected was there. The stock Recap task gets the flag automatically. The Tasks page pre-fills who was at the last session from the previous task assignment (or from that session's RSVPs when there is no assignment yet), and the DM can adjust it per character before dealing.
 - **Leaving-early marker on the Tasks page.** When a task skips early leavers, each selected character gets an "Early" toggle, pre-filled from their RSVP, alongside the existing "Late" one.
+- **Crew hire date and more ship fields.** A crew member's hire date is stored (migration 074), and the ship form has inputs for captain, notes and flag.
+- **"Can't reach the server" screen.** When the backend stops answering, the app shows a notice and recovers by itself once it is back.
+- **Loot generator: choose the NPC gear source.** The NPC gear table is the default; PC wealth by level is the alternative.
+- **Item availability is labelled as a house rule** on the City Services result, with the rulebook rule beside it.
 
 ### Changed
 - **Every task is always dealt.** A task is only held back when its own conditions are not met: it is switched off, the number of characters is outside its range, or nobody selected is eligible. The Tasks page lists any task nobody could take. When there are more tasks than people, people double up; "Free Space" fills the remaining slots so everyone shows the same number, which means someone can hold more than one Free Space.
 - **Item-entry defaults now work, per campaign.** With "Default quantity" on, new rows on the loot entry page start with the configured quantity. With "Auto-split stacks" on, entering an item with quantity N saves N separate rows of 1 (up to 100).
 - **Session auto-cancel rules.** A session short of its minimum is cancelled only once the reminder is at least 12 hours old, or straight away when nobody is left to remind.
 - **Official holidays are read-only**; custom holidays belong to their campaign.
+- **Identify is rolled on the server.** The player enters their Spellcraft bonus and the server rolls; there is no take 10. Hard-refresh the browser after updating, because an old Identify page sends a roll the server rejects.
+- **Wand charges are set when the wand is entered** (1 to 50) and afterwards change only by use; any other edit is DM-only. A wand that reaches 0 charges moves to Trashed.
+- **Item types are weapon, armor, magic, gear, trade good and other.** Everything else is a subtype.
+- **DM-only actions:** deleting crew, outposts and ships; Balance on the gold page (Distribute stays open to players); Search History; any edit or status change of a sold item.
+- **The first account on an empty install is the DM and superadmin**, whatever role the form asked for.
+- **The server refuses to start in production with unsafe settings**: `JWT_SECRET` and `CSRF_SECRET` must be at least 32 characters, `DB_APP_USER` and `DB_APP_PASSWORD` must be set, and `ALLOWED_ORIGINS` must list real addresses (no `*`).
+- **Built frontend files are cached by browsers for a year.** Their names change with every build, and the page itself is never cached, so a new version still shows up straight away.
+- **Dev builds made with `--branch` carry and tag their dev version** (`vX.Y.Z-dev.N`), like dev builds from master.
 - **Item availability uses the full price**: enhancement and special-ability mods count, and a wand is priced as a new 50-charge wand.
 - **A successful appraisal returns the exact value.** Only failed appraisals are rounded.
 - **Loot generator values follow the rules more closely**: NPC gear uses the Core Rulebook NPC gear table, generated spellbooks are valued at their writing cost, magic weapons and armour stay inside the budget, and fractional-CR enemies are accepted.
@@ -25,6 +37,9 @@ All notable changes to this project are documented in this file.
 
 ### Security
 - **Discord broker calls are authenticated.** Backend and broker now share `DISCORD_BROKER_SECRET` (set the same value on both; with `NODE_ENV=production` an unset secret rejects broker traffic). `BROKER_ALLOW_UNAUTHENTICATED_CONTROL=true` on the broker allows a staged rollout.
+- **The broker only passes the shared secret to backends that registered with it**, and two backends without a `GROUP_NAME` no longer share one broker identity (the identity now includes the callback address).
+- **The Discord account-link menu lists only characters whose account has no Discord link**, from the campaign the channel belongs to, by name only.
+- **Gold entries are recorded against the signed-in user**, not a user id sent by the browser.
 - **Discord and global secrets are superadmin-only.** Campaign DMs can no longer change the bot token, and the settings endpoints no longer return token or key fragments.
 - **Campaign access is stricter.** A user with no campaign membership no longer falls back to another campaign; a query outside any campaign context returns nothing; city changes and the global settings endpoints are superadmin-only; DM identification needs DM rights; stored mod value formulas are no longer evaluated.
 - **Sessions end when a password changes** (migration 066), reset tokens are stored hashed and work once, every auth route is rate-limited, and registering as DM only works on an empty install.
@@ -37,6 +52,11 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - **An RSVP can no longer cancel a session through a database trigger**; cancellation only happens through the scheduled confirmation check.
+- **The Pending Sale buttons work again.** "Sell All Except", "Sell up to" and "Sell Selected" sent field names the server did not read, so the first could sell the items meant to be kept and the other two always failed.
+- **The active character follows the selected campaign** everywhere in the app, and updates when you change it.
+- **A DM is no longer bounced off DM pages when the campaign fails to load**; the page shows the error with a Retry button.
+- **Validation messages from the server are shown** instead of a generic failure.
+- **A long sale note no longer fails the sale**, splitting a stack can no longer race another edit, and a crew location is checked even when only half of it is changed.
 - **Discord sends are only recorded as sent when they succeed**, and failed ones are retried.
 - **Selling is atomic and exact.** No sale path can sell the same item twice, and the coin split no longer loses a silver.
 - **Gold entries, gold distribution, infamy and Harrow point spending are safe against double clicks and simultaneous requests.**
@@ -46,9 +66,9 @@ All notable changes to this project are documented in this file.
 - **Sessions page**: "Your Status" and the attendance list work, cards show their start time, and late/early RSVPs count as attending everywhere.
 - **Unidentified items show the right Spellcraft DC and names**, and the Character Ledger's "Value of Loot" is no longer always 0.
 - **Smaller fixes**: Discord "Unlink", the forgot-password success message, the split dialog, Character Management for campaign DMs, duplicate character names on the Tasks page, a campaign with no holidays can add its first, calendar dates no longer drift by a day, and concurrent "next day" clicks no longer lose an update.
-- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069). Two catalog wands no class can make (Dispel Good, Dispel Law) are removed where nothing references them, and eight wands that are 4th-level bard, paladin or ranger spells are repriced to 600 gp per charge at caster level 10 (migration 073).
+- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069). Two catalog wands no class can make (Dispel Good, Dispel Law) are removed where nothing references them, and eight wands that are 4th-level bard, paladin or ranger spells are repriced to 600 gp per charge at caster level 10 (migration 073). 105 named magic armour, shield and weapon rows now carry their book price, one duplicate mod is merged and 408 junk spell rows are removed (migration 075); ten more consumables are priced with their material components (migration 077); five items that existed twice with different capitalisation are merged (migration 078).
 - **Two official holidays corrected** (migration 073): First Crusader Day is on 6 Arodus, and 19 Calistril is Loyalty Day.
-- **Fresh installs get the same schema as production:** extended ship columns (migration 064), `mod.casterlevel` (migration 071) and `loot.cursed` (migration 072).
+- **Fresh installs get the same schema as production:** extended ship columns (migration 064), `mod.casterlevel` (migration 071), `loot.cursed` (migration 072) and `password_reset_tokens` (migration 076).
 
 ### Removed
 - **About 60 API endpoints that nothing called**, with their handlers, model methods and tests, including the legacy Discord session-message flow.
@@ -56,8 +76,8 @@ All notable changes to this project are documented in this file.
 - Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker compose file and deploy script, `update_containers.sh`), the archived migrations folder, and the old Python utility scripts.
 
 ### Notes
-- Includes database migrations 059 to 073, which run automatically on server start. None of 061 to 073 had been run against a real database when this was written.
-- Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), and check for users with no campaign membership, who lose access.
+- Includes database migrations 059 to 078, which run automatically on server start. None of 061 to 078 had been run against a real database when this was written.
+- Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), check the production settings listed under Changed (the server will not start without them), and check for users with no campaign membership, who lose access.
 
 ## [0.15.1] - 2026-09-11
 
