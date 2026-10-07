@@ -2874,7 +2874,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4098, 'Oil of Keen Edge', 'magic', 750, 'potion', 0, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4694, 'Potion of Resist Sonic', 'magic', 300, 'potion', 0, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3083, 'Inviolate Marker', 'magic', 10000, NULL, 5, 10);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7387, 'Wand of Dispel Good', 'magic', 420, 'wand', 0.0625, 9);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7329, 'Wand of Charm Animal', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3115, 'Ironbound Ring (Master''s)', 'magic', 8000, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3116, 'Ironbound Ring (Minion''s)', 'magic', 500, NULL, NULL, NULL);
@@ -4216,7 +4215,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7393, 'Wand of Divine Favor', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7394, 'Wand of Divine Power', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7395, 'Wand of Dominate Animal', 'magic', 225, 'wand', 0.0625, 5);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7396, 'Wand of Dominate Person', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5118, 'Ring of Wizardry II', 'magic', 40000, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4611, 'Portal Network', 'magic', NULL, 'artifact', 64000, 20);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4587, 'Polymorphic Pouch', 'magic', 5000, NULL, 1, 9);
@@ -4881,7 +4879,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7291, 'Wand of Alarm', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7292, 'Wand of Align Weapon', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7293, 'Wand of Alter Self', 'magic', 90, 'wand', 0.0625, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7294, 'Wand of Animal Growth', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7295, 'Wand of Animal Messenger', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7296, 'Wand of Animal Trance', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7297, 'Wand of Animate Dead', 'magic', 225, 'wand', 0.0625, 5);
@@ -4907,14 +4904,12 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7317, 'Wand of Blindness/Deafness', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7318, 'Wand of Blink', 'magic', 225, 'wand', 0.0625, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7319, 'Wand of Blur', 'magic', 90, 'wand', 0.0625, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7320, 'Wand of Break Enchantment', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7321, 'Wand of Bull''s Strength', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7322, 'Wand of Burning Hands', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7323, 'Wand of Call Lightning', 'magic', 225, 'wand', 0.0625, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7324, 'Wand of Calm Animals', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7337, 'Wand of Command Plants', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7338, 'Wand of Command Undead', 'magic', 90, 'wand', 0.0625, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7339, 'Wand of Commune with Nature', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7340, 'Wand of Comprehend Languages', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7342, 'Wand of Consecrate', 'magic', 115, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7343, 'Wand of Contagion', 'magic', 225, 'wand', 0.0625, 5);
@@ -4960,8 +4955,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7382, 'Wand of Discern Lies', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7383, 'Wand of Disguise Self', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7384, 'Wand of Dismissal', 'magic', 420, 'wand', 0.0625, 7);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7385, 'Wand of Dispel Chaos', 'magic', 420, 'wand', 0.0625, 7);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7386, 'Wand of Dispel Evil', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7389, 'Wand of Dispel Magic', 'magic', 225, 'wand', 0.0625, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7390, 'Wand of Displacement', 'magic', 225, 'wand', 0.0625, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7405, 'Wand of Entropic Shield', 'magic', 15, 'wand', 0.0625, 1);
@@ -4989,7 +4982,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7428, 'Wand of Gentle Repose', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7429, 'Wand of Ghost Sound', 'magic', 7.5, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7430, 'Wand of Ghoul Touch', 'magic', 90, 'wand', 0.0625, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7388, 'Wand of Dispel Law', 'magic', 420, 'wand', 0.0625, 9);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7432, 'Wand of Glibness', 'magic', 315, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7433, 'Wand of Glitterdust', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7435, 'Wand of Glyph of Warding', 'magic', 425, 'wand', 0.0625, 5);
@@ -5014,7 +5006,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7452, 'Wand of Hide from Undead', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7453, 'Wand of Hideous Laughter', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7454, 'Wand of Hold Animal', 'magic', 90, 'wand', 0.0625, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7455, 'Wand of Hold Monster', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7456, 'Wand of Hold Person', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5755, 'Scroll of Lesser Geas', 'magic', NULL, 'scroll', 0.01, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7457, 'Wand of Hold Portal', 'magic', 15, 'wand', 0.0625, 1);
@@ -5038,7 +5029,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7475, 'Wand of Keen Edge', 'magic', 225, 'wand', 0.0625, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7476, 'Wand of Knock', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7477, 'Wand of Know Direction', 'magic', 7.5, 'wand', 0.0625, 1);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7478, 'Wand of Legend Lore', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7479, 'Wand of Lesser Confusion', 'magic', 15, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7482, 'Wand of Lesser Restoration', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7483, 'Wand of Levitate', 'magic', 90, 'wand', 0.0625, 3);

@@ -46,7 +46,8 @@ All notable changes to this project are documented in this file.
 - **Sessions page**: "Your Status" and the attendance list work, cards show their start time, and late/early RSVPs count as attending everywhere.
 - **Unidentified items show the right Spellcraft DC and names**, and the Character Ledger's "Value of Loot" is no longer always 0.
 - **Smaller fixes**: Discord "Unlink", the forgot-password success message, the split dialog, Character Management for campaign DMs, duplicate character names on the Tasks page, a campaign with no holidays can add its first, calendar dates no longer drift by a day, and concurrent "next day" clicks no longer lose an update.
-- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069).
+- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069). Ten catalog wands of 5th- and 6th-level spells, which the rules do not allow, are removed where nothing references them (migration 073).
+- **Two official holidays corrected** (migration 073): First Crusader Day is on 6 Arodus, and 19 Calistril is Loyalty Day.
 - **Fresh installs get the same schema as production:** extended ship columns (migration 064), `mod.casterlevel` (migration 071) and `loot.cursed` (migration 072).
 
 ### Removed
@@ -55,7 +56,7 @@ All notable changes to this project are documented in this file.
 - Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker app definition), the archived migrations folder, and ten stale utility scripts.
 
 ### Notes
-- Includes database migrations 059 to 072, which run automatically on server start. None of 061 to 072 had been run against a real database when this was written.
+- Includes database migrations 059 to 073, which run automatically on server start. None of 061 to 073 had been run against a real database when this was written.
 - Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), and check for users with no campaign membership, who lose access.
 
 ## [0.15.1] - 2026-09-11
