@@ -442,3 +442,44 @@ describe('SalesService', () => {
     });
   });
 });
+
+// Opus review (2026-10-06) M-8: gold.notes is VARCHAR(255); a sale of many or
+// long-named items used to overflow it and roll the whole sale back.
+describe('sale gold note fits gold.notes VARCHAR(255)', () => {
+  const GOLD_NOTES_MAX = 255;
+  const names = (count, length) => Array.from({ length: count }, (_, i) => `Item ${i + 1} ${'x'.repeat(length)}`);
+
+  it('lists every name when they all fit', () => {
+    expect(SalesService.buildSelectedSaleNote(['Gem', 'Ring'])).toBe('Sold 2 items: Gem, Ring');
+    expect(SalesService.buildSelectedSaleNote(['Gem'])).toBe('Sold 1 item: Gem');
+  });
+
+  it('truncates a long list with a "+k more" tail and stays within the column width', () => {
+    const note = SalesService.buildSelectedSaleNote(names(40, 30));
+    expect(note.length).toBeLessThanOrEqual(GOLD_NOTES_MAX);
+    expect(note).toMatch(/^Sold 40 items: Item 1 x+, /);
+    expect(note).toMatch(/ \.\.\. \(\+\d+ more\)$/);
+  });
+
+  it('survives a single name longer than the column', () => {
+    const note = SalesService.buildSelectedSaleNote(['A'.repeat(400), 'B']);
+    expect(note.length).toBeLessThanOrEqual(GOLD_NOTES_MAX);
+    expect(note).toContain('Sold 2 items');
+  });
+
+  it('createGoldEntry never lets any note exceed the column', () => {
+    expect(SalesService.createGoldEntry(10, 'n'.repeat(1000)).notes.length).toBe(GOLD_NOTES_MAX);
+    expect(SalesService.createGoldEntry(10, 'Sale of all pending items').notes).toBe('Sale of all pending items');
+  });
+
+  it('sellSelectedItems writes a fitting note for many long-named items', async () => {
+    const items = names(30, 40).map((name, i) => pendingItem({ id: i + 1, name, value: 10, type: 'trade good' }));
+    const client = makeClient(items);
+
+    await SalesService.sellSelectedItems(items.map((i) => i.id));
+
+    const note = Gold.create.mock.calls[0][0].notes;
+    expect(note.startsWith('Sold 30 items:')).toBe(true);
+    expect(note.length).toBeLessThanOrEqual(GOLD_NOTES_MAX);
+  });
+});

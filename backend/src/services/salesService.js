@@ -6,6 +6,9 @@ const Gold = require('../models/Gold');
 
 // COALESCE so DM-linked items inherit the catalog value when the row's own
 // value is null (otherwise they would sell for 0 gold).
+// gold.notes is VARCHAR(255) (database/init.sql)
+const GOLD_NOTES_MAX = 255;
+
 const SALE_ITEMS_SELECT = `
   SELECT l.*, COALESCE(l.value, i.value) AS value
   FROM loot l
@@ -43,6 +46,8 @@ class SalesService {
    * @returns {Object} - Gold entry object
    */
   static createGoldEntry(totalSold, notes) {
+    // gold.notes is VARCHAR(255): a longer note would abort the whole sale
+    const fittingNotes = typeof notes === 'string' ? notes.slice(0, GOLD_NOTES_MAX) : notes;
     // Work in whole copper (1 gp = 100 cp). Rounding to 1e-4 cp first strips the
     // binary floating-point noise (2.3 gp is 229.99999999999997 cp) while keeping
     // the existing convention of dropping any fraction of a copper piece.
@@ -54,8 +59,29 @@ class SalesService {
       gold: Math.floor(copper / 100),
       silver: Math.floor((copper % 100) / 10),
       copper: copper % 10,
-      notes
+      notes: fittingNotes
     };
+  }
+
+  /**
+   * Gold note for a sale of selected items: "Sold N items: a, b, c ... (+k more)",
+   * cut so it always fits gold.notes (VARCHAR(255)) however many or however
+   * long the item names are.
+   * @param {string[]} names - Names of the items being sold
+   * @returns {string}
+   */
+  static buildSelectedSaleNote(names) {
+    const total = names.length;
+    const header = `Sold ${total} item${total === 1 ? '' : 's'}`;
+    const tail = (hidden) => (hidden > 0 ? ` ... (+${hidden} more)` : '');
+
+    let best = null;
+    for (let shown = 1; shown <= total; shown++) {
+      const candidate = `${header}: ${names.slice(0, shown).join(', ')}${tail(total - shown)}`;
+      if (candidate.length > GOLD_NOTES_MAX) break;
+      best = candidate;
+    }
+    return best || `${header} (names omitted)`;
   }
 
   /**
@@ -229,8 +255,8 @@ class SalesService {
         );
       }
 
-      const validNames = this.filterValidSaleItems(items).validItems.map(i => i.name).join(', ');
-      return this._sellItems(client, items, `Sale of selected items: ${validNames}`);
+      const validNames = this.filterValidSaleItems(items).validItems.map(i => i.name);
+      return this._sellItems(client, items, this.buildSelectedSaleNote(validNames));
     });
   }
 
