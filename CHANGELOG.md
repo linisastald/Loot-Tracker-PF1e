@@ -11,25 +11,52 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - **The Tasks page explains what it could not deal.** After assigning, an info note lists any task that had nobody eligible, or that was left out because everyone was already full, with a hint to mark it "Must deal" if it has to go out.
+- **Item-entry defaults now work, per campaign.** With "Default quantity" on, new rows on the loot entry page start with the configured quantity. With "Auto-split stacks" on, entering an item with quantity N saves N separate rows of 1 (up to 100).
+- **Session auto-cancel rules.** A session short of its minimum is cancelled only once the reminder is at least 12 hours old, or straight away when nobody is left to remind.
+- **Official holidays are read-only**; custom holidays belong to their campaign.
+- **Item availability uses the full price**: enhancement and special-ability mods count, and a wand is priced as a new 50-charge wand.
+- **A successful appraisal returns the exact value.** Only failed appraisals are rounded.
+- **Loot generator values follow the rules more closely**: NPC gear uses the Core Rulebook NPC gear table, generated spellbooks are valued at their writing cost, magic weapons and armour stay inside the budget, and fractional-CR enemies are accepted.
+- **Sold history stores the line total** (unit price times quantity) for new sales.
+- **Old short invite codes are retired**; codes are 8 characters (migration 067).
+- **Locked accounts get the same message as a wrong password.**
+- **Typing the address of a DM-only page as a player redirects home**, and the DM controls follow the campaign you are in.
+- **The frontend test run is capped at 6 workers** and the linter works again.
 
 ### Security
-- **Discord broker calls are authenticated.** Backend and broker now share `DISCORD_BROKER_SECRET` (set the same value on both; with `NODE_ENV=production` an unset secret rejects broker traffic).
+- **Discord broker calls are authenticated.** Backend and broker now share `DISCORD_BROKER_SECRET` (set the same value on both; with `NODE_ENV=production` an unset secret rejects broker traffic). `BROKER_ALLOW_UNAUTHENTICATED_CONTROL=true` on the broker allows a staged rollout.
 - **Discord and global secrets are superadmin-only.** Campaign DMs can no longer change the bot token, and the settings endpoints no longer return token or key fragments.
-- **Campaign access is stricter.** A user with no campaign membership no longer falls back to another campaign; city create/update/delete and the global settings endpoints are superadmin-only; DM identification needs DM rights; stored mod value formulas are no longer evaluated.
-- **Sessions end when a password changes** (migration 066).
+- **Campaign access is stricter.** A user with no campaign membership no longer falls back to another campaign; a query outside any campaign context returns nothing; city changes and the global settings endpoints are superadmin-only; DM identification needs DM rights; stored mod value formulas are no longer evaluated.
+- **Sessions end when a password changes** (migration 066), reset tokens are stored hashed and work once, every auth route is rate-limited, and registering as DM only works on an empty install.
+- **A debug endpoint that echoed the login cookie is removed**, along with an unused endpoint that let any player mark loot as sold at any price.
+- **Players can no longer act as another player's character** when appraising, identifying, or changing loot status, and can no longer mark an item identified through the general edit.
+- **Players no longer receive hidden details of unidentified items** (true item, value, DM notes) from list, search and report endpoints.
+- **Discord messages can only ping the campaign role**; text typed into a reason can no longer ping anyone.
+- **Test-data generation is superadmin-only** and uses a random password per run.
 - **Dependency updates:** axios (all three packages), nodemailer 10, and patched moment, ip-address, proxy-addr and compression (npm audit reports 0 vulnerabilities for the backend).
 
 ### Fixed
 - **An RSVP can no longer cancel a session through a database trigger**; cancellation only happens through the scheduled confirmation check.
+- **Discord sends are only recorded as sent when they succeed**, and failed ones are retried.
+- **Selling is atomic and exact.** No sale path can sell the same item twice, and the coin split no longer loses a silver.
+- **Gold entries, gold distribution, infamy and Harrow point spending are safe against double clicks and simultaneous requests.**
+- **Using a consumable** only draws from party-kept stock and is recorded against the right character.
+- **The loot list and the Kept and Trashed reports are no longer silently cut off at 50 rows.**
+- **Editing no longer wipes data**: ship weapon types and squibbing, catalog item weight and caster level, and fields a form does not show are preserved; ship, crew and outpost updates only change what was sent.
+- **Sessions page**: "Your Status" and the attendance list work, cards show their start time, and late/early RSVPs count as attending everywhere.
+- **Unidentified items show the right Spellcraft DC and names**, and the Character Ledger's "Value of Loot" is no longer always 0.
+- **Smaller fixes**: Discord "Unlink", the forgot-password success message, the split dialog, Character Management for campaign DMs, duplicate character names on the Tasks page, a campaign with no holidays can add its first, calendar dates no longer drift by a day, and concurrent "next day" clicks no longer lose an update.
 - **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 069).
-- **Fresh installs get the same schema as production:** extended ship columns (migration 064) and `mod.casterlevel` (migration 071).
-- **Discord session announcements are retried** instead of being marked sent when Discord is not configured.
+- **Fresh installs get the same schema as production:** extended ship columns (migration 064), `mod.casterlevel` (migration 071) and `loot.cursed` (migration 072).
 
 ### Removed
-- Unused database tables `fame`, `fame_history` and `golarion_calendar_notes` (migration 070), obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file) and stale utility scripts.
+- **About 60 API endpoints that nothing called**, with their handlers, model methods and tests, including the legacy Discord session-message flow.
+- Unused database objects: `session_notes`, `session_messages` and the `upcoming_sessions` view (migration 068); `fame`, `fame_history` and `golarion_calendar_notes` (migration 070).
+- Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker app definition), the archived migrations folder, and ten stale utility scripts.
 
 ### Notes
-- Includes database migrations 059 onward (numbers are final only at release), which run automatically on server start.
+- Includes database migrations 059 to 072, which run automatically on server start. None of 061 to 072 had been run against a real database when this was written.
+- Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), and check for users with no campaign membership, who lose access.
 
 ## [0.15.1] - 2026-09-11
 
