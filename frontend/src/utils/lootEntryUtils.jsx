@@ -39,10 +39,24 @@ const toAmount = (value) => {
   return Number.isNaN(parsed) || parsed === 0 ? null : parsed;
 };
 
+// Owner decision (2026-10-06): a wand is entered with 1 to 50 whole charges (blank = not set).
+export const MIN_WAND_ENTRY_CHARGES = 1;
+export const MAX_WAND_ENTRY_CHARGES = 50;
+export const WAND_CHARGES_ERROR = 'Wand charges must be a whole number from 1 to 50';
+
+export const isValidEntryCharges = (charges) => {
+  if (charges === undefined || charges === null || String(charges).trim() === '') return true;
+  const text = String(charges).trim();
+  if (!/^[0-9]+$/.test(text)) return false;
+  const value = Number(text);
+  return value >= MIN_WAND_ENTRY_CHARGES && value <= MAX_WAND_ENTRY_CHARGES;
+};
+
 const entryErrorFor = (entry) => {
   if (entry.type === 'item') {
     if (!entry.data.name || entry.data.name.trim() === '') return 'Item name is required';
     if (!entry.data.quantity || entry.data.quantity <= 0) return 'Quantity must be greater than 0';
+    if (!isValidEntryCharges(entry.data.charges)) return WAND_CHARGES_ERROR;
   } else if (entry.type === 'gold') {
     if (!entry.data.transactionType) return 'Transaction type is required';
     const { platinum, gold, silver, copper } = entry.data;

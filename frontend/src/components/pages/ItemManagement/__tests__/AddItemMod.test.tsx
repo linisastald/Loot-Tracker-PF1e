@@ -53,6 +53,7 @@ vi.mock('../../../../contexts/CampaignContext', () => ({
 import api from '../../../../utils/api';
 import lootService from '../../../../services/lootService';
 import AddItemMod from '../AddItemMod';
+import { ITEM_TYPES } from '../../../../utils/itemOptions';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -227,6 +228,20 @@ describe('AddItemMod', () => {
         expect(screen.getByText('Item name is required')).toBeInTheDocument();
       });
       expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('offers exactly the shared canonical item types (owner decision 2026-10-06)', async () => {
+      renderAddItemMod();
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+      });
+
+      const label = Array.from(document.querySelectorAll('label')).find(l => /^Type/.test(l.textContent || ''))!;
+      const combobox = label.closest('.MuiFormControl-root')!.querySelector('[role="combobox"]') as HTMLElement;
+      fireEvent.mouseDown(combobox);
+
+      const options = (await screen.findAllByRole('option')).map(o => o.textContent);
+      expect(options).toEqual(['Select Type', ...ITEM_TYPES.map(t => t.label)]);
     });
 
     it('shows "Item type is required" when type is blank', async () => {

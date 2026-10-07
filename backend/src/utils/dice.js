@@ -9,4 +9,10 @@
  */
 const rollD100 = () => Math.floor(Math.random() * 100) + 1;
 
-module.exports = { rollD100 };
+/**
+ * Roll a d20 (1-20 inclusive).
+ * @returns {number}
+ */
+const rollD20 = () => Math.floor(Math.random() * 20) + 1;
+
+module.exports = { rollD100, rollD20 };

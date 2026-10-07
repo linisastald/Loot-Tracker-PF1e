@@ -10,11 +10,17 @@ jest.mock('../../utils/logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));
 
+jest.mock('../../utils/dice', () => ({ rollD20: jest.fn() }));
+
 const dbUtils = require('../../utils/dbUtils');
+const { rollD20 } = require('../../utils/dice');
 
 describe('IdentificationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // The server rolls the d20; tests pin it (total = 10 + the bonus the test sends)
+    rollD20.mockReset();
+    rollD20.mockReturnValue(10);
     jest.spyOn(ValidationService, 'validateItemId').mockImplementation((id) => id);
     jest.spyOn(ValidationService, 'validateRequiredNumber').mockImplementation((val, name, opts) => {
       if (val === null || val === undefined || isNaN(val)) {
@@ -405,7 +411,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 20, // DC = 15 + 5 = 20, roll 20 >= 20
+        spellcraftBonus: 10, // total 20 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -422,7 +428,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 15, // DC = 20, roll 15 < 20
+        spellcraftBonus: 5, // total 15 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -430,6 +436,7 @@ describe('IdentificationService', () => {
       expect(result.id).toBe(10);
       expect(result.name).toBe('Unknown Sword');
       expect(result.spellcraftRoll).toBe(15);
+      expect(result).toMatchObject({ roll: 10, bonus: 5, total: 15 });
       expect(result.requiredDC).toBe(20);
     });
 
@@ -442,7 +449,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 30, // Mocked validation allows any value
+        spellcraftBonus: 20, // total 30 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -460,7 +467,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 25,
+        spellcraftBonus: 15, // total 25 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -477,7 +484,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 20,
+        spellcraftBonus: 10, // total 20 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -504,7 +511,7 @@ describe('IdentificationService', () => {
       expect(attemptCheckCalls).toHaveLength(0);
     });
 
-    it('treats a client-sent roll of 99 as an ordinary roll (F-1294)', async () => {
+    it('treats a client-sent roll of 99 as nothing at all: the server rolls (F-1294)', async () => {
       const mockClient = buildMockClient({
         attemptCheck: { rows: [{ id: 1 }] },
       });
@@ -512,7 +519,8 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        spellcraftRoll: 99, // ignored: the server rolls
+        spellcraftBonus: 0,
         golarionDate: '4718-3-14',
       });
 
@@ -530,7 +538,8 @@ describe('IdentificationService', () => {
       await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        spellcraftRoll: 99, // ignored: the server rolls
+        spellcraftBonus: 0,
         golarionDate: '4718-3-14',
       });
 
@@ -583,7 +592,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 30, // d20 roll of 15 + spellcraft bonus of 15
+        spellcraftBonus: 20, // total 30 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -599,7 +608,7 @@ describe('IdentificationService', () => {
         IdentificationService.identifySingleItem(mockClient, {
           itemId: 999,
           characterId: 2,
-          spellcraftRoll: 15,
+          spellcraftBonus: 5, // total 15 with the pinned roll of 10
           golarionDate: '4718-3-14',
         })
       ).rejects.toThrow('Loot item with id 999 not found');
@@ -614,10 +623,78 @@ describe('IdentificationService', () => {
         IdentificationService.identifySingleItem(mockClient, {
           itemId: 10,
           characterId: 2,
-          spellcraftRoll: 15,
+          spellcraftBonus: 5, // total 15 with the pinned roll of 10
           golarionDate: '4718-3-14',
         })
       ).rejects.toThrow('Item with id 5 not found');
+    });
+
+    it('ignores a client-supplied roll or total: the server roll decides', async () => {
+      rollD20.mockReturnValue(3);
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 40,
+        total: 40,
+        spellcraftBonus: 2,
+        golarionDate: '4718-3-14',
+      });
+
+      // DC 20; the server's 3 + 2 = 5 fails no matter what the client claimed
+      expect(result).toMatchObject({ success: false, roll: 3, bonus: 2, total: 5, spellcraftRoll: 5, requiredDC: 20 });
+    });
+
+    it('uses the server d20 plus the bonus and records the total', async () => {
+      rollD20.mockReturnValue(14);
+      const mockClient = buildMockClient();
+      const result = await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10, characterId: 2, spellcraftBonus: 6, golarionDate: '4718-3-14',
+      });
+
+      expect(result).toMatchObject({ success: true, roll: 14, bonus: 6, total: 20 });
+      const insertCall = mockClient.query.mock.calls.find((call) => call[0].includes('INSERT INTO identify'));
+      expect(insertCall[1][2]).toBe(20);
+    });
+
+    it('allows a negative bonus and a total below 1', async () => {
+      rollD20.mockReturnValue(1);
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10, characterId: 2, spellcraftBonus: -3, golarionDate: '4718-3-14',
+      });
+      expect(result).toMatchObject({ success: false, roll: 1, bonus: -3, total: -2 });
+    });
+
+    it('does not roll when the character already tried today', async () => {
+      await IdentificationService.identifySingleItem(buildMockClient({ attemptCheck: { rows: [{ id: 1 }] } }), {
+        itemId: 10, characterId: 2, spellcraftBonus: 5, golarionDate: '4718-3-14',
+      });
+      expect(rollD20).not.toHaveBeenCalled();
+    });
+
+    it('does not roll for a DM identification and keeps the automatic success', async () => {
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10, characterId: 2, dmIdentify: true, spellcraftBonus: 5, golarionDate: '4718-3-14',
+      });
+      expect(rollD20).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.roll).toBeUndefined();
+    });
+
+    it.each([undefined, null, '', 'abc', 1.5, NaN, -11, 61, 1000, {}, [5]])(
+      'rejects the spellcraft bonus %p', async (bonus) => {
+        await expect(
+          IdentificationService.identifySingleItem(buildMockClient(), {
+            itemId: 10, characterId: 2, spellcraftBonus: bonus, golarionDate: '4718-3-14',
+          })
+        ).rejects.toThrow(/Spellcraft bonus must be a whole number from -10 to 60/);
+        expect(rollD20).not.toHaveBeenCalled();
+      });
+
+    it.each([[-10, -10], [0, 0], [60, 60], ['7', 7], [' -2 ', -2]])('accepts the spellcraft bonus %p', async (bonus, used) => {
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10, characterId: 2, spellcraftBonus: bonus, golarionDate: '4718-3-14',
+      });
+      expect(result.bonus).toBe(used);
     });
   });
 
@@ -661,11 +738,12 @@ describe('IdentificationService', () => {
         return await callback(mockClient);
       });
 
+      rollD20.mockReturnValueOnce(15).mockReturnValueOnce(5);
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
         actor: { userId: 5, isDM: false },
-        spellcraftRolls: [20, 10], // Item 10: roll 20 >= DC 20 (success), Item 11: roll 10 < DC 20 (fail)
+        spellcraftBonus: 5, // server rolls 15 then 5: item 10 total 20 >= DC 20 (success), item 11 total 10 (fail)
       });
 
       expect(result.identified).toHaveLength(1);
@@ -703,7 +781,7 @@ describe('IdentificationService', () => {
         items: [10, 11],
         characterId: 2,
         actor: { userId: 5, isDM: false },
-        spellcraftRolls: [18, 18],
+        spellcraftBonus: 8,
       });
 
       expect(result.alreadyAttempted).toHaveLength(2);
@@ -740,7 +818,7 @@ describe('IdentificationService', () => {
         items: [10, 11],
         characterId: 2,
         actor: { userId: 5, isDM: false },
-        spellcraftRolls: [18, 18],
+        spellcraftBonus: 8,
       });
 
       // Item 10 errored, item 11 succeeded (roll 18 >= DC 16)
@@ -754,7 +832,7 @@ describe('IdentificationService', () => {
         IdentificationService.identifyItems({
           items: [10],
           characterId: null,
-          spellcraftRolls: [99],
+          spellcraftBonus: 5,
         })
       ).rejects.toThrow('character ID is required');
       expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
@@ -800,7 +878,7 @@ describe('IdentificationService', () => {
         IdentificationService.identifyItems({
           items: [10],
           characterId: 2,
-          spellcraftRolls: [30],
+          spellcraftBonus: 20,
           actor: { userId: 5, isDM: false },
         })
       ).rejects.toThrow('your own character');
@@ -814,7 +892,7 @@ describe('IdentificationService', () => {
       });
 
       await expect(
-        IdentificationService.identifyItems({ items: [10], characterId: 2, spellcraftRolls: [30] })
+        IdentificationService.identifyItems({ items: [10], characterId: 2, spellcraftBonus: 20 })
       ).rejects.toThrow('your own character');
     });
 
@@ -836,7 +914,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10],
         characterId: 2,
-        spellcraftRolls: [30],
+        spellcraftBonus: 20,
         actor: { userId: 1, isDM: true },
       });
 
@@ -866,7 +944,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
-        spellcraftRolls: [30, 30],
+        spellcraftBonus: 20,
         actor: { userId: 5, isDM: false },
       });
 
@@ -880,12 +958,58 @@ describe('IdentificationService', () => {
         .toBeLessThan(queries.lastIndexOf('SAVEPOINT identify_item'));
     });
 
+    it('rejects a missing or out-of-range spellcraft bonus before touching the database', async () => {
+      for (const bonus of [undefined, 61, -11, 2.5]) {
+        await expect(
+          IdentificationService.identifyItems({ items: [10], characterId: 2, spellcraftBonus: bonus })
+        ).rejects.toThrow(/Spellcraft bonus/);
+      }
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    const stubTransaction = () => dbUtils.executeTransaction.mockImplementation(async (callback) => callback({
+      query: jest.fn().mockImplementation((query) => {
+        if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+        if (query.includes('FROM loot')) return { rows: [{ id: 10, name: 'Unknown Sword', itemid: 5, modids: [], cursed: false }] };
+        if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Longsword', type: 'weapon', casterlevel: 3 }] };
+        if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
+        return { rows: [] };
+      }),
+    }));
+
+    it('never reads client-supplied rolls: only the server roll plus the bonus counts', async () => {
+      rollD20.mockReturnValue(2);
+      stubTransaction();
+
+      const result = await IdentificationService.identifyItems({
+        items: [10],
+        characterId: 2,
+        spellcraftRolls: [60],
+        spellcraftBonus: 1,
+        actor: { userId: 5, isDM: false },
+      });
+
+      expect(result.identified).toHaveLength(0);
+      expect(result.failed).toEqual([expect.objectContaining({ id: 10, roll: 2, bonus: 1, total: 3 })]);
+    });
+
+    it('returns the server roll, bonus and total for every identified item', async () => {
+      rollD20.mockReturnValue(18);
+      stubTransaction();
+
+      const result = await IdentificationService.identifyItems({
+        items: [10], characterId: 2, spellcraftBonus: 4, actor: { userId: 5, isDM: false },
+      });
+
+      expect(result.identified[0]).toMatchObject({ id: 10, roll: 18, bonus: 4, total: 22, spellcraftRoll: 22, requiredDC: 18 });
+    });
+
     it('should validate items array', async () => {
       await expect(
         IdentificationService.identifyItems({
           items: [],
           characterId: 2,
-          spellcraftRolls: [],
+          spellcraftBonus: 0,
         })
       ).rejects.toThrow('items array is required');
     });
@@ -917,7 +1041,7 @@ describe('IdentificationService', () => {
         items: [10],
         characterId: 2,
         actor: { userId: 5, isDM: false },
-        spellcraftRolls: [18],
+        spellcraftBonus: 8,
       });
 
       expect(result.alreadyAttempted).toBeUndefined();

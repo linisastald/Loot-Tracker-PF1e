@@ -25,6 +25,24 @@ const resolveSessionDate = (sessionDate) => {
   return plainDate ? plainDate[0] : validated;
 };
 
+const MIN_ENTRY_CHARGES = 1;
+const MAX_ENTRY_CHARGES = 50;
+
+/**
+ * Owner decision (2026-10-06): a wand is entered with 1 to 50 charges (an empty
+ * wand is trashed by use, so 0 is never a valid entry). Blank means "not set".
+ */
+const validateEntryCharges = (charges) => {
+  if (charges === undefined || charges === null || charges === '') return null;
+  const parsed = typeof charges === 'string' && /^-?[0-9]+$/.test(charges.trim()) ? Number(charges) : charges;
+  if (!Number.isInteger(parsed) || parsed < MIN_ENTRY_CHARGES || parsed > MAX_ENTRY_CHARGES) {
+    throw controllerFactory.createValidationError(
+      `Wand charges must be a whole number from ${MIN_ENTRY_CHARGES} to ${MAX_ENTRY_CHARGES}`
+    );
+  }
+  return parsed;
+};
+
 /**
  * Create new loot item
  */
@@ -43,8 +61,8 @@ const createLoot = async (req, res) => {
   const validatedCursed = ValidationService.validateBoolean(cursed, 'cursed');
   const validatedUnidentified = ValidationService.validateBoolean(unidentified, 'unidentified');
   const validatedMasterwork = ValidationService.validateBoolean(masterwork, 'masterwork');
-  const validatedCharges = charges ? parseInt(charges) : null;
-  const validatedType = type || null;
+  const validatedCharges = validateEntryCharges(charges);
+  const validatedType = type ? ValidationService.validateItemType(type) : null;
   const validatedSize = size || null;
   const validatedItemId = itemId ? ValidationService.validateItemId(itemId) : null;
   const validatedSessionDate = resolveSessionDate(sessionDate);

@@ -162,6 +162,29 @@ describe('consumablesController', () => {
       );
     });
 
+    it('tells the user when the last charge empties and trashes the wand (owner decision 2026-10-06)', async () => {
+      const req = createMockReq({ user: { id: 7 }, body: { itemid: 5, type: 'wand' } });
+      const res = createMockRes();
+      const emptied = { id: 5, name: 'Wand of Magic Missile', charges: 0, status: 'Trashed' };
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [emptied] })
+          .mockResolvedValueOnce({ rows: [{ id: 42 }] })
+          .mockResolvedValueOnce({ rows: [] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await consumablesController.useConsumable(req, res);
+
+      // trash happens in the same UPDATE statement, and the use is still recorded
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/status = CASE WHEN charges = 1 THEN 'Trashed'/);
+      expect(mockClient.query.mock.calls[2][0]).toContain('INSERT INTO consumableuse');
+      expect(res.success).toHaveBeenCalledWith(
+        emptied,
+        expect.stringMatching(/the wand is now empty and was moved to trash/i)
+      );
+    });
+
     it('should decrement potion quantity and log usage', async () => {
       const req = createMockReq({
         body: { itemid: 10, type: 'potion' },
@@ -354,15 +377,31 @@ describe('consumablesController', () => {
       );
     });
 
-    it('should accept 0 charges (a spent wand)', async () => {
+    it('trashes the wand when a DM sets 0 charges and says so (owner decision 2026-10-06)', async () => {
       const req = createMockReq({ body: { id: 1, charges: 0 } });
       const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 1, charges: 0, status: 'Kept Party' }] });
+      const trashed = { id: 1, charges: 0, status: 'Trashed' };
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [trashed] });
 
       await consumablesController.updateWandCharges(req, res);
 
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(expect.any(String), [0, 1]);
-      expect(res.success).toHaveBeenCalled();
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/status = CASE WHEN [$]1 = 0 THEN 'Trashed' ELSE status END/);
+      expect(res.success).toHaveBeenCalledWith(
+        trashed,
+        expect.stringMatching(/the wand is now empty and was moved to trash/i)
+      );
+    });
+
+    it('keeps the plain message when charges stay above 0', async () => {
+      const req = createMockReq({ body: { id: 1, charges: 3 } });
+      const res = createMockRes();
+      const kept = { id: 1, charges: 3, status: 'Kept Party' };
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [kept] });
+
+      await consumablesController.updateWandCharges(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(kept, 'Wand charges updated successfully');
     });
 
     it('should only update wand rows', async () => {

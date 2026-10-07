@@ -210,6 +210,21 @@ describe('validation middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
+    it.each(['consumable', 'shield', 'item', 'Weapon'])('rejects the non-canonical item type %s (owner decision 2026-10-06)', (type) => {
+      req.body = { name: 'Thing', type, value: 15 };
+      createValidationMiddleware('createItem')(req, res, next);
+
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it.each(['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'])('accepts the canonical item type %s', (type) => {
+      req.body = { name: 'Thing', type, value: 15 };
+      createValidationMiddleware('createItem')(req, res, next);
+
+      expect(next).toHaveBeenCalledWith();
+    });
+
     it('should coerce numeric strings to numbers in body', () => {
       req.body = { name: 'Longsword', type: 'weapon', value: '15' };
       const middleware = createValidationMiddleware('createItem');

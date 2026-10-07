@@ -112,11 +112,70 @@ describe('itemCreationController', () => {
       expect(client.query).toHaveBeenCalledTimes(2); // item looked up once, no mod query
       expect(insertParams(client, 1)).toEqual(expect.objectContaining({
         name: 'Longsword', quantity: 1, itemid: 42, modids: [], value: 315, masterwork: true,
-        size: 'Large', type: 'Weapon', status: null, unidentified: false, cursed: false,
+        size: 'Large', type: 'weapon', status: null, unidentified: false, cursed: false,
         notes: 'found', whoupdated: 1,
       }));
       expect(dbUtils.insert).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ id: 100 }), 'Loot item created successfully');
+    });
+
+    describe('item type at entry (owner decision 2026-10-06)', () => {
+      it.each(['consumable', 'shield', 'item', 'wondrous'])('rejects the non-canonical type %s', async (type) => {
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({ body: { name: 'Thing', quantity: 1, type } }), res);
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/weapon, armor, magic, gear, trade good, other/);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it.each([['trade good', 'trade good'], ['Weapon', 'weapon'], ['magic', 'magic']])('stores %s as %s', async (type, stored) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        await itemCreationController.createLoot(createMockReq({ body: { name: 'Thing', quantity: 1, type } }), createMockRes());
+        expect(insertParams(client, 0).type).toBe(stored);
+      });
+
+      it.each([undefined, null, ''])('still allows a blank type (%p)', async (type) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        await itemCreationController.createLoot(createMockReq({ body: { name: 'Thing', quantity: 1, type } }), createMockRes());
+        expect(insertParams(client, 0).type).toBeNull();
+      });
+    });
+
+    // Owner decision (2026-10-06): a wand enters the ledger with 1 to 50 charges;
+    // 0 is rejected (an empty wand is trashed by use, never entered). Blank stays allowed.
+    describe('wand charges at entry', () => {
+      it.each([0, '0', -1, '-3', 51, '100', 2.5, 'abc', NaN])('rejects charges %p', async (charges) => {
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/charges.*whole number.*1.*50/i);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it.each([undefined, null, ''])('still allows blank charges (%p)', async (charges) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(insertParams(client, 0)).toEqual(expect.objectContaining({ charges: null }));
+      });
+
+      it.each([[1, 1], ['50', 50], [25, 25]])('accepts charges %p', async (charges, stored) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(insertParams(client, 0)).toEqual(expect.objectContaining({ charges: stored }));
+      });
     });
 
     it('passes wand charges to the price calculation', async () => {

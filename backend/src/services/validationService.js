@@ -16,6 +16,33 @@ class ValidationService {
   ];
 
   /**
+   * The canonical item types (owner decision 2026-10-06): exactly these six.
+   * Anything else (consumable, shield, potion, ...) is a SUBTYPE, e.g. a
+   * consumable is a subtype of magic and a shield a subtype of armor.
+   * Stored lowercase, with a space in 'trade good'. The frontend list is
+   * ITEM_TYPES in frontend/src/utils/itemOptions.ts and must match.
+   */
+  static ITEM_TYPES = ['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'];
+
+  /**
+   * Validate an item type against the canonical list (any capitalisation is
+   * accepted; the lowercase stored form is returned).
+   * @param {*} value - The value to validate
+   * @param {string} fieldName - The field name for error messages
+   * @returns {string} - The canonical lowercase type
+   * @throws {Error} - If the value is not one of the six canonical types
+   */
+  static validateItemType(value, fieldName = 'type') {
+    const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (!this.ITEM_TYPES.includes(normalized)) {
+      throw controllerFactory.createValidationError(
+        `Invalid ${fieldName}. Must be one of: ${this.ITEM_TYPES.join(', ')}`
+      );
+    }
+    return normalized;
+  }
+
+  /**
    * Validate DM permission (per-campaign role; superadmins always pass)
    * @param {Object} req - Express request object (after verifyToken)
    * @throws {Error} - If user is not a DM in the resolved campaign

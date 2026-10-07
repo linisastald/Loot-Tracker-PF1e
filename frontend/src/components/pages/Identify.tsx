@@ -7,9 +7,7 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
   Container,
-  FormControlLabel,
   Paper,
   Table,
   TableBody,
@@ -47,41 +45,57 @@ interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
-interface IdentifiedRow {
+/** The server's roll for one item: d20, the bonus we sent, their sum and the DC. */
+interface RollDetails {
+  roll?: number;
+  bonus?: number;
+  total?: number;
+  requiredDC?: number;
+}
+
+interface IdentifiedRow extends RollDetails {
   itemId: number;
   oldName: string;
   newName: string;
-  spellcraftRoll: number;
   cursedDetected?: boolean;
 }
 
-interface FailedRow {
+interface FailedRow extends RollDetails {
   itemId: number;
   name: string;
-  spellcraftRoll?: number;
   /** Set when the server could not process the item at all (not just a low roll) */
   error?: string;
 }
 
 /** Result of POST /appraisal/identify (IdentificationService.identifyItems). */
 interface IdentifyResponse {
-  identified?: Array<{
+  identified?: Array<RollDetails & {
     id: number;
     oldName?: string;
     newName: string;
-    spellcraftRoll: number;
     cursedDetected?: boolean;
   }>;
-  failed?: Array<{
+  failed?: Array<RollDetails & {
     id: number;
     name?: string;
-    spellcraftRoll?: number;
     error?: string;
   }>;
   alreadyAttempted?: Array<{ id: number; message?: string }>;
 }
 
-const rollD20 = (): number => Math.floor(Math.random() * 20) + 1;
+// The server rolls the d20 (owner decision 2026-10-06); the client sends only the bonus.
+const MIN_SPELLCRAFT_BONUS = -10;
+const MAX_SPELLCRAFT_BONUS = 60;
+const BONUS_ERROR = `Spellcraft bonus must be a whole number from ${MIN_SPELLCRAFT_BONUS} to ${MAX_SPELLCRAFT_BONUS}`;
+
+/** A blank field means a bonus of 0; anything else must be a whole number in range. */
+const parseSpellcraftBonus = (text: string): number | null => {
+  const trimmed = text.trim();
+  if (trimmed === '') return 0;
+  if (!/^-?[0-9]+$/.test(trimmed)) return null;
+  const bonus = Number(trimmed);
+  return bonus >= MIN_SPELLCRAFT_BONUS && bonus <= MAX_SPELLCRAFT_BONUS ? bonus : null;
+};
 
 /** Append the rows whose itemId is not already listed. */
 const appendUnique = <T extends { itemId: number }>(previous: T[], added: T[]): T[] => [
@@ -100,7 +114,6 @@ const Identify: React.FC = () => {
   });
   const [identifiedItems, setIdentifiedItems] = useState<IdentifiedRow[]>([]);
   const [failedItems, setFailedItems] = useState<FailedRow[]>([]);
-  const [takeTen, setTakeTen] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
@@ -149,18 +162,21 @@ const Identify: React.FC = () => {
       return;
     }
 
+    const bonus = isDMUser ? 0 : parseSpellcraftBonus(spellcraftValue);
+    if (bonus === null) {
+      setError(BONUS_ERROR);
+      setSelectedItems([]);
+      return;
+    }
+
     try {
       // A DM identification (automatic success) sends no roll; the server decides
-      // from the caller's DM rights. Players roll a d20 (or take 10) plus bonus.
-      const bonus = parseInt(spellcraftValue || '0', 10) || 0;
+      // from the caller's DM rights. Players send only their Spellcraft bonus: the
+      // server rolls the d20 for every item and returns the roll it used.
       const response = await lootService.identifyItems({
         items: itemsToIdentify,
         characterId: isDMUser ? null : activeCharacterId ?? null,
-        ...(isDMUser
-          ? { dmIdentify: true }
-          : {
-              spellcraftRolls: itemsToIdentify.map(() => (takeTen ? 10 : rollD20()) + bonus),
-            }),
+        ...(isDMUser ? { dmIdentify: true } : { spellcraftBonus: bonus }),
       });
       const result: IdentifyResponse = response.data || {};
 
@@ -175,7 +191,10 @@ const Identify: React.FC = () => {
           itemId: item.id,
           oldName: item.oldName || nameOf(item.id) || 'Unknown',
           newName: item.newName,
-          spellcraftRoll: item.spellcraftRoll,
+          roll: item.roll,
+          bonus: item.bonus,
+          total: item.total,
+          requiredDC: item.requiredDC,
           cursedDetected: item.cursedDetected,
         }));
         setIdentifiedItems(prev => appendUnique(prev, rows));
@@ -185,7 +204,10 @@ const Identify: React.FC = () => {
         const rows: FailedRow[] = result.failed.map(item => ({
           itemId: item.id,
           name: item.name || nameOf(item.id) || 'Unknown',
-          spellcraftRoll: item.spellcraftRoll,
+          roll: item.roll,
+          bonus: item.bonus,
+          total: item.total,
+          requiredDC: item.requiredDC,
           error: item.error,
         }));
         setFailedItems(prev => appendUnique(prev, rows));
@@ -283,7 +305,10 @@ const Identify: React.FC = () => {
                 <TableRow>
                   <TableCell>Old Name</TableCell>
                   <TableCell>New Name</TableCell>
-                  <TableCell>Spellcraft Roll</TableCell>
+                  <TableCell>d20 Roll</TableCell>
+                  <TableCell>Bonus</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell>DC</TableCell>
                   <TableCell>Special</TableCell>
                 </TableRow>
               </TableHead>
@@ -292,7 +317,10 @@ const Identify: React.FC = () => {
                   <TableRow key={item.itemId}>
                     <TableCell>{item.oldName}</TableCell>
                     <TableCell>{item.newName}</TableCell>
-                    <TableCell>{item.spellcraftRoll}</TableCell>
+                    <TableCell>{item.roll ?? '-'}</TableCell>
+                    <TableCell>{item.bonus ?? '-'}</TableCell>
+                    <TableCell>{item.total ?? '-'}</TableCell>
+                    <TableCell>{item.requiredDC ?? '-'}</TableCell>
                     <TableCell>
                       {item.cursedDetected && (
                         <span style={{ color: 'red', fontWeight: 'bold' }}>
@@ -316,7 +344,10 @@ const Identify: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Item Name</TableCell>
-                  <TableCell>Spellcraft Roll</TableCell>
+                  <TableCell>d20 Roll</TableCell>
+                  <TableCell>Bonus</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell>DC</TableCell>
                   <TableCell>Result</TableCell>
                 </TableRow>
               </TableHead>
@@ -324,7 +355,10 @@ const Identify: React.FC = () => {
                 {failedItems.map(item => (
                   <TableRow key={item.itemId}>
                     <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.error ? '-' : item.spellcraftRoll}</TableCell>
+                    <TableCell>{item.error ? '-' : item.roll ?? '-'}</TableCell>
+                    <TableCell>{item.error ? '-' : item.bonus ?? '-'}</TableCell>
+                    <TableCell>{item.error ? '-' : item.total ?? '-'}</TableCell>
+                    <TableCell>{item.error ? '-' : item.requiredDC ?? '-'}</TableCell>
                     <TableCell>{item.error ? `Error: ${item.error}` : 'Failed (roll too low)'}</TableCell>
                   </TableRow>
                 ))}
@@ -351,24 +385,15 @@ const Identify: React.FC = () => {
         }}
       >
         {!isDMUser && (
-          <>
-            <TextField
-              label="Spellcraft"
-              type="number"
-              value={spellcraftValue}
-              onChange={e => handleSpellcraftChange(e.target.value)}
-              sx={{ width: '150px' }}
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={takeTen}
-                  onChange={e => setTakeTen(e.target.checked)}
-                />
-              }
-              label="Take 10"
-            />
-          </>
+          <TextField
+            label="Spellcraft bonus"
+            type="number"
+            value={spellcraftValue}
+            onChange={e => handleSpellcraftChange(e.target.value)}
+            helperText="The server rolls the d20"
+            slotProps={{ htmlInput: { min: MIN_SPELLCRAFT_BONUS, max: MAX_SPELLCRAFT_BONUS, step: 1 } }}
+            sx={{ width: '190px' }}
+          />
         )}
         <Button
           variant="outlined"

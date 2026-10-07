@@ -558,7 +558,7 @@ describe('itemController', () => {
 
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.masterwork).toBe(true);
-      expect(filteredData.type).toBe('Weapon');
+      expect(filteredData.type).toBe('weapon');
       expect(filteredData.size).toBe('Medium');
     });
 
@@ -1071,6 +1071,137 @@ describe('itemController', () => {
       await itemController.updateLootItemAsDM(mockReq({ params: { id: '1' }, body: { [field]: value }, user: { id: 2, role: 'DM' } }), res);
       expect(res.validationError).toHaveBeenCalledTimes(1);
       expect(dbUtils.updateById).not.toHaveBeenCalled();
+    });
+  });
+
+  // Owner decision (2026-10-06): wand charges are set at loot entry, then only
+  // changed by use; after that only a DM may edit them.
+  describe('updateLootItem - wand charges are read-only for players', () => {
+    it('rejects a player sending a changed charges value with a 403 and writes nothing', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: 10 }] });
+      const req = mockReq({ params: { id: '1' }, body: { name: 'Wand of Magic Missile', charges: 50 } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+      expect(res.forbidden.mock.calls[0][0]).toMatch(/through use/i);
+      expect(dbUtils.updateById).not.toHaveBeenCalled();
+      expect(res.success).not.toHaveBeenCalled();
+    });
+
+    it('rejects a changed charges value even when it is the only field sent', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: 10 }] });
+      const req = mockReq({ params: { id: '1' }, body: { charges: 0 } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects clearing charges (null) on a wand that has charges', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: 10 }] });
+      const req = mockReq({ params: { id: '1' }, body: { name: 'Wand', charges: null } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts an unchanged charges value (the edit dialog re-sends it) and never writes it', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: 10 }] });
+      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Wand', charges: 10 });
+      const req = mockReq({ params: { id: '1' }, body: { name: 'Wand', charges: '10' } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledTimes(1);
+      expect(dbUtils.updateById.mock.calls[0][2]).not.toHaveProperty('charges');
+    });
+
+    it('accepts an empty charges value when the item has none stored', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ charges: null }] });
+      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword' });
+      const req = mockReq({ params: { id: '1' }, body: { name: 'Sword', charges: '' } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns not found when the item does not exist', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      const req = mockReq({ params: { id: '1' }, body: { name: 'x', charges: 5 } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.notFound).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not query charges when the payload has none', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword' });
+      const req = mockReq({ params: { id: '1' }, body: { name: 'Sword' } });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('lets a DM change charges through the dm-update endpoint', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, charges: 7 });
+      const req = mockReq({ params: { id: '1' }, body: { charges: 7 }, user: { id: 1, role: 'DM' } });
+      const res = mockRes();
+
+      await itemController.updateLootItemAsDM(req, res);
+
+      expect(dbUtils.updateById.mock.calls[0][2]).toEqual({ charges: 7 });
+      expect(res.forbidden).not.toHaveBeenCalled();
+    });
+  });
+
+  // Owner decision (2026-10-06): one canonical list of item types.
+  describe('item type validation on loot updates', () => {
+    it('normalises a canonical type to lowercase', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1 });
+      const req = mockReq({ params: { id: '1' }, body: { type: 'Trade Good' } });
+      await itemController.updateLootItem(req, mockRes());
+      expect(dbUtils.updateById.mock.calls[0][2].type).toBe('trade good');
+    });
+
+    it.each([['player', 'updateLootItem'], ['DM', 'updateLootItemAsDM']])(
+      'rejects a new non-canonical type for a %s', async (role, handler) => {
+        dbUtils.executeQuery.mockResolvedValue({ rows: [{ type: 'weapon' }] });
+        const req = mockReq({ params: { id: '1' }, body: { type: 'consumable' }, user: { id: 1, role } });
+        const res = mockRes();
+        await itemController[handler](req, res);
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/weapon, armor, magic, gear, trade good, other/);
+        expect(dbUtils.updateById).not.toHaveBeenCalled();
+      });
+
+    it('keeps a row editable when it already holds a legacy type and the dialog re-sends it', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ type: 'spellbook' }] });
+      dbUtils.updateById.mockResolvedValue({ id: 1 });
+      const req = mockReq({ params: { id: '1' }, body: { type: 'spellbook', notes: 'ok' } });
+      const res = mockRes();
+      await itemController.updateLootItem(req, res);
+      expect(res.validationError).not.toHaveBeenCalled();
+      expect(dbUtils.updateById.mock.calls[0][2].type).toBe('spellbook');
+    });
+
+    it('still lets the type be cleared', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1 });
+      const req = mockReq({ params: { id: '1' }, body: { type: '', notes: 'x' } });
+      await itemController.updateLootItem(req, mockRes());
+      expect(dbUtils.updateById.mock.calls[0][2].type).toBeNull();
     });
   });
 });

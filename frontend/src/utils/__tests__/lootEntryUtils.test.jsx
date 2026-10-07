@@ -187,6 +187,25 @@ describe('validateLootEntries', () => {
     expect(invalidEntries[0].error).toBe(message);
   });
 
+  // Owner decision (2026-10-06): a wand is entered with 1 to 50 charges; blank stays allowed.
+  it.each([
+    ['zero', '0'],
+    ['numeric zero', 0],
+    ['negative', '-2'],
+    ['above fifty', '51'],
+    ['fractional', '2.5'],
+    ['not a number', 'abc'],
+  ])('rejects wand charges that are %s', (_label, charges) => {
+    const { validEntries, invalidEntries } = validateLootEntries([itemEntry({ name: 'Wand of Fireball', charges })]);
+    expect(validEntries).toHaveLength(0);
+    expect(invalidEntries[0].error).toBe('Wand charges must be a whole number from 1 to 50');
+  });
+
+  it.each([['blank', ''], ['one', '1'], ['fifty', 50], ['undefined', undefined]])('accepts wand charges that are %s', (_label, charges) => {
+    const { validEntries } = validateLootEntries([itemEntry({ name: 'Wand of Fireball', charges })]);
+    expect(validEntries).toHaveLength(1);
+  });
+
   it('requires a transaction type on gold entries', () => {
     const { invalidEntries } = validateLootEntries([gold({ transactionType: '', gold: '5' })]);
     expect(invalidEntries[0].error).toBe('Transaction type is required');

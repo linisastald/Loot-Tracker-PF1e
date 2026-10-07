@@ -5,6 +5,7 @@
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {getErrorMessage} from '../../../utils/apiErrors';
+import {ITEM_TYPES} from '../../../utils/itemOptions';
 import lootService from '../../../services/lootService';
 import {useCampaign} from '../../../contexts/CampaignContext';
 import {
@@ -361,12 +362,9 @@ const AddItemMod = () => {
                                             label="Type"
                                         >
                                             <MenuItem value="">Select Type</MenuItem>
-                                            <MenuItem value="weapon">Weapon</MenuItem>
-                                            <MenuItem value="armor">Armor</MenuItem>
-                                            <MenuItem value="magic">Magic</MenuItem>
-                                            <MenuItem value="gear">Gear</MenuItem>
-                                            <MenuItem value="trade good">Trade Good</MenuItem>
-                                            <MenuItem value="other">Other</MenuItem>
+                                            {ITEM_TYPES.map(({value, label}) => (
+                                                <MenuItem key={value} value={value}>{label}</MenuItem>
+                                            ))}
                                         </Select>
                                     </FormControl>
                                 </Grid>
