@@ -1,6 +1,10 @@
 # discord-handler/Dockerfile
 FROM node:25-alpine
 
+# Fail closed: without this the broker accepts unauthenticated control requests
+# when DISCORD_BROKER_SECRET is empty or misspelled (see server.js)
+ENV NODE_ENV=production
+
 WORKDIR /app
 
 # Copy package files

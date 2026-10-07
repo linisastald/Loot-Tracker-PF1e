@@ -378,3 +378,18 @@ test('re-registering an appId from a different endpoint is logged clearly and re
   assert.ok(warnings.some((w) => /app-1/.test(w) && /different endpoint/i.test(w)));
   assert.equal(app.registeredApps.get('app-1').endpoint, 'http://other.local:5000/api/discord/interactions');
 });
+
+// ---------------------------------------------------------------------------
+// Opus review M-4: the broker image must run with NODE_ENV=production, or the
+// fail-closed branch for an unset secret never triggers.
+// ---------------------------------------------------------------------------
+test('the broker Dockerfile sets NODE_ENV=production', () => {
+  const dockerfile = require('node:fs').readFileSync(`${__dirname}/Dockerfile`, 'utf8').split(/\r?\n/);
+  assert.ok(dockerfile.some((line) => /^ENV NODE_ENV=production\s*$/.test(line)));
+});
+
+test('.env.discord-broker.example shows NODE_ENV=production as a real setting', () => {
+  const example = require('node:fs').readFileSync(`${__dirname}/../.env.discord-broker.example`, 'utf8').split(/\r?\n/);
+  assert.ok(example.some((line) => /^NODE_ENV=production\s*$/.test(line)));
+  assert.ok(!example.some((line) => /^#\s*NODE_ENV=production/.test(line)));
+});
