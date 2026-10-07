@@ -82,7 +82,7 @@ process.env.HOST_IP = hostIp;
 // Configure CORS
 const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
 if (hasWildcard(allowedOrigins)) {
-  logger.warn("ALLOWED_ORIGINS contains '*': every site may make credentialed cross-origin requests. List the exact origins instead.");
+  logger.error("ALLOWED_ORIGINS contains '*', which is NOT honoured: only exactly listed origins are allowed. List the real origins, comma-separated (production refuses to start with '*').");
 }
 const corsOptions = {
   origin: createOriginCheck(allowedOrigins),

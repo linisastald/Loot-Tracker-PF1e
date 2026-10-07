@@ -25,9 +25,9 @@ const createOriginCheck = (allowedOrigins) => (origin, callback) => {
   // Allow requests with no origin (same-origin, curl, server-to-server)
   if (!origin) return callback(null, true);
 
-  // '*' is still honoured so existing deployments keep working, but it lets any
-  // site make credentialed requests; index.js logs a warning when it is set.
-  if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+  // Only exactly listed origins pass. A '*' entry is NOT a wildcard here (it would
+  // let any site make credentialed requests); startup checks report it as an error.
+  if (allowedOrigins.includes(origin)) {
     return callback(null, true);
   }
 
@@ -40,7 +40,7 @@ const createOriginCheck = (allowedOrigins) => (origin, callback) => {
 
 /**
  * @param {string[]} allowedOrigins
- * @returns {boolean} - true when the list contains the '*' wildcard
+ * @returns {boolean} - true when the list contains a '*' entry (never honoured)
  */
 const hasWildcard = (allowedOrigins) => allowedOrigins.includes('*');
 

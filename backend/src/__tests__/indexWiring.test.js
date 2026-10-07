@@ -41,4 +41,9 @@ describe('backend/index.js wiring', () => {
   it('does not keep the unreachable second /assets static mount', () => {
     expect(source).not.toMatch(/app\.use\('\/assets'/);
   });
+
+  it('reports a wildcard ALLOWED_ORIGINS entry as an error, never as an accepted setting', () => {
+    expect(source).toMatch(/logger.error("ALLOWED_ORIGINS contains '*'/);
+    expect(source).not.toMatch(/logger.warn("ALLOWED_ORIGINS contains/);
+  });
 });
