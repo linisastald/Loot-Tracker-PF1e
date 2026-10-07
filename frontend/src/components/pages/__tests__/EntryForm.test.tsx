@@ -183,6 +183,14 @@ describe('EntryForm', () => {
       renderComponent({ ...defaultItemEntry, data: { ...defaultItemEntry.data, name: 'Wand of Fireball' } });
       expect(screen.getByLabelText(/charges/i)).toBeInTheDocument();
     });
+
+    it('limits wand charges to 1-50 (an empty wand is trashed, never entered)', () => {
+      renderComponent({ ...defaultItemEntry, data: { ...defaultItemEntry.data, name: 'Wand of Fireball' } });
+      const field = screen.getByLabelText(/charges/i);
+      expect(field).toHaveAttribute('min', '1');
+      expect(field).toHaveAttribute('max', '50');
+      expect(screen.getByText('1 to 50 charges')).toBeInTheDocument();
+    });
   });
 
   describe('Smart Item Detection / OpenAI key', () => {

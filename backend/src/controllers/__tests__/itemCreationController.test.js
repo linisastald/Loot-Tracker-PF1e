@@ -119,6 +119,43 @@ describe('itemCreationController', () => {
       expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ id: 100 }), 'Loot item created successfully');
     });
 
+    // Owner decision (2026-10-06): a wand enters the ledger with 1 to 50 charges;
+    // 0 is rejected (an empty wand is trashed by use, never entered). Blank stays allowed.
+    describe('wand charges at entry', () => {
+      it.each([0, '0', -1, '-3', 51, '100', 2.5, 'abc', NaN])('rejects charges %p', async (charges) => {
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/charges.*whole number.*1.*50/i);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it.each([undefined, null, ''])('still allows blank charges (%p)', async (charges) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(insertParams(client, 0)).toEqual(expect.objectContaining({ charges: null }));
+      });
+
+      it.each([[1, 1], ['50', 50], [25, 25]])('accepts charges %p', async (charges, stored) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(insertParams(client, 0)).toEqual(expect.objectContaining({ charges: stored }));
+      });
+    });
+
     it('passes wand charges to the price calculation', async () => {
       const wand = { id: 7, name: 'Wand of Cure Light Wounds', value: 15, type: 'wand', subtype: null, weight: 1 };
       calculateFinalValue.mockReturnValue(300);

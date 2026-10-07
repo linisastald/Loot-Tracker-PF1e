@@ -13,6 +13,9 @@ const NAME_PREDICATE = {
   scroll: "i.name ILIKE '%scroll of%'"
 };
 
+// Owner decision (2026-10-06): a wand that reaches 0 charges is trashed.
+const WAND_EMPTY_NOTICE = 'the wand is now empty and was moved to trash';
+
 const isPositiveInteger = (value) => Number.isInteger(value) && value > 0;
 
 /**
@@ -137,15 +140,17 @@ const useConsumable = async (req, res) => {
     return result.rows[0];
   });
 
+  const baseMessage = `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`;
   return controllerFactory.sendSuccessResponse(
     res,
     updatedRow,
-    `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`
+    type === 'wand' && updatedRow.status === 'Trashed' ? `${baseMessage}; ${WAND_EMPTY_NOTICE}` : baseMessage
   );
 };
 
 /**
- * Update wand charges (wand rows only)
+ * Update wand charges (wand rows only; DM-only at the route). Setting 0 charges
+ * trashes the wand, the same as using its last charge.
  */
 const updateWandCharges = async (req, res) => {
   const {id, charges} = req.body;
@@ -160,7 +165,8 @@ const updateWandCharges = async (req, res) => {
 
   const updateQuery = `
     UPDATE loot
-    SET charges = $1
+    SET charges = $1,
+        status = CASE WHEN $1 = 0 THEN 'Trashed' ELSE status END
     WHERE id = $2
       AND status = 'Kept Party'
       AND EXISTS (SELECT 1 FROM item i WHERE i.id = loot.itemid AND ${NAME_PREDICATE.wand})
@@ -173,7 +179,11 @@ const updateWandCharges = async (req, res) => {
     throw controllerFactory.createNotFoundError('Wand not found or not in kept party status');
   }
 
-  controllerFactory.sendSuccessResponse(res, result.rows[0], 'Wand charges updated successfully');
+  controllerFactory.sendSuccessResponse(
+    res,
+    result.rows[0],
+    result.rows[0].status === 'Trashed' ? `Wand charges updated; ${WAND_EMPTY_NOTICE}` : 'Wand charges updated successfully'
+  );
 };
 
 // Define validation rules

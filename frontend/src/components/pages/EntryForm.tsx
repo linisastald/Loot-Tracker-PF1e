@@ -316,6 +316,8 @@ const EntryForm: React.FC<EntryFormProps> = ({
             fullWidth
             value={data.charges || ''}
             onChange={e => handleChange('charges', e.target.value)}
+            slotProps={{ htmlInput: { min: 1, max: 50 } }}
+            helperText="1 to 50 charges"
           />
         </Grid>
       )}
