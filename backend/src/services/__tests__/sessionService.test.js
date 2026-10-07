@@ -269,7 +269,7 @@ describe('SessionService', () => {
 
       await sessionService.confirmSession(1);
 
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/WHERE id = $1s+AND status = 'scheduled'/);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/WHERE id = \$1\s+AND status = 'scheduled'/);
     });
 
     it('should not update Discord if session not found', async () => {
@@ -340,8 +340,8 @@ describe('SessionService', () => {
 
       const [sql, params] = dbUtils.executeQuery.mock.calls[0];
       expect(sql).toContain("status = 'scheduled'");
-      expect(sql).toMatch(/SELECT COUNT(DISTINCT user_id)s+FROM session_attendance/);
-      expect(sql).toMatch(/status = 'accepted's*) < minimum_players/);
+      expect(sql).toMatch(/SELECT COUNT\(DISTINCT user_id\)\s+FROM session_attendance/);
+      expect(sql).toMatch(/status = 'accepted'\s*\) < minimum_players/);
       expect(params).toEqual([1, 'short']);
     });
 

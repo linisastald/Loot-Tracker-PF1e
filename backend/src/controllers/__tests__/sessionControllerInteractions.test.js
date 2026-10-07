@@ -206,7 +206,7 @@ describe('processSessionInteraction campaign context', () => {
     expect(charLookup.query).toContain('campaign_id');
     expect(charLookup.params).toEqual(['6']);
     // Opus review M-7: only characters whose owning account has no Discord id yet
-    expect(charLookup.query).toMatch(/u.discord_id IS NULL/);
+    expect(charLookup.query).toMatch(/u\.discord_id IS NULL/);
 
     expect(sessionService.recordAttendance).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
