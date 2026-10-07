@@ -64,6 +64,28 @@ describe('Crew model', () => {
     });
   });
 
+  describe('single-row updates bind the crew id as a placeholder', () => {
+    // One more value is bound than the SET clause uses; the WHERE clause must
+    // reference it as $N, or PostgreSQL rejects the statement.
+    const lastPlaceholder = (query) => Math.max(...[...query.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+
+    it.each([
+      ['update', () => Crew.update(7, { name: 'Bosun', location_type: 'ship', location_id: 1 })],
+      ['markDead', () => Crew.markDead(7, '2026-01-01')],
+      ['markDeparted', () => Crew.markDeparted(7, '2026-01-01', 'left')],
+      ['moveToLocation', () => Crew.moveToLocation(7, 'ship', 3, 'Cook')],
+    ])('%s', async (_name, run) => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 7 }] });
+
+      await run();
+
+      const [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(values[values.length - 1]).toBe(7);
+      expect(query).toContain(`WHERE id = $${values.length}`);
+      expect(lastPlaceholder(query)).toBe(values.length);
+    });
+  });
+
   describe('create', () => {
     it('should create crew with ship position when on ship', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, name: 'Bosun' }] });

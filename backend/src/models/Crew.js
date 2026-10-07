@@ -44,7 +44,7 @@ const updateOne = async (setClause, values, crewId) => {
   const query = `
     UPDATE crew
     SET ${setClause}, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${values.length + 1}
+    WHERE id = $${values.length + 1}
     RETURNING *, ${hireDateText()}
   `;
   const result = await dbUtils.executeQuery(query, [...values, crewId]);
