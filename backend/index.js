@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const { errorHandler, apiNotFoundHandler } = require('./src/middleware/errorHandler');
 const { parseAllowedOrigins, createOriginCheck, hasWildcard } = require('./src/config/cors');
 const { mountBodyParsers } = require('./src/config/bodyParsers');
+const { isHashedAsset } = require('./src/config/staticAssets');
 const { detectHostIp } = require('./src/utils/hostIp');
 const sessionSchedulerService = require('./src/services/scheduler/SessionSchedulerService');
 const discordBrokerService = require('./src/services/discordBrokerService');
@@ -356,6 +357,10 @@ if (process.env.NODE_ENV === 'production') {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('index.html')) {
         res.setHeader('Cache-Control', 'no-cache');
+      } else if (isHashedAsset(frontendBuildPath, filePath)) {
+        // Vite names these after their content, so a new build gets new names
+        // and the old ones can be kept by the browser without re-checking.
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }
     },
   }));
