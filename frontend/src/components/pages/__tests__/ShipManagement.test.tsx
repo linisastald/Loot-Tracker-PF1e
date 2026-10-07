@@ -37,6 +37,12 @@ vi.mock('../../../data/shipData', () => ({
   SHIP_IMPROVEMENTS: {},
 }));
 
+// DM gating comes from the current campaign role
+const campaign = vi.hoisted(() => ({ isDM: true }));
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => campaign.isDM,
+}));
+
 import ShipManagement from '../ShipManagement';
 import shipService from '../../../services/shipService';
 
@@ -50,6 +56,7 @@ const renderComponent = () =>
 describe('ShipManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    campaign.isDM = true;
   });
 
   it('renders loading state initially', () => {
@@ -365,5 +372,22 @@ describe('ShipManagement', () => {
       expect(await screen.findByText('Ship 01')).toBeInTheDocument();
       expect(screen.getByText('Ship 12')).toBeInTheDocument();
     });
+  });
+});
+
+describe('ShipManagement for a player (not a DM)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.isDM = false;
+  });
+
+  it('hides the delete control but keeps edit', async () => {
+    vi.mocked(shipService.getAllShips).mockResolvedValue({
+      data: { ships: [{ id: 5, name: 'Doomed', status: 'Active', current_hp: 10, max_hp: 10 }] },
+    });
+    renderComponent();
+    await screen.findByText('Doomed');
+    expect(screen.queryByTitle('Delete')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Edit').length).toBeGreaterThan(0);
   });
 });

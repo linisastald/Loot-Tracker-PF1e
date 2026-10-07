@@ -22,6 +22,7 @@ import { STANDARD_RACES, generateRandomName, generateRandomRace, generateRandomA
 import { getTodayInInputFormat, golarionToInputFormat, inputFormatToGolarion } from '../../utils/golarionDate';
 import { getErrorMessage } from '../../utils/apiErrors';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useIsDM } from '../../contexts/CampaignContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -184,6 +185,8 @@ const ShipPositionSelect: React.FC<ShipPositionSelectProps> = ({ value, onChange
 
 const CrewManagement: React.FC = () => {
   const isMobile = useIsMobile();
+  // Deleting is DM-only; every member can still edit, move and change a crew member's status
+  const isDM = useIsDM();
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [deceasedCrew, setDeceasedCrew] = useState<CrewMember[]>([]);
   const [ships, setShips] = useState<Ship[]>([]);
@@ -626,13 +629,15 @@ const CrewManagement: React.FC = () => {
                       >
                         <WarningIcon />
                       </IconButton>
-                      <IconButton
-                        onClick={() => { setError(''); setSelectedCrew(crewMember); setDeleteDialogOpen(true); }}
-                        title="Delete"
-                        color="error"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      {isDM && (
+                        <IconButton
+                          onClick={() => { setError(''); setSelectedCrew(crewMember); setDeleteDialogOpen(true); }}
+                          title="Delete"
+                          color="error"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -18,6 +18,7 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import IconCell from '../common/IconCell';
 import PageLoading from '../common/PageLoading';
 import TabPanel from '../common/TabPanel';
+import { useIsDM } from '../../contexts/CampaignContext';
 import DamageRepairDialog, { DamageRepairType } from './ships/DamageRepairDialog';
 import ShipDetails from './ships/ShipDetails';
 import {
@@ -30,6 +31,8 @@ const TAB_PADDING = { xs: 1, md: 3 };
 const ShipManagement: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  // Deleting is DM-only; every member can still create and edit
+  const isDM = useIsDM();
   const [ships, setShips] = useState<Ship[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState('');
@@ -387,13 +390,15 @@ const ShipManagement: React.FC = () => {
                           >
                             <HealIcon />
                           </IconButton>
-                          <IconButton
-                            onClick={() => setDeleteShipId(ship.id)}
-                            title="Delete"
-                            color="error"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
+                          {isDM && (
+                            <IconButton
+                              onClick={() => setDeleteShipId(ship.id)}
+                              title="Delete"
+                              color="error"
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

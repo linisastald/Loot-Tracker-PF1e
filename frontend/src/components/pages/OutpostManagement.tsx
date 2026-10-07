@@ -13,6 +13,7 @@ import {
 import outpostService from '../../services/outpostService';
 import crewService from '../../services/crewService';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
+import { useIsDM } from '../../contexts/CampaignContext';
 import { getErrorMessage } from '../../utils/apiErrors';
 import ConfirmDialog from '../common/ConfirmDialog';
 import IconCell from '../common/IconCell';
@@ -54,6 +55,8 @@ const formatCalendarDate = (value?: string | null): string => {
 const OutpostManagement: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  // Deleting is DM-only; every member can still create and edit
+  const isDM = useIsDM();
   const [outposts, setOutposts] = useState<Outpost[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -274,13 +277,15 @@ const OutpostManagement: React.FC = () => {
                       <IconButton onClick={() => handleEditOutpost(outpost)} title="Edit">
                         <EditIcon />
                       </IconButton>
-                      <IconButton
-                        onClick={() => { setDialogOutpost(outpost); setDeleteDialogOpen(true); }}
-                        title="Delete"
-                        color="error"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      {isDM && (
+                        <IconButton
+                          onClick={() => { setDialogOutpost(outpost); setDeleteDialogOpen(true); }}
+                          title="Delete"
+                          color="error"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

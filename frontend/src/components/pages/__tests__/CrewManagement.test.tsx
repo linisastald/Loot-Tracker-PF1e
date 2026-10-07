@@ -74,6 +74,12 @@ vi.mock('../../../data/raceData', () => ({
   generateRandomAge: vi.fn().mockReturnValue(25),
 }));
 
+// DM gating comes from the current campaign role
+const campaign = vi.hoisted(() => ({ isDM: true }));
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => campaign.isDM,
+}));
+
 import CrewManagement from '../CrewManagement';
 import crewService from '../../../services/crewService';
 
@@ -88,6 +94,7 @@ const renderCrewManagement = () => {
 describe('CrewManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    campaign.isDM = true;
   });
 
   it('shows loading skeleton initially', () => {
@@ -337,5 +344,39 @@ describe('CrewManagement', () => {
       // The roster is refreshed so the partial batch is visible
       expect(crewService.getAllCrew).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('CrewManagement for a player (not a DM)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.isDM = false;
+  });
+
+  it('hides the delete control but keeps move, edit and status change', async () => {
+    renderCrewManagement();
+    await screen.findByText('Barnabas Bligh');
+    expect(screen.queryByTitle('Delete')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Edit').length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle('Move').length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle('Update Status').length).toBeGreaterThan(0);
+  });
+
+  it('a player can still mark a crew member dead (a status change, not a delete)', async () => {
+    const user = userEvent.setup();
+    renderCrewManagement();
+    await screen.findByText('Crimson Cogward');
+    const row = screen.getByText('Crimson Cogward').closest('tr') as HTMLElement;
+    await user.click(within(row).getByTitle('Update Status'));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+describe('CrewManagement for a DM', () => {
+  it('shows the delete control on every row', async () => {
+    campaign.isDM = true;
+    renderCrewManagement();
+    await screen.findByText('Barnabas Bligh');
+    expect(screen.getAllByTitle('Delete')).toHaveLength(3);
   });
 });
