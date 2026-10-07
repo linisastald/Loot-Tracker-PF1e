@@ -1142,6 +1142,16 @@ if [ -z "$WORKTREE_BRANCH" ] && [ "$DRY_RUN" = false ]; then
     warn_if_ahead_of_origin
 fi
 
+# Whether this build writes its version into the tree and records it in git.
+# A dev build always does, worktree or not: the files are bumped for the image,
+# restored afterwards, and the built commit is tagged vX.Y.Z-dev.N. A stable
+# build does so only from the main checkout, because it commits and pushes the
+# branch, which a detached worktree cannot do.
+RECORD_VERSION=false
+if [ "$BUILD_PATH" = "$ORIGINAL_DIR" ] || [ "$BUILD_STABLE" != true ]; then
+    RECORD_VERSION=true
+fi
+
 # Enable Docker BuildKit
 if [ "$USE_BUILDKIT" = true ]; then
     export DOCKER_BUILDKIT=1
@@ -1150,7 +1160,7 @@ fi
 
 # Update version files BEFORE build so they're included in the Docker image
 if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_MAIN_APP" = true ]; then
-    if [ "$BUILD_PATH" = "$ORIGINAL_DIR" ]; then
+    if [ "$RECORD_VERSION" = true ]; then
         if [ "$DRY_RUN" = true ]; then
             echo ""
             echo "[DRY RUN] Would update version files to v$NEW_VERSION"
@@ -1162,7 +1172,7 @@ if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_MAIN_APP" = 
             update_package_json_files "$NEW_VERSION"
         fi
     else
-        echo "Skipping version file updates (building from worktree)"
+        echo "Skipping version file updates (stable build from a worktree records nothing)"
     fi
 fi
 
@@ -1218,7 +1228,7 @@ fi
 #                   then annotate-tag the built commit as vX.Y.Z-dev.N.
 #  - Stable builds: commit the real version bump, tag it vX.Y.Z, and push the
 #                   branch robustly (rebase-and-retry on a racing push).
-if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_MAIN_APP" = true ] && [ "$BUILD_PATH" = "$ORIGINAL_DIR" ]; then
+if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_MAIN_APP" = true ] && [ "$RECORD_VERSION" = true ]; then
     if [ "$DRY_RUN" = true ]; then
         echo ""
         if [ "$BUILD_STABLE" = true ]; then
