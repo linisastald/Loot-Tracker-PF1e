@@ -826,7 +826,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (878, 'Brilliant Bulwark', 'armor', 9655, 'shield', 4, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (877, 'Bridle of Tricks, 5 tricks', 'magic', 2500, NULL, 2, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (880, 'Brilliant Plan Encumberance', 'gear', 0, NULL, 20, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5455, 'Scroll of Animate Dead (Arcane)', 'magic', 375, 'scroll', 0.01, 5);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5455, 'Scroll of Animate Dead (Arcane)', 'magic', 700, 'scroll', 0.01, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (882, 'Broadsheet', 'gear', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (884, 'Broken-Back Seax', 'weapon', 40, 'light', 4, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (885, 'Broken Chain Of The Beast', 'magic', 4500, NULL, 5, 7);
@@ -4872,7 +4872,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5434, 'Scouting Leather', 'other', 8750.0, NULL, 15, 10);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5436, 'Screaming Blade', 'other', 25315.0, NULL, 4, 10);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5437, 'Screaming Spear of the Sun', 'other', NULL, NULL, 4, 20);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7481, 'Wand of Lesser Planar Ally', 'magic', 225, 'wand', 0.0625, 5);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7481, 'Wand of Lesser Planar Ally', 'magic', 920, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7288, 'Wand of Acid Splash', 'magic', 7.5, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7289, 'Wand of Aid', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7290, 'Wand of Air Walk', 'magic', 420, 'wand', 0.0625, 7);
@@ -5117,7 +5117,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7558, 'Wand of Resilient Sphere', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7559, 'Wand of Resistance', 'magic', 7.5, 'wand', 0.0625, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7560, 'Wand of Resist Energy', 'magic', 90, 'wand', 0.0625, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7561, 'Wand of Restoration', 'magic', 420, 'wand', 0.0625, 7);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7561, 'Wand of Restoration', 'magic', 520, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7562, 'Wand of Rope Trick', 'magic', 90, 'wand', 0.0625, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7563, 'Wand of Rusting Grasp', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7564, 'Wand of Sanctuary', 'magic', 15, 'wand', 0.0625, 1);
@@ -6841,7 +6841,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5652, 'Scroll of Floating Disk', 'magic', 25, 'scroll', 0.01, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5653, 'Scroll of Fly', 'magic', 375, 'scroll', 0.01, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5654, 'Scroll of Fog Cloud', 'magic', 150, 'scroll', 0.01, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5655, 'Scroll of Forbiddance', 'magic', 500, 'scroll', 0.01, 11);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5655, 'Scroll of Forbiddance', 'magic', 3150, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5656, 'Scroll of Forcecage', 'magic', 2775, 'scroll', 0.01, 13);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5657, 'Scroll of Forceful Hand', 'magic', 1650, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5658, 'Scroll of Foresight', 'magic', 3825, 'scroll', 0.01, 17);
@@ -6878,7 +6878,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5690, 'Scroll of Greater Invisibility', 'magic', 700, 'scroll', 0.01, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5691, 'Scroll of Greater Magic Weapon (Arcane)', 'magic', 375, 'scroll', 0.01, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5692, 'Scroll of Greater Magic Weapon (Divine)', 'magic', 700, 'scroll', 0.01, 7);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5693, 'Scroll of Greater Planar Ally', 'magic', 2500, 'scroll', 0.01, 11);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5693, 'Scroll of Greater Planar Ally', 'magic', 5500, 'scroll', 0.01, 15);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5694, 'Scroll of Greater Planar Binding', 'magic', 3000, 'scroll', 0.01, 15);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5695, 'Scroll of Greater Polymorph', 'magic', 2275, 'scroll', 0.01, 13);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5696, 'Scroll of Greater Prying Eyes', 'magic', 3000, 'scroll', 0.01, 15);
@@ -6893,7 +6893,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5705, 'Scroll of Guards and Wards', 'magic', 1650, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5706, 'Scroll of Guidance', 'magic', 12.5, 'scroll', 0.01, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5707, 'Scroll of Gust of Wind (Arcane)', 'magic', 150, 'scroll', 0.01, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5708, 'Scroll of Hallow', 'magic', 1000, 'scroll', 0.01, 9);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5708, 'Scroll of Hallow', 'magic', 2125, 'scroll', 0.01, 9);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5709, 'Scroll of Hallucinatory Terrain', 'magic', 700, 'scroll', 0.01, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5710, 'Scroll of Halt Undead', 'magic', 375, 'scroll', 0.01, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5711, 'Scroll of Harm', 'magic', 1650, 'scroll', 0.01, 11);
@@ -6939,7 +6939,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5752, 'Scroll of Keen Edge', 'magic', 375, 'scroll', 0.01, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5753, 'Scroll of Knock', 'magic', 150, 'scroll', 0.01, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5754, 'Scroll of Legend Lore', 'magic', 1900, 'scroll', 0.01, 11);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5756, 'Scroll of Lesser Planar Ally', 'magic', 500, 'scroll', 0.01, 11);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5756, 'Scroll of Lesser Planar Ally', 'magic', 1200, 'scroll', 0.01, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5757, 'Scroll of Lesser Planar Binding', 'magic', 1125, 'scroll', 0.01, 9);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5758, 'Scroll of Lesser Restoration', 'magic', 150, 'scroll', 0.01, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5759, 'Scroll of Levitate', 'magic', 150, 'scroll', 0.01, 3);
@@ -7045,7 +7045,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5860, 'Scroll of Phantom Steed', 'magic', 375, 'scroll', 0.01, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5861, 'Scroll of Phantom Trap', 'magic', 200, 'scroll', 0.01, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5862, 'Scroll of Phase Door', 'magic', 2275, 'scroll', 0.01, 13);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5863, 'Scroll of Planar Ally', 'magic', 1250, 'scroll', 0.01, 11);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5863, 'Scroll of Planar Ally', 'magic', 2900, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5864, 'Scroll of Planar Binding (Arcane)', 'magic', 1650, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5865, 'Scroll of Plane Shift (Arcane)', 'magic', 2275, 'scroll', 0.01, 13);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5866, 'Scroll of Plane Shift (Divine)', 'magic', 1125, 'scroll', 0.01, 9);
@@ -7107,7 +7107,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5922, 'Scroll of Resistance (Divine)', 'magic', 12.5, 'scroll', 0.01, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5923, 'Scroll of Resist Energy (Arcane)', 'magic', 150, 'scroll', 0.01, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5924, 'Scroll of Resist Energy (Divine)', 'magic', 150, 'scroll', 0.01, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5925, 'Scroll of Restoration', 'magic', 100, 'scroll', 0.01, 7);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5925, 'Scroll of Restoration', 'magic', 800, 'scroll', 0.01, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5926, 'Scroll of Resurrection', 'magic', 12275, 'scroll', 0.01, 13);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5927, 'Scroll of Reverse Gravity', 'magic', 2275, 'scroll', 0.01, 13);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5928, 'Scroll of Righteous Might', 'magic', 1125, 'scroll', 0.01, 9);
@@ -7232,7 +7232,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6047, 'Scroll of Undeath to Death (Arcane)', 'magic', 2150, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6048, 'Scroll of Undeath to Death (Divine)', 'magic', 2150, 'scroll', 0.01, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6049, 'Scroll of Undetectable Alignment', 'magic', 150, 'scroll', 0.01, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6050, 'Scroll of Unhallow', 'magic', 1000, 'scroll', 0.01, 9);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6050, 'Scroll of Unhallow', 'magic', 2125, 'scroll', 0.01, 9);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6051, 'Scroll of Unholy Aura', 'magic', 3000, 'scroll', 0.01, 15);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6052, 'Scroll of Unholy Blight', 'magic', 700, 'scroll', 0.01, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6053, 'Scroll of Unseen Servant', 'magic', 25, 'scroll', 0.01, 1);
