@@ -356,6 +356,17 @@ app.post('/register', requireBrokerSecret, (req, res) => {
     lastHeartbeat: new Date().toISOString()
   };
 
+  // A channel owned by another app was refused above. Still flag an existing
+  // appId being re-registered with a different channel set (a second
+  // deployment using the same id), which silently breaks routing.
+  const previous = registeredApps.get(appId);
+  if (previous) {
+    const dropped = Object.keys(previous.channels).filter(ch => !channels[ch]);
+    if (dropped.length > 0) {
+      console.warn(`Re-registration of ${appId} drops previously registered channels (another deployment sharing this appId?):`, dropped);
+    }
+  }
+
   registeredApps.set(appId, appConfig);
 
   console.log(`Registered app: ${name} (${appId}) with channels:`, channelIds);

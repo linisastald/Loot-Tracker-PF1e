@@ -37,7 +37,7 @@ All notable changes to this project are documented in this file.
 
 ### Security
 - **Discord broker calls are authenticated.** Backend and broker now share `DISCORD_BROKER_SECRET` (set the same value on both; with `NODE_ENV=production` an unset secret rejects broker traffic). `BROKER_ALLOW_UNAUTHENTICATED_CONTROL=true` on the broker allows a staged rollout.
-- **The broker only passes the shared secret to backends that registered with it**, and two backends without a `GROUP_NAME` no longer share one broker identity (the identity now includes the callback address).
+- **The broker only passes the shared secret to backends that registered with it**, refuses a channel another running backend already owns, and lets a backend take its channels back from a registration that has gone silent.
 - **The Discord account-link menu lists only characters whose account has no Discord link**, from the campaign the channel belongs to, by name only.
 - **Gold entries are recorded against the signed-in user**, not a user id sent by the browser.
 - **Discord and global secrets are superadmin-only.** Campaign DMs can no longer change the bot token, and the settings endpoints no longer return token or key fragments.
@@ -78,6 +78,14 @@ All notable changes to this project are documented in this file.
 ### Notes
 - Includes database migrations 059 to 078, which run automatically on server start. None of 061 to 078 had been run against a real database when this was written.
 - Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), check the production settings listed under Changed (the server will not start without them), and check for users with no campaign membership, who lose access.
+
+## [0.15.2]
+
+### Fixed
+- **Discord session buttons stopped working when a second copy of the app was running.** All deployments registered with the Discord broker under the same name, so a test copy starting up replaced production's registration. Each deployment now registers under a name derived from its own web address.
+
+### Notes
+- Rebuild the Discord broker container to pick up its side of the fix.
 
 ## [0.15.1] - 2026-09-11
 

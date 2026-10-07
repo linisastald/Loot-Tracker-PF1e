@@ -1,9 +1,10 @@
 /**
  * Unit tests for DiscordBrokerService.resolveAppIdentity (Phase 5a branding).
  *
- * The broker identity derives from the static APP_NAME (with the GROUP_NAME
- * env var as a deployment override) — the deprecated global 'campaign_name'
- * settings row is no longer read, so identity resolution makes no DB call.
+ * The broker identity derives from the deployment's callback URL host (with
+ * the GROUP_NAME env var as an override and the static APP_NAME as a last
+ * resort) — the deprecated global 'campaign_name' settings row is no longer
+ * read, so identity resolution makes no DB call.
  */
 
 jest.mock('../../utils/logger', () => ({
@@ -24,30 +25,59 @@ const dbUtils = require('../../utils/dbUtils');
 const discordBrokerService = require('../discordBrokerService');
 
 describe('DiscordBrokerService.resolveAppIdentity', () => {
-  const originalGroupName = process.env.GROUP_NAME;
-  const originalCallback = process.env.DISCORD_CALLBACK_URL;
+  const ENV_KEYS = ['GROUP_NAME', 'DISCORD_CALLBACK_URL', 'HOST_IP', 'PORT'];
+  const originalEnv = {};
 
-  afterEach(() => {
-    if (originalGroupName === undefined) {
-      delete process.env.GROUP_NAME;
-    } else {
-      process.env.GROUP_NAME = originalGroupName;
-    }
-    if (originalCallback === undefined) {
-      delete process.env.DISCORD_CALLBACK_URL;
-    } else {
-      process.env.DISCORD_CALLBACK_URL = originalCallback;
-    }
+  beforeEach(() => {
+    ENV_KEYS.forEach((key) => {
+      originalEnv[key] = process.env[key];
+      delete process.env[key];
+    });
   });
 
-  it('uses the static APP_NAME plus a short hash of the callback URL when GROUP_NAME is not set', async () => {
-    delete process.env.GROUP_NAME;
-    process.env.DISCORD_CALLBACK_URL = 'http://live.local:5000/api/discord/interactions';
+  afterEach(() => {
+    ENV_KEYS.forEach((key) => {
+      if (originalEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = originalEnv[key];
+      }
+    });
+  });
+
+  it('derives the identity from the DISCORD_CALLBACK_URL host so deployments never collide', async () => {
+    process.env.DISCORD_CALLBACK_URL = 'https://rotr.example.com/api/discord/interactions';
+
+    await discordBrokerService.resolveAppIdentity();
+
+    expect(discordBrokerService.groupName).toBe('rotr.example.com');
+    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-rotr-example-com');
+  });
+
+  it('includes a non-default port from the callback URL', async () => {
+    process.env.DISCORD_CALLBACK_URL = 'http://192.168.0.64:30200/api/discord/interactions';
+
+    await discordBrokerService.resolveAppIdentity();
+
+    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-192-168-0-64-30200');
+  });
+
+  it('falls back to HOST_IP:PORT when DISCORD_CALLBACK_URL is not set', async () => {
+    process.env.HOST_IP = '10.0.0.5';
+    process.env.PORT = '5002';
+
+    await discordBrokerService.resolveAppIdentity();
+
+    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-10-0-0-5-5002');
+  });
+
+  it('falls back to the static APP_NAME when the callback URL is unparseable', async () => {
+    process.env.DISCORD_CALLBACK_URL = 'not a url';
 
     await discordBrokerService.resolveAppIdentity();
 
     expect(discordBrokerService.groupName).toBe('Pathfinder Loot Tracker');
-    expect(discordBrokerService.appId).toMatch(/^pathfinder-loot-tracker-pathfinder-loot-tracker-[0-9a-f]{8}$/);
+    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-pathfinder-loot-tracker');
   });
 
   it('gives two deployments with different callback URLs different appIds, and is stable per deployment', async () => {
@@ -64,6 +94,7 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
   });
 
   it('lets the GROUP_NAME env var override the identity', async () => {
+    process.env.DISCORD_CALLBACK_URL = 'https://rotr.example.com/api/discord/interactions';
     process.env.GROUP_NAME = 'My Table';
 
     await discordBrokerService.resolveAppIdentity();
@@ -72,7 +103,7 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
     expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-my-table');
   });
 
-  it('keeps honouring GROUP_NAME exactly, with no hash, whatever the callback URL', async () => {
+  it('keeps honouring GROUP_NAME exactly, whatever the callback URL', async () => {
     process.env.GROUP_NAME = 'My Table';
     process.env.DISCORD_CALLBACK_URL = 'http://anything.local/x';
 
@@ -82,8 +113,6 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
   });
 
   it('does not query the database (deprecated campaign_name row is unread)', async () => {
-    delete process.env.GROUP_NAME;
-
     await discordBrokerService.resolveAppIdentity();
 
     expect(dbUtils.executeQuery).not.toHaveBeenCalled();
