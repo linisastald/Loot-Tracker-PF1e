@@ -1,5 +1,6 @@
 import api from './api';
 import lootService from '../services/lootService';
+import { isWandEntryName } from './itemOptions';
 
 export const fetchInitialData = async (setItemOptions) => {
   try {
@@ -56,7 +57,7 @@ const entryErrorFor = (entry) => {
   if (entry.type === 'item') {
     if (!entry.data.name || entry.data.name.trim() === '') return 'Item name is required';
     if (!entry.data.quantity || entry.data.quantity <= 0) return 'Quantity must be greater than 0';
-    if (!isValidEntryCharges(entry.data.charges)) return WAND_CHARGES_ERROR;
+    if (isWandEntryName(entry.data.name) && !isValidEntryCharges(entry.data.charges)) return WAND_CHARGES_ERROR;
   } else if (entry.type === 'gold') {
     if (!entry.data.transactionType) return 'Transaction type is required';
     const { platinum, gold, silver, copper } = entry.data;
@@ -117,7 +118,7 @@ export const prepareEntryForSubmission = async (entry) => {
       type: data.type ? data.type.toLowerCase() : null,
       size: data.size || null,
       masterwork: data.masterwork || null,
-      charges: data.charges || null,
+      charges: isWandEntryName(data.name) ? data.charges || null : null,
       session_date: data.sessionDate || new Date().toISOString(),
     };
 

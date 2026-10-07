@@ -22,7 +22,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { parseISO, format } from 'date-fns';
 import { fetchItemNames } from '../../utils/lootEntryUtils';
-import { GOLD_TRANSACTION_TYPES, ITEM_SIZES, ITEM_TYPES } from '../../utils/itemOptions';
+import { GOLD_TRANSACTION_TYPES, ITEM_SIZES, ITEM_TYPES, isWandEntryName } from '../../utils/itemOptions';
 
 /** A catalog item offered by the item-name autocomplete. */
 export interface ItemSuggestion {
@@ -308,7 +308,7 @@ const EntryForm: React.FC<EntryFormProps> = ({
       </Grid>
 
       {/* Wand Charges (if applicable) */}
-      {data.name && data.name.toLowerCase().startsWith('wand of ') && (
+      {isWandEntryName(data.name) && (
         <Grid size={{ xs: 12, sm: 2 }}>
           <TextField
             label="Charges"

@@ -118,9 +118,15 @@ describe('prepareEntryForSubmission (items)', () => {
       type: 'weapon',
       size: 'Medium',
       masterwork: true,
-      charges: 3,
+      charges: null, // a charges value left on a row that is not a wand is not saved
       session_date: '2025-01-15',
     });
+  });
+
+  it('saves charges for a wand', async () => {
+    await prepareEntryForSubmission(itemEntry({ name: 'Wand of Fireball', charges: 30 }));
+
+    expect(lootService.createLoot).toHaveBeenCalledWith(expect.objectContaining({ name: 'Wand of Fireball', charges: 30 }));
   });
 
   it('defaults a missing quantity to 1 and blank optionals to null', async () => {
@@ -204,6 +210,12 @@ describe('validateLootEntries', () => {
   it.each([['blank', ''], ['one', '1'], ['fifty', 50], ['undefined', undefined]])('accepts wand charges that are %s', (_label, charges) => {
     const { validEntries } = validateLootEntries([itemEntry({ name: 'Wand of Fireball', charges })]);
     expect(validEntries).toHaveLength(1);
+  });
+
+  it('ignores a leftover charges value once the row is no longer a wand', () => {
+    const { validEntries, invalidEntries } = validateLootEntries([itemEntry({ name: 'Fireball necklace', charges: 60 })]);
+    expect(validEntries).toHaveLength(1);
+    expect(invalidEntries).toHaveLength(0);
   });
 
   it('requires a transaction type on gold entries', () => {

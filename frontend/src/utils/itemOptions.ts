@@ -45,3 +45,8 @@ export const GOLD_TRANSACTION_TYPES: string[] = [
   'Party Payback',
   'Other',
 ];
+
+// The loot entry Charges input is only shown for a name starting with "wand of ",
+// so a value left over from an earlier name must neither block the entry nor be saved.
+export const isWandEntryName = (name: unknown): boolean =>
+  typeof name === 'string' && name.toLowerCase().startsWith('wand of ');
