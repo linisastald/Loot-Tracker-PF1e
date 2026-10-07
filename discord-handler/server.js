@@ -29,6 +29,9 @@ const MAX_CHANNELS_PER_APP = 50;
 const MAX_TEXT_LENGTH = 200;
 const MAX_ENDPOINT_LENGTH = 2048;
 const MAX_CHANNEL_ID_LENGTH = 32;
+// Backends heartbeat every 30 s. One that has been silent this long is gone
+// (crashed, or restarted under a new appId) and may be replaced on its channels.
+const STALE_APP_MS = 90 * 1000;
 
 // Ephemeral (only the clicking user sees it) reply to a Discord interaction
 const ephemeral = (content) => ({
@@ -306,10 +309,17 @@ app.post('/register', requireBrokerSecret, (req, res) => {
     return res.status(400).json({ success: false, message: endpointError });
   }
 
-  // A channel already owned by a different app cannot be taken over
+  // A channel already owned by a different app cannot be taken over, unless that
+  // app has stopped sending heartbeats and the caller presented the shared secret.
+  const staleOwners = new Set();
   for (const channelId of channelIds) {
     for (const [otherId, other] of registeredApps) {
       if (otherId !== appId && other.channels[channelId]) {
+        const silentFor = Date.now() - new Date(other.lastHeartbeat).getTime();
+        if (req.brokerAuthenticated === true && silentFor > STALE_APP_MS) {
+          staleOwners.add(otherId);
+          continue;
+        }
         return res.status(409).json({
           success: false,
           message: `Channel ${channelId} is already registered by another app`
@@ -320,6 +330,10 @@ app.post('/register', requireBrokerSecret, (req, res) => {
 
   const existing = registeredApps.get(appId);
   if (refuseUnauthenticatedOverAuthenticated(req, res, existing, 'register')) return;
+  for (const staleId of staleOwners) {
+    console.warn(`Registration for ${appId} replaces ${staleId}, which has sent no heartbeat for over ${STALE_APP_MS / 1000}s`);
+    registeredApps.delete(staleId);
+  }
   if (existing && existing.endpoint !== endpoint) {
     console.warn(`Registration for ${appId} replaces a different endpoint (${existing.endpoint} -> ${endpoint}); two backends sharing one appId overwrite each other. Give each deployment its own GROUP_NAME.`);
   }

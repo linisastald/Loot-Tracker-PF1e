@@ -124,6 +124,32 @@ test('register refuses to take over a channel owned by another app', async () =>
   assert.equal(res.status, 200);
 });
 
+test('register lets an authenticated app replace an owner that stopped sending heartbeats', async () => {
+  let res = await post('/register', registration({ appId: 'old-id' }), 'test-secret');
+  assert.equal(res.status, 200);
+  app.registeredApps.get('old-id').lastHeartbeat = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  res = await post('/register', registration({ appId: 'new-id' }), 'test-secret');
+  assert.equal(res.status, 200);
+  assert.ok(app.registeredApps.has('new-id'));
+  assert.ok(!app.registeredApps.has('old-id'));
+});
+
+test('register never lets an unauthenticated caller replace a silent owner', async () => {
+  await post('/register', registration({ appId: 'old-id' }), 'test-secret');
+  app.registeredApps.get('old-id').lastHeartbeat = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL = 'true';
+  try {
+    const res = await post('/register', registration({ appId: 'new-id' }));
+    assert.equal(res.status, 409);
+  } finally {
+    delete process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL;
+  }
+  assert.ok(app.registeredApps.has('old-id'));
+  assert.ok(!app.registeredApps.has('new-id'));
+});
+
 test('/webhook no longer exists', async () => {
   const res = await post('/webhook', { t: 'MESSAGE_REACTION_ADD', d: {} });
   assert.equal(res.status, 404);
