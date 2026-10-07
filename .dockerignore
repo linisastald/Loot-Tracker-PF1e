@@ -68,10 +68,8 @@ temp/
 
 # Development scripts and utilities (build_image.sh is the build entry point
 # but is not needed inside the image either)
-update_containers.sh
 update_sql_data.sh
 *.py
-utilities/
 
 # Environment files: secrets are supplied at deploy time, never baked into an image.
 # ** prefixes also cover backend/.env and frontend/.env; the *.example templates stay.

@@ -71,7 +71,7 @@ bash build_image.sh --branch feature/my-feature
 
 The script pulls the branch from the remote (so push first), builds `docker/Dockerfile.backend` and tags the image. Dev builds are tagged `vX.Y.Z-dev.N` in git; `--stable` commits the version bump and tags `vX.Y.Z`. Add `--discord-broker` to also build the Discord broker image (`discord-handler/Dockerfile`). Run `bash build_image.sh --help` for every option.
 
-Deployment definitions (for example TrueNAS app definitions) are kept outside git because they hold environment-specific values and secrets. The optional Discord broker is deployed with `docker-compose.discord-broker.yml`. The backend applies pending migrations from `backend/migrations/` on every start. A fresh database is set up as described in `database/DATABASE_SETUP.md`.
+Deployment definitions (for example TrueNAS app definitions) are kept outside git because they hold environment-specific values and secrets. The optional Discord broker runs the image built by `build_image.sh --discord-broker` and is deployed the same way; `.env.discord-broker.example` lists its settings.
 
 ### Environment Variables
 
@@ -134,7 +134,6 @@ discord-handler/      # Discord broker service (separate image)
 docker/
   Dockerfile.backend  # Production Docker image
   generate-secrets.sh # Random secret generator
-docker-compose.discord-broker.yml  # Discord broker deployment
 build_image.sh        # Build / release script
 ```
 

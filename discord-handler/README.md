@@ -76,11 +76,7 @@ The service starts on port 3000 with auto-reload enabled.
 
 ## Docker Deployment
 
-The image is built from `discord-handler/Dockerfile` by `build_image.sh --discord-broker`. `docker-compose.discord-broker.yml` (repository root) is the compose definition for the broker:
-
-```bash
-docker-compose -f docker-compose.discord-broker.yml up -d
-```
+The image is built from `discord-handler/Dockerfile` by `build_image.sh --discord-broker`. It is deployed from an app definition kept outside git (for example a TrueNAS app); `.env.discord-broker.example` in the repository root lists the settings it needs.
 
 ## Backend Communication
 

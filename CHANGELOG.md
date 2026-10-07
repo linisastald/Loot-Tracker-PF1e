@@ -53,7 +53,7 @@ All notable changes to this project are documented in this file.
 ### Removed
 - **About 60 API endpoints that nothing called**, with their handlers, model methods and tests, including the legacy Discord session-message flow.
 - Unused database objects: `session_notes`, `session_messages` and the `upcoming_sessions` view (migration 068); `fame`, `fame_history` and `golarion_calendar_notes` (migration 070).
-- Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker app definition), the archived migrations folder, and ten stale utility scripts.
+- Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker compose file and deploy script, `update_containers.sh`), the archived migrations folder, and the old Python utility scripts.
 
 ### Notes
 - Includes database migrations 059 to 073, which run automatically on server start. None of 061 to 073 had been run against a real database when this was written.
