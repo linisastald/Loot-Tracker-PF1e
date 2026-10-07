@@ -294,11 +294,17 @@ const getMyCampaigns = async (req, res) => {
 const getCurrentCampaign = async (req, res) => {
   const campaign = req.campaignId ? await Campaign.getById(req.campaignId) : null;
   const settings = req.campaignId ? await Campaign.getSettingsMap(req.campaignId) : {};
+  // The requester's active character in THIS campaign (GET /auth/status carries
+  // no campaign header, so it cannot answer this for a multi-campaign user)
+  const activeCharacterId = req.campaignId && req.user
+    ? ((await Campaign.getActiveCharacterId(req.user.id, req.campaignId)) ?? null)
+    : null;
 
   controllerFactory.sendSuccessResponse(res, {
     campaignId: req.campaignId ?? null,
     role: req.campaignRole ?? null,
     isSuperadmin: !!req.isSuperadmin,
+    activeCharacterId,
     campaign: campaign
       ? {
           id: campaign.id,

@@ -29,7 +29,7 @@ import api from '../../utils/api';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useAuth } from '../../contexts/AuthContext';
+import { useActiveCharacterId } from '../../contexts/CampaignContext';
 import { ITEM_TYPES, ITEM_SIZES } from '../../utils/itemOptions';
 import LootItemCard from './LootItemCard';
 import {
@@ -198,9 +198,8 @@ const CustomLootTable = ({
     handleFilterChange: handleWhoHasFilterChange,
   } = useFilterMenu({});
 
-  // Believed values are looked up for the active character
-  const { user } = useAuth();
-  const activeCharacterId = user?.activeCharacterId ?? null;
+  // Believed values are looked up for the active character of the selected campaign
+  const activeCharacterId = useActiveCharacterId() ?? null;
 
   // Cell styles
   const mainCellStyle = { padding: '16px' };

@@ -36,6 +36,8 @@ vi.mock('../../contexts/AuthContext', () => ({
 // DM gating comes from the current campaign, not the account
 vi.mock('../../contexts/CampaignContext', () => ({
   useIsDM: vi.fn(() => false),
+  // the active character of the SELECTED campaign (not the auth user's)
+  useActiveCharacterId: vi.fn(() => 10),
 }));
 
 // Mock api (needed by utils)
@@ -58,7 +60,7 @@ import {
   handleUpdateDialogClose,
 } from '../../utils/utils';
 import { useAuth } from '../../contexts/AuthContext';
-import { useIsDM } from '../../contexts/CampaignContext';
+import { useIsDM, useActiveCharacterId } from '../../contexts/CampaignContext';
 import useLootManagement from '../useLootManagement';
 
 describe('useLootManagement', () => {
@@ -70,6 +72,7 @@ describe('useLootManagement', () => {
       user: mockAuthUser,
     });
     useIsDM.mockReturnValue(false);
+    useActiveCharacterId.mockReturnValue(10);
 
     // Reset applyFilters to pass-through
     applyFilters.mockImplementation((loot) => loot || { summary: [], individual: [] });
@@ -139,10 +142,24 @@ describe('useLootManagement', () => {
       });
     });
 
+    it("uses the selected campaign's active character, not the auth user's (multi-campaign)", async () => {
+      // the auth user still carries campaign 1's character (10); the selected campaign says 22
+      useActiveCharacterId.mockReturnValue(22);
+
+      renderHook(() => useLootManagement(null));
+
+      await waitFor(() => {
+        expect(lootService.getAllLoot).toHaveBeenCalledWith(
+          expect.objectContaining({ activeCharacterId: 22 })
+        );
+      });
+    });
+
     it('should not fetch loot if non-DM player has no activeCharacterId', async () => {
       useAuth.mockReturnValue({
         user: { id: 3, username: 'nochar', role: 'Player' },
       });
+      useActiveCharacterId.mockReturnValue(null);
 
       renderHook(() => useLootManagement(null));
 
@@ -517,6 +534,7 @@ describe('useLootManagement', () => {
       useAuth.mockReturnValue({
         user: { id: 5, username: 'nochar', role: 'Player' },
       });
+      useActiveCharacterId.mockReturnValue(null);
 
       // This user has no activeCharacterId, so fetchLoot won't be called for statusToFetch=null
       // Use a status that doesn't require activeCharacterId

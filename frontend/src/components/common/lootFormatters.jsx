@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tooltip } from '@mui/material';
-import { useAuth } from '../../contexts/AuthContext';
+import { useActiveCharacterId } from '../../contexts/CampaignContext';
 
 /**
  * Formats an ISO timestamp string to a date-only display format.
@@ -68,10 +68,10 @@ export const FormatAverageAppraisal = ({ item }) => {
   );
 };
 
-// Believed value for the logged-in user's active character (read from the
-// auth context, so rendering a row costs no request).
+// Believed value for the user's active character in the selected campaign (read
+// from the campaign context, so rendering a row costs no request).
 export const FormatBelievedValue = ({ item }) => {
-  const { user } = useAuth();
-  const formatted = formatAmount(getBelievedValue(item, user?.activeCharacterId));
+  const activeCharacterId = useActiveCharacterId();
+  const formatted = formatAmount(getBelievedValue(item, activeCharacterId));
   return formatted === '' ? null : <span>{formatted}</span>;
 };

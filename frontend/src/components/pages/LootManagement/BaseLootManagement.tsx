@@ -5,8 +5,7 @@ import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog'
 import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
 import useLootManagement from '../../../hooks/useLootManagement';
 import lootService from '../../../services/lootService';
-import { useAuth } from '../../../contexts/AuthContext';
-import { useIsDM } from '../../../contexts/CampaignContext';
+import { useActiveCharacterId, useIsDM } from '../../../contexts/CampaignContext';
 import { getErrorMessage } from '../../../utils/apiErrors';
 import { notifyLootCountsChanged } from '../../../utils/events';
 import { LootActionKey, LootManagementConfig, LootStatus } from '../../../types/game';
@@ -16,8 +15,8 @@ interface BaseLootManagementProps {
 }
 
 const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
-  const { user: authUser } = useAuth();
   const isDM = useIsDM();
+  const activeCharacterId = useActiveCharacterId();
   const [updateError, setUpdateError] = React.useState('');
   const [actionError, setActionError] = React.useState('');
   const {
@@ -57,7 +56,6 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     try {
       // Never send the user id as a character id: without an active
       // character the loot keeps its current holder.
-      const activeCharacterId = (authUser as any)?.activeCharacterId;
       if (needsCharacter && !activeCharacterId) {
         setActionError('You need an active character to keep loot for yourself.');
         return;

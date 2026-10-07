@@ -11,7 +11,7 @@ import {
   handleUpdateDialogClose,
 } from '../utils/utils';
 import { useAuth } from '../contexts/AuthContext';
-import { useIsDM } from '../contexts/CampaignContext';
+import { useActiveCharacterId, useIsDM } from '../contexts/CampaignContext';
 
 // Columns requested from loot_view; 'appraisals' carries each character's believed value
 const LOOT_FIELDS =
@@ -28,6 +28,9 @@ const STATUS_FETCHERS = {
 
 const useLootManagement = (statusToFetch) => {
   const { user: authUser } = useAuth();
+  // The active character of the SELECTED campaign (not the auth user's: /auth/status
+  // answers for the user's lowest-id campaign)
+  const activeCharacterId = useActiveCharacterId();
   const isDMUser = useIsDM();
 
   // Common state
@@ -50,8 +53,8 @@ const useLootManagement = (statusToFetch) => {
         const params = { isDM: isDMUser, fields: LOOT_FIELDS };
 
         if (!isDMUser) {
-          if (authUser && authUser.activeCharacterId) {
-            params.activeCharacterId = authUser.activeCharacterId;
+          if (authUser && activeCharacterId) {
+            params.activeCharacterId = activeCharacterId;
           } else {
             return;
           }
@@ -68,7 +71,7 @@ const useLootManagement = (statusToFetch) => {
       // The page shows an empty list when the fetch fails
       setLoot(EMPTY_LOOT);
     }
-  }, [statusToFetch, isDMUser, authUser]);
+  }, [statusToFetch, isDMUser, authUser, activeCharacterId]);
 
   useEffect(() => {
     fetchLoot();
@@ -112,13 +115,13 @@ const useLootManagement = (statusToFetch) => {
     if (!authUser || !authUser.id) {
       return;
     }
-    if (!authUser.activeCharacterId) {
+    if (!activeCharacterId) {
       throw new Error('You need an active character to appraise items.');
     }
 
     const response = await lootService.appraiseLoot({
       lootIds: selectedItems,
-      characterId: authUser.activeCharacterId,
+      characterId: activeCharacterId,
       appraisalRolls: selectedItems.map(() => Math.floor(Math.random() * 20) + 1)
     });
 

@@ -32,6 +32,13 @@ export interface CampaignContextType {
   campaignRole: 'DM' | 'Player' | null;
   isSuperadmin: boolean;
   /**
+   * The user's active character in the CURRENT (selected) campaign, from the
+   * campaign-scoped GET /campaigns/current. Always read it from here, never
+   * from the auth user: GET /auth/status carries no campaign header, so for a
+   * user in several campaigns it answers for their lowest-id campaign.
+   */
+  activeCharacterId: number | null;
+  /**
    * UI gate for DM-only controls: the user's role in the CURRENT campaign is DM,
    * or the user is a superadmin. Mirrors the backend's hasDmRights; render hint
    * only, the server stays the authority.
@@ -67,6 +74,9 @@ export const useCampaign = (): CampaignContextType => {
   return context;
 };
 
+/** The user's active character in the selected campaign (null when none). */
+export const useActiveCharacterId = (): number | null => useCampaign().activeCharacterId;
+
 /** Whether the current user may see DM-only controls in the current campaign. */
 export const useIsDM = (): boolean => useCampaign().isDM;
 
@@ -81,6 +91,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
   const [currentCampaign, setCurrentCampaign] = useState<CurrentCampaign | null>(null);
   const [campaignRole, setCampaignRole] = useState<'DM' | 'Player' | null>(null);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [activeCharacterId, setActiveCharacterId] = useState<number | null>(null);
   const [campaignSettings, setCampaignSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [hasNoCampaign, setHasNoCampaign] = useState(false);
@@ -112,6 +123,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
       }
       setCampaignRole(current?.role ?? null);
       setIsSuperadmin(Boolean(current?.isSuperadmin));
+      setActiveCharacterId(typeof current?.activeCharacterId === 'number' ? current.activeCharacterId : null);
       setHasNoCampaign(campaignList.length === 0 && !current?.isSuperadmin);
       setCampaignSettings(current?.settings ?? {});
       setError(null);
@@ -146,6 +158,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
     currentCampaign,
     campaignRole,
     isSuperadmin,
+    activeCharacterId,
     isDM: campaignRole === 'DM' || isSuperadmin,
     campaignSettings,
     loading,

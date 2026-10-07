@@ -29,6 +29,7 @@ import {
 import {Add as AddIcon, Edit as EditIcon, Star as StarIcon, StarBorder as StarBorderIcon} from '@mui/icons-material';
 import HeartBrokenIcon from '@mui/icons-material/HeartBroken';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useCampaign } from '../../../contexts/CampaignContext';
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
@@ -55,6 +56,9 @@ const CharacterTab = () => {
     const { timezone } = useCampaignTimezone();
     // AuthContext caches the active character id, so refresh it after changes
     const { refreshUser } = useAuth();
+    // ...and so does the campaign context, which serves the active character of the
+    // SELECTED campaign (what the loot pages read)
+    const { refresh: refreshCampaign } = useCampaign();
 
     const [characterForm, setCharacterForm] = useState(EMPTY_CHARACTER);
 
@@ -85,7 +89,11 @@ const CharacterTab = () => {
             await request();
             setSuccess(successMessage);
             setError('');
-            await Promise.all([fetchCharacters(), refreshUser().catch(() => {})]);
+            await Promise.all([
+                fetchCharacters(),
+                refreshUser().catch(() => {}),
+                refreshCampaign().catch(() => {}),
+            ]);
             return true;
         } catch {
             setError(errorMessage);

@@ -63,8 +63,11 @@ vi.mock('../../../../contexts/AuthContext', () => ({
 
 // DM routing follows the role in the CURRENT campaign (or superadmin)
 let mockIsDM = false;
+// The active character of the SELECTED campaign (the auth user's is not used)
+let mockActiveCharacterId: number | null = null;
 vi.mock('../../../../contexts/CampaignContext', () => ({
   useIsDM: () => mockIsDM,
+  useActiveCharacterId: () => mockActiveCharacterId,
 }));
 
 // CustomLootTable pulls in lots of unrelated state; stub it out.
@@ -73,6 +76,10 @@ vi.mock('../../../common/CustomLootTable', () => ({
 }));
 
 import BaseLootManagement from '../BaseLootManagement';
+
+beforeEach(() => {
+  mockActiveCharacterId = null;
+});
 import lootService from '../../../../services/lootService';
 
 const config: any = {
@@ -192,7 +199,8 @@ describe('BaseLootManagement status actions (F-1577)', () => {
   });
 
   it('sends the active character id when there is one', async () => {
-    useAuthMock.mockReturnValue({ user: { id: 7, role: 'Player', activeCharacterId: 21 } });
+    mockActiveCharacterId = 21; // campaign context, not the auth user
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'Player', activeCharacterId: 99 } });
     render(<BaseLootManagement config={actionConfig} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Keep Party' }));
@@ -235,7 +243,8 @@ describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
   });
 
   it('shows the server message when a status change fails and keeps the selection', async () => {
-    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 7 } });
+    mockActiveCharacterId = 7;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 99 } });
     (lootService.updateLootStatus as any).mockRejectedValueOnce({
       response: { data: { message: 'Cannot change status of sold loot' } },
     });
@@ -258,7 +267,8 @@ describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
   });
 
   it('sends the active character with Keep Self', async () => {
-    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 7 } });
+    mockActiveCharacterId = 7;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 99 } });
 
     render(<BaseLootManagement config={actionConfig} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Keep Self' }));
@@ -269,7 +279,8 @@ describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
   });
 
   it('shows why an appraisal failed and keeps the selection', async () => {
-    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 7 } });
+    mockActiveCharacterId = 7;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 99 } });
     mockHookReturn.handleAppraise = vi.fn().mockRejectedValue({
       response: { data: { message: 'You can only appraise as your own character' } },
     });

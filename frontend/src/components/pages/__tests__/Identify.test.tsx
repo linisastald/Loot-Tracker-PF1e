@@ -11,8 +11,11 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 // DM gating comes from the current campaign, not the account
 let mockIsDM = false;
+// The active character of the selected campaign (the auth user's is NOT used)
+let mockActiveCharacterId: number | null = 10;
 vi.mock('../../../contexts/CampaignContext', () => ({
   useIsDM: () => mockIsDM,
+  useActiveCharacterId: () => mockActiveCharacterId,
 }));
 
 // Mock lootService
@@ -51,9 +54,11 @@ vi.mock('../../common/CustomLootTable', () => ({
 import Identify from '../Identify';
 import lootService from '../../../services/lootService';
 
-const renderIdentify = (authOverrides = {}) => {
+const renderIdentify = (authOverrides = {}, activeCharacterId: number | null = 10) => {
+  mockActiveCharacterId = activeCharacterId;
   const defaultAuth = {
-    user: { id: 1, username: 'testplayer', role: 'player', activeCharacterId: 10 },
+    // activeCharacterId here is deliberately a DIFFERENT campaign's character
+    user: { id: 1, username: 'testplayer', role: 'player', activeCharacterId: 99 },
     isAuthenticated: true,
     refreshUser: vi.fn(),
     setUser: vi.fn(),
@@ -232,7 +237,7 @@ describe('Identify', () => {
     });
 
     it('requires an active character for a player', async () => {
-      renderIdentify({ user: { id: 1, username: 'p', role: 'player' } });
+      renderIdentify({ user: { id: 1, username: 'p', role: 'player', activeCharacterId: 99 } }, null);
 
       await selectAndIdentify('Unknown Ring');
 

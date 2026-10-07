@@ -19,8 +19,7 @@ import {
   Typography,
 } from '@mui/material';
 import CustomLootTable from '../common/CustomLootTable';
-import { useAuth } from '../../contexts/AuthContext';
-import { useIsDM } from '../../contexts/CampaignContext';
+import { useActiveCharacterId, useIsDM } from '../../contexts/CampaignContext';
 
 interface LootItem {
   id: number;
@@ -117,8 +116,8 @@ const Identify: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
-  const { user: authUser } = useAuth();
   const isDMUser = useIsDM();
+  const activeCharacterIdOfCampaign = useActiveCharacterId();
 
   useEffect(() => {
     fetchLoot();
@@ -156,7 +155,7 @@ const Identify: React.FC = () => {
       return;
     }
 
-    const activeCharacterId = authUser?.activeCharacterId;
+    const activeCharacterId = activeCharacterIdOfCampaign;
     if (!isDMUser && !activeCharacterId) {
       setError('Active character required for identification');
       return;

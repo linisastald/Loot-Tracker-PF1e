@@ -84,6 +84,24 @@ exports.getMembership = async (userId, campaignId) => {
 };
 
 /**
+ * The user's active character in ONE campaign (null when none). Used so the
+ * frontend always gets the character of the campaign the request selected, not
+ * of the user's lowest-id campaign (GET /auth/status carries no campaign
+ * header).
+ *
+ * @param {number} userId
+ * @param {number} campaignId
+ * @return {Promise<number|null>}
+ */
+exports.getActiveCharacterId = async (userId, campaignId) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT id FROM characters WHERE user_id = $1 AND campaign_id = $2 AND active = true ORDER BY id LIMIT 1',
+    [userId, campaignId]
+  );
+  return result.rows[0]?.id ?? null;
+};
+
+/**
  * Get a campaign's member roster (user_campaign joined with users), ordered
  * by username.
  *

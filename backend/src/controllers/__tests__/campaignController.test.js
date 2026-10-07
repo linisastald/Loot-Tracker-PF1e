@@ -351,16 +351,20 @@ describe('campaignController', () => {
         world: 'Golarion',
         is_active: true,
       });
+      Campaign.getActiveCharacterId.mockResolvedValue(31);
 
       await campaignController.getCurrentCampaign(req, res);
 
       expect(Campaign.getById).toHaveBeenCalledWith(2);
+      // M-6: the active character of the SELECTED campaign (the one this request resolved)
+      expect(Campaign.getActiveCharacterId).toHaveBeenCalledWith(req.user.id, 2);
       expect(Campaign.getSettingsMap).toHaveBeenCalledWith(2);
       expect(res.success).toHaveBeenCalledWith(
         {
           campaignId: 2,
           role: 'DM',
           isSuperadmin: false,
+          activeCharacterId: 31,
           campaign: {
             id: 2,
             name: 'Skulls & Shackles',
@@ -396,6 +400,18 @@ describe('campaignController', () => {
       );
     });
 
+    it('serves a user in two campaigns the character of the campaign the request selected', async () => {
+      const charactersByCampaign = { 1: 11, 2: 22 };
+      Campaign.getActiveCharacterId.mockImplementation(async (userId, campaignId) => charactersByCampaign[campaignId] ?? null);
+      Campaign.getById.mockImplementation(async (id) => ({ id, name: 'C' + id, slug: 'c' + id, world: 'Golarion', is_active: true }));
+
+      for (const [campaignId, expected] of [[1, 11], [2, 22]]) {
+        const res = createMockRes();
+        await campaignController.getCurrentCampaign(createMockReq({ campaignId, campaignRole: 'Player' }), res);
+        expect(res.success.mock.calls[0][0].activeCharacterId).toBe(expected);
+      }
+    });
+
     it('should report isSuperadmin true for superadmins', async () => {
       const req = createMockReq({ campaignId: 1, campaignRole: 'DM', isSuperadmin: true });
       const res = createMockRes();
@@ -425,6 +441,7 @@ describe('campaignController', () => {
           campaignId: null,
           role: null,
           isSuperadmin: false,
+          activeCharacterId: null,
           campaign: null,
           settings: {},
         },

@@ -320,6 +320,28 @@ describe('Campaign model', () => {
   });
 
   // -------------------------------------------------------------------
+  // getActiveCharacterId (Opus review M-6)
+  // -------------------------------------------------------------------
+  describe('getActiveCharacterId', () => {
+    it("returns the user's active character in THAT campaign only", async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 77 }] });
+
+      const id = await Campaign.getActiveCharacterId(42, 3);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('FROM characters');
+      expect(query).toContain('user_id = $1 AND campaign_id = $2 AND active = true');
+      expect(params).toEqual([42, 3]);
+      expect(id).toBe(77);
+    });
+
+    it('returns null when the user has no active character there', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      expect(await Campaign.getActiveCharacterId(42, 3)).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
   // getNameById (Phase 5a: branding via campaigns.name)
   // -------------------------------------------------------------------
   describe('getNameById', () => {

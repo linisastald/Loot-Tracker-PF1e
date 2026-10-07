@@ -15,6 +15,11 @@ vi.mock('../../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 1, username: 'p', role: 'Player' }, isAuthenticated: true, refreshUser }),
 }));
 
+const refreshCampaign = vi.fn();
+vi.mock('../../../../contexts/CampaignContext', () => ({
+  useCampaign: () => ({ refresh: refreshCampaign }),
+}));
+
 vi.mock('../../../../hooks/useCampaignTimezone', () => ({
   useCampaignTimezone: () => ({ timezone: 'America/New_York', loading: false, error: null }),
 }));
@@ -31,6 +36,7 @@ describe('CharacterTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     refreshUser.mockResolvedValue(undefined);
+    refreshCampaign.mockResolvedValue(undefined);
     vi.mocked(api.get).mockResolvedValue({ data: characters } as never);
     vi.mocked(api.put).mockResolvedValue({ data: {} } as never);
     vi.mocked(api.post).mockResolvedValue({ data: {} } as never);
@@ -62,6 +68,8 @@ describe('CharacterTab', () => {
     expect(await screen.findByText('Seoni is now your active character')).toBeInTheDocument();
     expect(api.put).toHaveBeenCalledWith('/user/characters', { id: 2, active: true });
     expect(refreshUser).toHaveBeenCalledTimes(1);
+    // the campaign context serves the active character of the selected campaign
+    expect(refreshCampaign).toHaveBeenCalledTimes(1);
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 

@@ -3,10 +3,16 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
+// The active character comes from the selected campaign
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useActiveCharacterId: () => 10,
+  useIsDM: () => false,
+}));
+
 // Mock the AuthContext
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 1, username: 'testplayer', role: 'player', activeCharacterId: 10 },
+    user: { id: 1, username: 'testplayer', role: 'player', activeCharacterId: 99 },
     isAuthenticated: true,
     isDM: false,
     refreshUser: vi.fn(),

@@ -7,8 +7,10 @@ vi.mock('../../../utils/api', () => ({
   default: { get: (...args: unknown[]) => apiGet(...args) },
 }));
 
-vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 1, activeCharacterId: 7 } }),
+// The active character comes from the selected campaign (not the auth user)
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useActiveCharacterId: () => 7,
+  useIsDM: () => false,
 }));
 
 vi.mock('../../../hooks/useCampaignTimezone', () => ({

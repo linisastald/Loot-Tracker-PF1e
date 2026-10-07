@@ -36,7 +36,7 @@ import api from '../../utils/api';
 import { getErrorMessage } from '../../utils/apiErrors';
 import { availabilityItemLabel } from '../../utils/availabilityPricing';
 import lootService from '../../services/lootService';
-import { useAuth } from '../../contexts/AuthContext';
+import { useActiveCharacterId } from '../../contexts/CampaignContext';
 
 interface City {
   id: number;
@@ -192,7 +192,7 @@ const CityStat: React.FC<{ label: string; children: React.ReactNode }> = ({ labe
 const CityServices: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [referenceOpen, setReferenceOpen] = useState(false);
-  const { user: activeUser } = useAuth();
+  const activeCharacterId = useActiveCharacterId();
 
   // Item Availability States
   const [cities, setCities] = useState<City[]>([]);
@@ -344,7 +344,7 @@ const CityServices: React.FC = () => {
       const data = await postCityCheck<ItemSearchResult>('/item-search/check', {
         item_id: selectedItem.id,
         mod_ids: selectedMods.map((m) => m.id),
-        character_id: activeUser?.activeCharacterId,
+        character_id: activeCharacterId ?? undefined,
       });
       setItemSearchResult(data);
 

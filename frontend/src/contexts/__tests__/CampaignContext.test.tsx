@@ -14,7 +14,7 @@ vi.mock('../../utils/api', () => ({
 
 import api from '../../utils/api';
 import { AuthProvider } from '../AuthContext';
-import { CampaignProvider, useCampaign, useIsDM } from '../CampaignContext';
+import { CampaignProvider, useCampaign, useIsDM, useActiveCharacterId } from '../CampaignContext';
 
 // ---------------------------------------------------------------------------
 // window.location.reload mock (switchCampaign performs a full reload)
@@ -82,6 +82,7 @@ const Probe: React.FC = () => {
       <span data-testid="superadmin">{String(ctx.isSuperadmin)}</span>
       <span data-testid="is-dm">{String(ctx.isDM)}</span>
       <span data-testid="error">{ctx.error ?? 'none'}</span>
+      <span data-testid="active-character">{String(ctx.activeCharacterId)}</span>
       <span data-testid="settings">{JSON.stringify(ctx.campaignSettings)}</span>
       <button onClick={() => ctx.switchCampaign(2)}>do-switch</button>
       <button onClick={() => ctx.refresh()}>do-refresh</button>
@@ -138,6 +139,44 @@ describe('CampaignContext', () => {
       await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
       expect(screen.getByTestId('no-campaign')).toHaveTextContent('false');
       errSpy.mockRestore();
+    });
+  });
+
+  describe('activeCharacterId (Opus review M-6)', () => {
+    const inCampaign = (campaignId: number, activeCharacterId: number | null) => ({
+      campaignId, role: 'Player', isSuperadmin: false, activeCharacterId,
+      campaign: { id: campaignId, name: 'C' + campaignId, slug: 'c' + campaignId }, settings: {},
+    });
+    const HookProbe: React.FC = () => <span data-testid="hook-character">{String(useActiveCharacterId())}</span>;
+
+    it('is the character of the SELECTED campaign, as /campaigns/current reports it', async () => {
+      // a user in two campaigns: campaign 1 has character 11, campaign 2 has character 22
+      setupApiMock(inCampaign(2, 22));
+      render(
+        <AuthProvider user={{ id: 1, username: 'u', role: 'Player', activeCharacterId: 11 }} isAuthenticated>
+          <CampaignProvider><Probe /><HookProbe /></CampaignProvider>
+        </AuthProvider>
+      );
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      // the auth user still carries campaign 1's character; the context must not
+      expect(screen.getByTestId('active-character')).toHaveTextContent('22');
+      expect(screen.getByTestId('hook-character')).toHaveTextContent('22');
+    });
+
+    it('is null when the user has no active character in the campaign', async () => {
+      setupApiMock(inCampaign(2, null));
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('active-character')).toHaveTextContent('null');
+    });
+
+    it('refreshes after a character change', async () => {
+      setupApiMock(inCampaign(2, 22));
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('active-character')).toHaveTextContent('22'));
+      setupApiMock(inCampaign(2, 23));
+      fireEvent.click(screen.getByText('do-refresh'));
+      await waitFor(() => expect(screen.getByTestId('active-character')).toHaveTextContent('23'));
     });
   });
 
