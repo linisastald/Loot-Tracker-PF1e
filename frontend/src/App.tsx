@@ -1,5 +1,5 @@
 import CssBaseline from '@mui/material/CssBaseline';
-import React, {Suspense, useCallback, useEffect, useState} from 'react';
+import React, {Suspense, useCallback, useEffect, useRef, useState} from 'react';
 import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import {ThemeProvider} from '@mui/material/styles';
 import {Box, CircularProgress} from '@mui/material';
@@ -11,6 +11,7 @@ import ProtectedRoute from './components/hoc/ProtectedRoute';
 import RoleRoute from './components/hoc/RoleRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import CampaignThemeProvider from './components/CampaignThemeProvider';
+import ServerUnreachable from './components/ServerUnreachable';
 
 // Lazy loaded page components
 const Register = React.lazy(() => import('./components/pages/Register'));
@@ -114,6 +115,11 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // The login check could not be completed (network, 5xx, rate limit). Shown as its
+  // own screen; failedChecks drives the retry backoff.
+  const [serverUnreachable, setServerUnreachable] = useState(false);
+  const [failedChecks, setFailedChecks] = useState(0);
+  const mounted = useRef(true);
 
   // Client-side leftovers of a session. The auth cookie itself is HTTP-only and
   // only the server can clear it.
@@ -141,53 +147,58 @@ function App() {
     return true;
   }, [clearClientSession]);
 
-  useEffect(() => {
-    let isMounted = true;
+  // The user is only trusted once the server confirms the session; nothing
+  // is read from localStorage. Also used by the "can't reach the server" screen
+  // to retry, so it never throws.
+  const checkAuthStatus = useCallback(async (): Promise<void> => {
+    try {
+      // The api utility returns the unwrapped body: { success, message, data: { user } }
+      const response = await api.get('/auth/status') as unknown as AuthStatusResponse;
+      if (!mounted.current) return;
 
-    // The user is only trusted once the server confirms the session; nothing
-    // is read from localStorage.
-    const checkAuthStatus = async () => {
-      try {
-        // The api utility returns the unwrapped body: { success, message, data: { user } }
-        const response = await api.get('/auth/status') as unknown as AuthStatusResponse;
-
-        if (response?.success && response?.data?.user) {
-          if (isMounted) {
-            setIsAuthenticated(true);
-            setUser(response.data.user);
-          }
-          // Slide the 24h session window so active users aren't logged out mid-use
-          api.post('/auth/refresh').catch(() => {});
-        } else if (isMounted) {
-          // Server answered but there is no signed-in user
-          clearClientSession();
-        }
-      } catch (error: unknown) {
-        if (!isMounted) return;
-        const status = (error as { response?: { status?: number } })?.response?.status;
-        if (status === 401 || status === 403) {
-          // Session invalid: also ask the server to drop the cookie
-          await handleLogout();
-          clearClientSession();
-        } else {
-          // Could not verify (network, 5xx, rate limit): do not assume a session,
-          // but do not log the user out server-side or wipe their stored selections
-          setIsAuthenticated(false);
-          setUser(null);
-        }
-      } finally {
-        if (isMounted) {
-          setAuthLoading(false);
-        }
+      setServerUnreachable(false);
+      setFailedChecks(0);
+      if (response?.success && response?.data?.user) {
+        setIsAuthenticated(true);
+        setUser(response.data.user);
+        // Slide the 24h session window so active users aren't logged out mid-use
+        api.post('/auth/refresh').catch(() => {});
+      } else {
+        // Server answered but there is no signed-in user
+        clearClientSession();
       }
-    };
-
-    checkAuthStatus();
-
-    return () => {
-      isMounted = false;
-    };
+    } catch (error: unknown) {
+      if (!mounted.current) return;
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403) {
+        // Session invalid: also ask the server to drop the cookie
+        setServerUnreachable(false);
+        setFailedChecks(0);
+        await handleLogout();
+        clearClientSession();
+      } else {
+        // Could not verify (network, 5xx, rate limit): do not assume a session,
+        // but do not log the user out server-side or wipe their stored selections.
+        // Show the "can't reach the server" screen, which retries with a backoff.
+        setIsAuthenticated(false);
+        setUser(null);
+        setServerUnreachable(true);
+        setFailedChecks((count) => count + 1);
+      }
+    } finally {
+      if (mounted.current) {
+        setAuthLoading(false);
+      }
+    }
   }, [clearClientSession, handleLogout]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void checkAuthStatus();
+    return () => {
+      mounted.current = false;
+    };
+  }, [checkAuthStatus]);
 
   // Keep long-lived tabs alive while signed in: re-issue the token periodically.
   // Failures are ignored; an expired token just means the next API call
@@ -234,6 +245,8 @@ function App() {
           >
             <CircularProgress size={40} role="status" aria-label="Loading application" />
           </Box>
+        ) : serverUnreachable ? (
+          <ServerUnreachable failedChecks={failedChecks} onRetry={checkAuthStatus} />
         ) : (
         /* Required for enqueueSnackbar everywhere (SessionManagement, SessionsPage, ...) —
             without a mounted provider those calls are silent no-ops */
