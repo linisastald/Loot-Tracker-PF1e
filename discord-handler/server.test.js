@@ -273,3 +273,108 @@ test('/health is a bare liveness answer', async () => {
   const body = await (await fetch(`${base}/health`)).json();
   assert.deepEqual(Object.keys(body).sort(), ['status', 'timestamp']);
 });
+
+// ---------------------------------------------------------------------------
+// Opus review H-2: transition mode must not let an unauthenticated caller
+// replace, remove or keep alive an authenticated registration, and the shared
+// secret is only ever forwarded to an authenticated registration.
+// ---------------------------------------------------------------------------
+const withTransition = async (fn) => {
+  process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL = 'true';
+  try {
+    await fn();
+  } finally {
+    delete process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL;
+  }
+};
+
+test('transition mode: an unauthenticated /register cannot replace an authenticated registration', async () => {
+  await post('/register', registration(), 'test-secret');
+  await withTransition(async () => {
+    const res = await post('/register', registration({ endpoint: 'http://attacker.example/steal' }));
+    assert.equal(res.status, 403);
+  });
+  assert.equal(app.registeredApps.get('app-1').endpoint, 'http://backend.local:5000/api/discord/interactions');
+});
+
+test('transition mode: an unauthenticated /unregister cannot remove an authenticated registration', async () => {
+  await post('/register', registration(), 'test-secret');
+  await withTransition(async () => {
+    const res = await post('/unregister', { appId: 'app-1' });
+    assert.equal(res.status, 403);
+  });
+  assert.ok(app.registeredApps.has('app-1'));
+});
+
+test('transition mode: an unauthenticated /heartbeat neither refreshes nor alters an authenticated registration', async () => {
+  await post('/register', registration(), 'test-secret');
+  const before = app.registeredApps.get('app-1').lastHeartbeat;
+  await new Promise((r) => setTimeout(r, 15));
+  await withTransition(async () => {
+    const res = await post('/heartbeat', { appId: 'app-1' });
+    assert.equal(res.status, 403);
+  });
+  assert.equal(app.registeredApps.get('app-1').lastHeartbeat, before);
+});
+
+test('transition mode: an authenticated /register may still replace an unauthenticated one', async () => {
+  await withTransition(async () => {
+    assert.equal((await post('/register', registration())).status, 200);
+    assert.equal(app.registeredApps.get('app-1').authenticated, false);
+  });
+  const res = await post('/register', registration(), 'test-secret');
+  assert.equal(res.status, 200);
+  assert.equal(app.registeredApps.get('app-1').authenticated, true);
+});
+
+test('the broker secret is not forwarded to an unauthenticated registration', async () => {
+  process.env.DISCORD_PUBLIC_KEY = publicKeyHex;
+  const backend = await startBackend((res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ type: 4, data: { content: 'ok' } }));
+  });
+  try {
+    await withTransition(async () => {
+      await post('/register', registration({ endpoint: `http://127.0.0.1:${backend.port}/x` }));
+    });
+    await signedInteraction(click(CHANNEL));
+    assert.equal(backend.received.length, 1);
+    assert.equal(backend.received[0].headers['x-broker-secret'], undefined);
+  } finally {
+    backend.srv.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Opus review M-3: /heartbeat carries the endpoint; a different endpoint under
+// the same appId means the registration was overwritten.
+// ---------------------------------------------------------------------------
+test('heartbeat answers 404 when the caller endpoint differs from the registered one', async () => {
+  await post('/register', registration(), 'test-secret');
+  const res = await post('/heartbeat', { appId: 'app-1', endpoint: 'http://other.local:5000/api/discord/interactions' }, 'test-secret');
+  assert.equal(res.status, 404);
+  assert.match((await res.json()).message, /not registered/i);
+});
+
+test('heartbeat with the matching endpoint, or without one (older backend), still succeeds', async () => {
+  await post('/register', registration(), 'test-secret');
+  let res = await post('/heartbeat', { appId: 'app-1', endpoint: 'http://backend.local:5000/api/discord/interactions' }, 'test-secret');
+  assert.equal(res.status, 200);
+  res = await post('/heartbeat', { appId: 'app-1' }, 'test-secret');
+  assert.equal(res.status, 200);
+});
+
+test('re-registering an appId from a different endpoint is logged clearly and replaces it', async () => {
+  await post('/register', registration(), 'test-secret');
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  try {
+    const res = await post('/register', registration({ endpoint: 'http://other.local:5000/api/discord/interactions' }), 'test-secret');
+    assert.equal(res.status, 200);
+  } finally {
+    console.warn = original;
+  }
+  assert.ok(warnings.some((w) => /app-1/.test(w) && /different endpoint/i.test(w)));
+  assert.equal(app.registeredApps.get('app-1').endpoint, 'http://other.local:5000/api/discord/interactions');
+});

@@ -1,4 +1,5 @@
 // Discord Broker Registration Service
+const crypto = require('crypto');
 const axios = require('axios');
 const logger = require('../utils/logger');
 const dbUtils = require('../utils/dbUtils');
@@ -50,7 +51,16 @@ class DiscordBrokerService {
   async resolveAppIdentity() {
     const { APP_NAME } = require('../config/constants');
     this.groupName = process.env.GROUP_NAME || APP_NAME;
-    this.appId = `pathfinder-loot-tracker-${this.groupName.toLowerCase().replace(/\s+/g, '-')}`;
+    const base = `pathfinder-loot-tracker-${this.groupName.toLowerCase().replace(/\s+/g, '-')}`;
+    if (process.env.GROUP_NAME) {
+      this.appId = base;
+      return;
+    }
+    // No GROUP_NAME: every deployment would share one static id and overwrite
+    // each other's registration on a shared broker. A short, stable hash of this
+    // deployment's callback URL keeps the ids apart.
+    const hash = crypto.createHash('sha256').update(this.buildCallbackUrl()).digest('hex').slice(0, 8);
+    this.appId = `${base}-${hash}`;
   }
 
   async start() {
@@ -335,6 +345,8 @@ class DiscordBrokerService {
 
     const response = await this.makeRequest('/heartbeat', 'POST', {
       appId: this.appId,
+      // lets the broker notice that another backend overwrote our registration
+      endpoint: this.buildCallbackUrl(),
       timestamp: new Date().toISOString()
     });
 

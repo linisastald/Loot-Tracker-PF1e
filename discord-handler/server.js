@@ -66,6 +66,7 @@ const requireBrokerSecret = (req, res, next) => {
 
   if (transitionModeEnabled() && TRANSITION_PATHS.has(req.path) && req.get(BROKER_SECRET_HEADER) === undefined) {
     console.warn(`Transition mode: allowing unauthenticated control request to ${req.path} (appId: ${req.body?.appId})`);
+    req.brokerAuthenticated = false;
     return next();
   }
 
@@ -74,6 +75,7 @@ const requireBrokerSecret = (req, res, next) => {
       console.error('DISCORD_BROKER_SECRET is not set; rejecting control request');
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
+    req.brokerAuthenticated = false;
     return next();
   }
 
@@ -82,7 +84,23 @@ const requireBrokerSecret = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
+  req.brokerAuthenticated = true;
   return next();
+};
+
+// An unauthenticated caller (transition mode, or dev without a secret) may
+// never touch a registration that was made with the secret.
+const refuseUnauthenticatedOverAuthenticated = (req, res, existing, action) => {
+  if (existing && existing.authenticated && !req.brokerAuthenticated) {
+    console.warn(`Refused unauthenticated ${action} of authenticated registration ${existing.appId}`);
+    res.status(403).json({
+      success: false,
+      message: `An authenticated registration cannot be changed without the broker secret`,
+      appId: existing.appId
+    });
+    return true;
+  }
+  return false;
 };
 
 // Allowlist of hosts a registered callback endpoint may point at.
@@ -130,7 +148,8 @@ const getChannelRoutes = () => {
         name: appConfig.name,
         endpoint: appConfig.endpoint,
         channelId,
-        appId: appConfig.appId
+        appId: appConfig.appId,
+        authenticated: appConfig.authenticated === true
       });
     });
   });
@@ -181,7 +200,8 @@ const routeToInstance = async (interaction, campaignConfig) => {
           'Content-Type': 'application/json',
           'X-Forwarded-From': 'discord-handler',
           'X-Campaign-Instance': campaignConfig.name,
-          ...(process.env.DISCORD_BROKER_SECRET
+          // The secret only goes to a registration that proved it knows it
+          ...(process.env.DISCORD_BROKER_SECRET && campaignConfig.authenticated
             ? { [BROKER_SECRET_HEADER]: process.env.DISCORD_BROKER_SECRET }
             : {})
         },
@@ -298,7 +318,13 @@ app.post('/register', requireBrokerSecret, (req, res) => {
     }
   }
 
-  if (!registeredApps.has(appId) && registeredApps.size >= MAX_REGISTERED_APPS) {
+  const existing = registeredApps.get(appId);
+  if (refuseUnauthenticatedOverAuthenticated(req, res, existing, 'register')) return;
+  if (existing && existing.endpoint !== endpoint) {
+    console.warn(`Registration for ${appId} replaces a different endpoint (${existing.endpoint} -> ${endpoint}); two backends sharing one appId overwrite each other. Give each deployment its own GROUP_NAME.`);
+  }
+
+  if (!existing && registeredApps.size >= MAX_REGISTERED_APPS) {
     return res.status(429).json({
       success: false,
       message: `At most ${MAX_REGISTERED_APPS} apps may be registered`
@@ -311,6 +337,7 @@ app.post('/register', requireBrokerSecret, (req, res) => {
     description: description || '',
     endpoint,
     channels,
+    authenticated: req.brokerAuthenticated === true,
     registeredAt: new Date().toISOString(),
     lastHeartbeat: new Date().toISOString()
   };
@@ -330,6 +357,8 @@ app.post('/register', requireBrokerSecret, (req, res) => {
 // App unregistration endpoint
 app.post('/unregister', requireBrokerSecret, requireAppId, (req, res) => {
   const { appId } = req.body;
+
+  if (refuseUnauthenticatedOverAuthenticated(req, res, registeredApps.get(appId), 'unregister')) return;
 
   const wasRegistered = registeredApps.delete(appId);
 
@@ -351,10 +380,25 @@ app.post('/unregister', requireBrokerSecret, requireAppId, (req, res) => {
 
 // Heartbeat endpoint
 app.post('/heartbeat', requireBrokerSecret, requireAppId, (req, res) => {
-  const { appId } = req.body;
+  const { appId, endpoint } = req.body;
 
   const registered = registeredApps.get(appId);
   if (!registered) {
+    return res.status(404).json({
+      success: false,
+      message: 'App not registered',
+      appId
+    });
+  }
+
+  if (refuseUnauthenticatedOverAuthenticated(req, res, registered, 'heartbeat')) return;
+
+  // A heartbeat from an endpoint other than the registered one means this
+  // caller's registration was overwritten by another backend under the same
+  // appId: answer "not registered" so it registers again (older backends send
+  // no endpoint and keep the previous behaviour).
+  if (typeof endpoint === 'string' && endpoint !== registered.endpoint) {
+    console.warn(`Heartbeat for ${appId} came from ${endpoint} but the registered endpoint is ${registered.endpoint}; answering not registered`);
     return res.status(404).json({
       success: false,
       message: 'App not registered',

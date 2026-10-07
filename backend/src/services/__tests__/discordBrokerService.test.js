@@ -25,6 +25,7 @@ const discordBrokerService = require('../discordBrokerService');
 
 describe('DiscordBrokerService.resolveAppIdentity', () => {
   const originalGroupName = process.env.GROUP_NAME;
+  const originalCallback = process.env.DISCORD_CALLBACK_URL;
 
   afterEach(() => {
     if (originalGroupName === undefined) {
@@ -32,15 +33,34 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
     } else {
       process.env.GROUP_NAME = originalGroupName;
     }
+    if (originalCallback === undefined) {
+      delete process.env.DISCORD_CALLBACK_URL;
+    } else {
+      process.env.DISCORD_CALLBACK_URL = originalCallback;
+    }
   });
 
-  it('uses the static APP_NAME when GROUP_NAME is not set', async () => {
+  it('uses the static APP_NAME plus a short hash of the callback URL when GROUP_NAME is not set', async () => {
     delete process.env.GROUP_NAME;
+    process.env.DISCORD_CALLBACK_URL = 'http://live.local:5000/api/discord/interactions';
 
     await discordBrokerService.resolveAppIdentity();
 
     expect(discordBrokerService.groupName).toBe('Pathfinder Loot Tracker');
-    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-pathfinder-loot-tracker');
+    expect(discordBrokerService.appId).toMatch(/^pathfinder-loot-tracker-pathfinder-loot-tracker-[0-9a-f]{8}$/);
+  });
+
+  it('gives two deployments with different callback URLs different appIds, and is stable per deployment', async () => {
+    delete process.env.GROUP_NAME;
+    process.env.DISCORD_CALLBACK_URL = 'http://live.local:5000/api/discord/interactions';
+    await discordBrokerService.resolveAppIdentity();
+    const live = discordBrokerService.appId;
+    await discordBrokerService.resolveAppIdentity();
+    expect(discordBrokerService.appId).toBe(live);
+
+    process.env.DISCORD_CALLBACK_URL = 'http://test.local:5001/api/discord/interactions';
+    await discordBrokerService.resolveAppIdentity();
+    expect(discordBrokerService.appId).not.toBe(live);
   });
 
   it('lets the GROUP_NAME env var override the identity', async () => {
@@ -49,6 +69,15 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
     await discordBrokerService.resolveAppIdentity();
 
     expect(discordBrokerService.groupName).toBe('My Table');
+    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-my-table');
+  });
+
+  it('keeps honouring GROUP_NAME exactly, with no hash, whatever the callback URL', async () => {
+    process.env.GROUP_NAME = 'My Table';
+    process.env.DISCORD_CALLBACK_URL = 'http://anything.local/x';
+
+    await discordBrokerService.resolveAppIdentity();
+
     expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-my-table');
   });
 
@@ -439,6 +468,34 @@ describe('DiscordBrokerService heartbeat and re-registration', () => {
 
     svc.makeRequest.mockResolvedValueOnce({ success: false, message: 'unknown app' });
     await expect(svc.sendHeartbeat()).rejects.toThrow('Heartbeat failed: unknown app');
+  });
+
+  it('sendHeartbeat carries the callback endpoint so the broker can detect an overwritten registration', async () => {
+    svc.makeRequest.mockResolvedValueOnce({ success: true });
+    await svc.sendHeartbeat();
+    expect(svc.makeRequest).toHaveBeenCalledWith('/heartbeat', 'POST', expect.objectContaining({
+      endpoint: svc.buildCallbackUrl()
+    }));
+  });
+
+  it('a 404 "not registered" heartbeat drops to unregistered and the next tick registers again', async () => {
+    jest.useFakeTimers();
+    try {
+      svc.heartbeatInterval = null;
+      svc.makeRequest.mockRejectedValueOnce(new Error('HTTP 404: App not registered'));
+      const register = jest.spyOn(svc, 'registerWithBroker').mockResolvedValue(undefined);
+
+      svc.startHeartbeat();
+      await jest.advanceTimersByTimeAsync(30000);
+      expect(svc.isRegistered).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(30000);
+      expect(register).toHaveBeenCalledTimes(1);
+    } finally {
+      clearInterval(svc.heartbeatInterval);
+      svc.heartbeatInterval = null;
+      jest.useRealTimers();
+    }
   });
 
   it('sendHeartbeat does nothing when not registered', async () => {
