@@ -246,14 +246,14 @@ describe('lootService', () => {
 
   describe('sellUpTo', () => {
     it('should POST to /sales/up-to with amount', async () => {
-      await lootService.sellUpTo({ amount: 5000 });
-      expect(api.post).toHaveBeenCalledWith('/sales/up-to', { amount: 5000 });
+      await lootService.sellUpTo({ maxAmount: 5000 });
+      expect(api.post).toHaveBeenCalledWith('/sales/up-to', { maxAmount: 5000 });
     });
   });
 
   describe('sellAllExcept', () => {
     it('should POST to /sales/all-except with items to keep', async () => {
-      const data = { itemsToKeep: [1, 5, 10] };
+      const data = { keepIds: [1, 5, 10] };
       await lootService.sellAllExcept(data);
       expect(api.post).toHaveBeenCalledWith('/sales/all-except', data);
     });
@@ -261,7 +261,7 @@ describe('lootService', () => {
 
   describe('sellSelected', () => {
     it('should POST to /sales/selected with items to sell', async () => {
-      const data = { itemsToSell: [2, 3, 7] };
+      const data = { itemIds: [2, 3, 7] };
       await lootService.sellSelected(data);
       expect(api.post).toHaveBeenCalledWith('/sales/selected', data);
     });

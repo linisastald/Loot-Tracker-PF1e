@@ -202,7 +202,7 @@ const PendingSaleManagement = () => {
         const amount = parseFloat(sellUpToAmount);
         return runSale({
             validate: () => (isNaN(amount) || amount <= 0 ? 'Please enter a valid amount' : null),
-            call: () => lootService.sellUpTo({amount}),
+            call: () => lootService.sellUpTo({maxAmount: amount}),
             describe: (data, summary) => `${summary}.`,
             onSold: () => setSellUpToAmount(''),
         });
@@ -210,7 +210,7 @@ const PendingSaleManagement = () => {
 
     const handleSellAllExcept = () => runSale({
         validate: () => (selectedItemsInfo.hasSelectedItems ? null : 'No items selected to keep.'),
-        call: () => lootService.sellAllExcept({itemsToKeep: selectedPendingItems}),
+        call: () => lootService.sellAllExcept({keepIds: selectedPendingItems}),
         describe: (data, summary) => `${summary}, kept ${data.kept?.count || 0} items.`,
         onSold: () => setSelectedPendingItems([]),
     });
@@ -225,7 +225,7 @@ const PendingSaleManagement = () => {
         },
         // Only valid item IDs go to the backend
         call: () => lootService.sellSelected({
-            itemsToSell: selectedItemsInfo.validSelectedItems.map(item => item.id)
+            itemIds: selectedItemsInfo.validSelectedItems.map(item => item.id)
         }),
         describe: (data, summary) => {
             const skippedCount = data.skipped?.count || 0;

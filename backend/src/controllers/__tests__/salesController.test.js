@@ -215,31 +215,34 @@ describe('salesController', () => {
       );
     });
 
-    it('should sell all items when keepIds is empty', async () => {
-      const req = createMockReq({
-        body: { keepIds: [] },
-      });
+    it('rejects an empty keepIds array (keeping nothing is the confirm-sale route, not this one)', async () => {
+      const req = createMockReq({ body: { keepIds: [] } });
       const res = createMockRes();
-
-      const mockResult = { sold: { count: 10, total: 5000 } };
-      SalesService.sellAllExceptItems.mockResolvedValue(mockResult);
 
       await salesController.sellAllExcept(req, res);
 
-      expect(SalesService.sellAllExceptItems).toHaveBeenCalledWith([]);
-      expect(res.success).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalled();
+      expect(SalesService.sellAllExceptItems).not.toHaveBeenCalled();
     });
 
-    it('should default keepIds to empty array when not provided', async () => {
+    it('rejects a body with no keepIds at all instead of selling everything', async () => {
       const req = createMockReq({ body: {} });
       const res = createMockRes();
 
-      const mockResult = { sold: { count: 10, total: 5000 } };
-      SalesService.sellAllExceptItems.mockResolvedValue(mockResult);
+      await salesController.sellAllExcept(req, res);
+
+      expect(res.validationError).toHaveBeenCalled();
+      expect(SalesService.sellAllExceptItems).not.toHaveBeenCalled();
+    });
+
+    it('rejects the old itemsToKeep field name (it must never be silently ignored)', async () => {
+      const req = createMockReq({ body: { itemsToKeep: [1, 2] } });
+      const res = createMockRes();
 
       await salesController.sellAllExcept(req, res);
 
-      expect(SalesService.sellAllExceptItems).toHaveBeenCalledWith([]);
+      expect(res.validationError).toHaveBeenCalled();
+      expect(SalesService.sellAllExceptItems).not.toHaveBeenCalled();
     });
 
     it('should return forbidden error for non-DM users', async () => {
@@ -326,7 +329,7 @@ describe('salesController', () => {
       ['getPendingSaleItems', {}],
       ['confirmSale', {}],
       ['sellSelected', { body: { itemIds: [1] } }],
-      ['sellAllExcept', { body: { keepIds: [] } }],
+      ['sellAllExcept', { body: { keepIds: [1] } }],
       ['sellUpTo', { body: { maxAmount: 100 } }],
     ];
 

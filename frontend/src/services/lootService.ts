@@ -211,19 +211,19 @@ const lootService = {
   /**
    * Sell items up to amount
    */
-  sellUpTo: (data: { amount: number }): Promise<ApiResponse> =>
+  sellUpTo: (data: { maxAmount: number }): Promise<ApiResponse> =>
     api.post('/sales/up-to', data),
 
   /**
    * Sell all except specified items
    */
-  sellAllExcept: (data: { itemsToKeep: number[] }): Promise<ApiResponse> =>
+  sellAllExcept: (data: { keepIds: number[] }): Promise<ApiResponse> =>
     api.post('/sales/all-except', data),
 
   /**
    * Sell selected items
    */
-  sellSelected: (data: { itemsToSell: number[] }): Promise<ApiResponse> =>
+  sellSelected: (data: { itemIds: number[] }): Promise<ApiResponse> =>
     api.post('/sales/selected', data),
 
   /**

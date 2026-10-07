@@ -75,11 +75,12 @@ const sellSelected = async (req, res) => {
 const sellAllExcept = async (req, res) => {
   ValidationService.requireDM(req);
 
-  const { keepIds = [] } = req.body;
-
-  if (keepIds.length > 0) {
-    ValidationService.validateItems(keepIds, 'keepIds');
-  }
+  // keepIds is required and must name at least one item. A missing or
+  // misspelled field used to default to [], which sold EVERY pending item
+  // including the ones the DM meant to keep. Selling everything has its own
+  // route (POST /sales/confirm).
+  const { keepIds } = req.body;
+  ValidationService.validateItems(keepIds, 'keepIds');
 
   const saleResult = await SalesService.sellAllExceptItems(keepIds);
 

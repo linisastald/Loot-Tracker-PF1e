@@ -453,7 +453,7 @@ describe('PendingSaleManagement', () => {
 
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith('/sales/selected', {
-          itemsToSell: [1],
+          itemIds: [1],
         });
       });
 
@@ -564,7 +564,7 @@ describe('PendingSaleManagement', () => {
 
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith('/sales/selected', {
-          itemsToSell: [1],
+          itemIds: [1],
         });
       });
     });
@@ -574,7 +574,7 @@ describe('PendingSaleManagement', () => {
   // 7. Sell All Except -> POST /sales/all-except
   // -------------------------------------------------------------------------
   describe('Sell All Except Selected', () => {
-    it('POSTs to /sales/all-except with itemsToKeep and shows kept vs sold counts', async () => {
+    it('POSTs to /sales/all-except with keepIds and shows kept vs sold counts', async () => {
       (api.post as any).mockImplementation((url: string) => {
         if (url === '/sales/calculate') {
           return Promise.resolve({ data: mockSaleCalculation });
@@ -605,7 +605,7 @@ describe('PendingSaleManagement', () => {
 
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith('/sales/all-except', {
-          itemsToKeep: [1],
+          keepIds: [1],
         });
       });
 
@@ -663,7 +663,7 @@ describe('PendingSaleManagement', () => {
       fireEvent.click(sellUpToBtn);
 
       await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith('/sales/up-to', { amount: 100 });
+        expect(api.post).toHaveBeenCalledWith('/sales/up-to', { maxAmount: 100 });
       });
 
       await waitFor(() => {
