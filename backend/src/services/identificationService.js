@@ -196,8 +196,10 @@ class IdentificationService {
     // A DM identification (explicit server-authorised flag) is an automatic success.
     const bonus = isDMIdentification ? null : this.validateSpellcraftBonus(identificationData.spellcraftBonus);
 
-    // Fetch the loot item details
-    const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+    // Fetch the loot item details. The row lock makes simultaneous attempts on the
+    // same item wait for each other, so the once-per-day check below sees the
+    // attempt an earlier request has just recorded.
+    const lootResult = await client.query('SELECT * FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
     const lootItem = lootResult.rows[0];
 
     if (!lootItem) {

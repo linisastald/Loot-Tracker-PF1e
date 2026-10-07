@@ -405,6 +405,23 @@ describe('IdentificationService', () => {
       return { query: queryFn };
     }
 
+    it('locks the loot row so simultaneous attempts cannot each pass the once-per-day check', async () => {
+      const mockClient = buildMockClient();
+
+      await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftBonus: 10,
+        golarionDate: '4718-3-14',
+      });
+
+      const queries = mockClient.query.mock.calls.map(([query]) => query);
+      const lock = queries.findIndex((query) => /FROM loot WHERE id = \$1 FOR UPDATE/.test(query));
+      const attemptCheck = queries.findIndex((query) => query.includes('FROM identify'));
+      expect(lock).toBeGreaterThan(-1);
+      expect(attemptCheck).toBeGreaterThan(lock);
+    });
+
     it('should return success when roll >= DC', async () => {
       const mockClient = buildMockClient();
 
