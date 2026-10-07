@@ -91,7 +91,8 @@ const SpellbookGenerator: React.FC = () => {
             const label = book.classLabel || 'Wizard';
             const item = {
                 name: `${label} spellbook (CL ${book.casterLevel})`,
-                type: 'spellbook',
+                type: 'magic',
+                subtype: 'spellbook',
                 quantity: 1,
                 value: book.value ?? 0,
                 unidentified: false,

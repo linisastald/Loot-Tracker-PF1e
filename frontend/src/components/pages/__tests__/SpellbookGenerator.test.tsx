@@ -99,7 +99,7 @@ describe('SpellbookGenerator', () => {
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/loot-generator/commit', expect.objectContaining({
-        items: expect.arrayContaining([expect.objectContaining({ type: 'spellbook' })]),
+        items: expect.arrayContaining([expect.objectContaining({ type: 'magic', subtype: 'spellbook' })]),
       }));
     });
     expect(await screen.findByText('Sent the spellbook to pending loot.')).toBeInTheDocument();

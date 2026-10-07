@@ -148,7 +148,7 @@ describe('lootGeneratorController', () => {
       const req = createMockReq({
         body: {
           items: [{
-            name: 'Spellbook (Wizard, CL 9)', type: 'spellbook', quantity: 1, value: 1200,
+            name: 'Spellbook (Wizard, CL 9)', type: 'magic', subtype: 'spellbook', quantity: 1, value: 1200,
             spellbook: {
               casterClass: 'wizard', casterLevel: 9, school: 'Evocation',
               spells: [
@@ -169,6 +169,23 @@ describe('lootGeneratorController', () => {
       expect(bookInserts).toHaveLength(1);
       expect(spellInserts).toHaveLength(2);
       expect(res.created).toHaveBeenCalled();
+    });
+
+    it('stores a spellbook as type magic (subtype spellbook), also for the legacy type value', async () => {
+      for (const sent of [{ type: 'magic', subtype: 'spellbook' }, { type: 'spellbook' }]) {
+        const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 5, name: 'Spellbook', quantity: 1 }] }) };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const req = createMockReq({
+          body: {
+            items: [{ name: 'Wizard spellbook', ...sent, quantity: 1, value: 10, spellbook: { spells: [{ id: 1, name: 'Fireball', level: 3 }] } }],
+            coins: {},
+          },
+        });
+        await controller.commit(req, createMockRes());
+        const lootInsert = client.query.mock.calls.find(c => c[0].includes('INSERT INTO loot'));
+        expect(lootInsert[1][5]).toBe('magic');
+        expect(client.query.mock.calls.filter(c => c[0].includes('INTO spellbook ('))).toHaveLength(1);
+      }
     });
 
     describe('item validation', () => {

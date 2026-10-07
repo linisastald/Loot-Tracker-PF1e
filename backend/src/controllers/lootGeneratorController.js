@@ -154,6 +154,9 @@ const commit = async (req, res) => {
       const quantity = Math.max(1, parseInt(it.quantity, 10) || 1);
       const value = it.value === null || it.value === undefined ? null : Number(it.value);
       const modids = modIds.length > 0 ? modIds : null;
+      // Owner decision: a spellbook is a subtype of magic. Older clients sent the
+      // non-canonical type 'spellbook', which is still honoured but stored as magic.
+      const isSpellbook = it.subtype === 'spellbook' || it.type === 'spellbook';
       // Unidentified items are stored under a generic name so the loot list
       // doesn't reveal what they are; the real identity is recoverable on
       // identification via itemid/modids.
@@ -166,7 +169,7 @@ const commit = async (req, res) => {
         clampStr(storedName, 255),
         Boolean(it.unidentified),
         Boolean(it.masterwork),
-        clampStr(it.type, 15),
+        clampStr(isSpellbook ? 'magic' : it.type, 15),
         clampStr(it.size, 15),
         itemId,
         modids,
@@ -179,7 +182,7 @@ const commit = async (req, res) => {
       createdItems.push(inserted.rows[0]);
 
       // A spellbook item also persists its spell list, linked to this loot row.
-      if (it.type === 'spellbook' && it.spellbook && Array.isArray(it.spellbook.spells)) {
+      if (isSpellbook && it.spellbook && Array.isArray(it.spellbook.spells)) {
         await Spellbook.insertWithClient(client, inserted.rows[0].id, sanitizeBook(it.spellbook));
       }
     }
