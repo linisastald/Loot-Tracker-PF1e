@@ -21,6 +21,19 @@ CREATE UNIQUE INDEX users_email_idx ON users(email);
 CREATE UNIQUE INDEX users_google_id_key ON users(google_id);
 CREATE UNIQUE INDEX users_discord_id_key ON users(discord_id);
 
+-- Password reset tokens (global, account level: no campaign_id, no RLS).
+-- Same shape as migration 076 and production.
+CREATE TABLE password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+COMMENT ON TABLE password_reset_tokens IS 'Single-use password reset tokens (SHA-256 hex digest of the emailed token). Global: not campaign-scoped.';
+
 -- Multi-campaign support: campaigns, memberships, and per-campaign settings.
 -- Campaign-specific tables below carry campaign_id with a session-GUC default
 -- (mirrors migration 047): inserts inherit the request's campaign from
