@@ -205,17 +205,39 @@ describe('processSessionInteraction campaign context', () => {
     const charLookup = seenQueries.find(q => q.query.includes('FROM characters'));
     expect(charLookup.query).toContain('campaign_id');
     expect(charLookup.params).toEqual(['6']);
+    // Opus review M-7: only characters whose owning account has no Discord id yet
+    expect(charLookup.query).toMatch(/u.discord_id IS NULL/);
 
     expect(sessionService.recordAttendance).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 4,
         data: expect.objectContaining({
-          content: expect.stringContaining("No characters found for this campaign"),
+          // tells the player to ask the DM or link from User Settings
+          content: expect.stringMatching(/ask your DM.*User Settings/i),
           flags: 64,
         }),
       })
     );
+  });
+
+  it('lists only the character names (no owner usernames) in the link menu', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 6 }] };
+      if (query.includes('FROM users WHERE discord_id')) return { rows: [] };
+      if (query.includes('FROM characters')) {
+        return { rows: [{ id: 5, name: 'Valeros', username: 'secret_player_name' }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = makeRes();
+    await sessionController.processSessionInteraction(buttonRequest(), res);
+
+    const payload = res.json.mock.calls[0][0];
+    const options = payload.data.components[0].components[0].options;
+    expect(options).toEqual([{ label: 'Valeros', value: '5' }]);
+    expect(JSON.stringify(payload)).not.toContain('secret_player_name');
   });
 
   it('answers a button on a message that is not a current session with an ephemeral "no longer active" reply', async () => {

@@ -484,18 +484,20 @@ const processSessionInteraction = async (req, res) => {
  */
 const respondWithCharacterLinkPrompt = async (res, campaignId, messageId, discordUserId) => {
     const charactersResult = await dbUtils.executeQuery(
-        'SELECT c.id, c.name, u.username FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true AND c.campaign_id = $1 ORDER BY c.name ASC',
+        // Only characters of THIS campaign whose owning account has no Discord id
+        // yet: an account that is already linked can never be offered (or taken).
+        'SELECT c.id, c.name FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true AND c.campaign_id = $1 AND u.discord_id IS NULL ORDER BY c.name ASC',
         [campaignId]
     );
 
     if (charactersResult.rows.length === 0) {
-        return ephemeral(res, '⚠️ No characters found for this campaign. Join the campaign in the web app and create a character, then link your Discord account in your profile settings.');
+        return ephemeral(res, '⚠️ There is no character you can link here. Ask your DM to link your Discord account, or link it yourself from User Settings in the web app.');
     }
 
+    // Character name only: never reveal which account owns which character
     const options = charactersResult.rows.map(char => ({
-        label: `${char.name} (${char.username})`,
-        value: char.id.toString(),
-        description: `Link to ${char.username}'s account`
+        label: char.name,
+        value: char.id.toString()
     }));
 
     return res.json({
