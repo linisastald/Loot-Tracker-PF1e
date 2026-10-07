@@ -5,20 +5,15 @@
 import type { SxProps, Theme } from '@mui/material/styles';
 
 // Item and equipment types
-export type ItemType = 
-  | 'weapon' 
-  | 'armor' 
-  | 'shield' 
-  | 'item' 
-  | 'trade good' 
-  | 'consumable'
-  | 'wondrous item'
-  | 'ring'
-  | 'rod'
-  | 'staff'
-  | 'wand'
-  | 'scroll'
-  | 'potion';
+// Owner decision (2026-10-06): exactly six canonical item types (ITEM_TYPES in
+// utils/itemOptions.ts). Anything else (consumable, shield, wand, ...) is a subtype.
+export type ItemType =
+  | 'weapon'
+  | 'armor'
+  | 'magic'
+  | 'gear'
+  | 'trade good'
+  | 'other';
 
 export type ItemSubtype = string; // Flexible for various subtypes
 

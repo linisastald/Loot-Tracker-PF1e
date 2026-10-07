@@ -169,6 +169,28 @@ describe('ValidationService', () => {
     });
   });
 
+  // Owner decision (2026-10-06): the canonical item types are exactly these six;
+  // anything else (consumable, shield, ...) is a subtype.
+  describe('ITEM_TYPES / validateItemType', () => {
+    it('lists exactly the six canonical item types', () => {
+      expect(ValidationService.ITEM_TYPES).toEqual(['weapon', 'armor', 'magic', 'gear', 'trade good', 'other']);
+    });
+
+    it.each(['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'])('accepts %s', (type) => {
+      expect(ValidationService.validateItemType(type)).toBe(type);
+    });
+
+    it('accepts any capitalisation and returns the stored lowercase form', () => {
+      expect(ValidationService.validateItemType('Trade Good')).toBe('trade good');
+      expect(ValidationService.validateItemType(' WEAPON ')).toBe('weapon');
+    });
+
+    it.each(['consumable', 'shield', 'item', 'potion', 'wondrous', '', 'trade_good', 5, null])(
+      'rejects %p and names the allowed types', (type) => {
+        expect(() => ValidationService.validateItemType(type)).toThrow(/weapon, armor, magic, gear, trade good, other/);
+      });
+  });
+
   describe('LOOT_STATUSES (F-0777)', () => {
     it('is the single status list accepted by validateLootStatus', () => {
       expect(ValidationService.LOOT_STATUSES).toEqual([

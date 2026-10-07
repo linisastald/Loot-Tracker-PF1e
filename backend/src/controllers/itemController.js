@@ -138,7 +138,12 @@ const FIELD_VALIDATORS = {
   masterwork: nullableBoolean('masterwork'),
   notes: optionalText('notes'),
   session_date: (value) => ValidationService.validateDate(value, 'session_date'),
-  type: clearableValue('type', (value, field) => ValidationService.validateRequiredString(value, field)),
+  type: clearableValue('type', (value, field) => {
+    const text = ValidationService.validateRequiredString(value, field);
+    // Canonical types are normalised to their stored lowercase form; any other
+    // text is checked against the stored row by resolveItemType.
+    return ValidationService.ITEM_TYPES.includes(text.toLowerCase()) ? text.toLowerCase() : text;
+  }),
   size: clearableValue('size', (value, field) => ValidationService.validateRequiredString(value, field)),
   itemid: (value) => (value ? ValidationService.validateItemId(parseInt(value)) : null),
   modids: (value) => {
@@ -170,6 +175,21 @@ const buildValidatedUpdateData = (updateData, allowedFields) => {
   }
 
   return filteredData;
+};
+
+/**
+ * Owner decision (2026-10-06): item types are the six canonical ones. Loot rows
+ * written before that (e.g. 'spellbook' from the generator) keep their value, so
+ * a non-canonical type is accepted only when it equals what the row already
+ * holds; otherwise the update would make those rows un-editable.
+ */
+const assertItemTypeAllowed = async (itemId, filteredData) => {
+  const type = filteredData.type;
+  if (type === undefined || type === null || ValidationService.ITEM_TYPES.includes(type)) return;
+  const stored = await dbUtils.executeQuery('SELECT type FROM loot WHERE id = $1', [itemId]);
+  const storedType = stored && stored.rows[0] && stored.rows[0].type;
+  if (typeof storedType === 'string' && storedType.toLowerCase() === type.toLowerCase()) return;
+  ValidationService.validateItemType(type);
 };
 
 const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
@@ -219,6 +239,7 @@ const updateLootItem = async (req, res) => {
     await rejectPlayerChargesChange(itemId, req.body.charges);
   }
   const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
+  await assertItemTypeAllowed(itemId, filteredData);
 
   // F-1373: players keep broad edit rights, but may not turn an unidentified
   // item into an identified one here (that goes through Identify or a DM).
@@ -260,6 +281,7 @@ const updateLootItemAsDM = async (req, res) => {
     req.body,
     [...PLAYER_ALLOWED_FIELDS, ...DM_ONLY_FIELDS]
   );
+  await assertItemTypeAllowed(itemId, filteredData);
   return persistLootUpdate(req, res, itemId, filteredData);
 };
 

@@ -46,7 +46,7 @@ const validationSchemas = {
   createItem: {
     body: {
       name: { type: 'string', required: true, minLength: 1, maxLength: 255 },
-      type: { type: 'string', required: true, minLength: 1, maxLength: 50 },
+      type: { type: 'string', required: true, enum: ValidationService.ITEM_TYPES },
       subtype: { type: 'string', required: false, maxLength: 50 },
       value: { type: 'number', required: true, min: 0 },
       weight: { type: 'number', required: false, min: 0 },

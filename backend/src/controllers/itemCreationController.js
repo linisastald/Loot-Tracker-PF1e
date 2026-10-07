@@ -62,7 +62,7 @@ const createLoot = async (req, res) => {
   const validatedUnidentified = ValidationService.validateBoolean(unidentified, 'unidentified');
   const validatedMasterwork = ValidationService.validateBoolean(masterwork, 'masterwork');
   const validatedCharges = validateEntryCharges(charges);
-  const validatedType = type || null;
+  const validatedType = type ? ValidationService.validateItemType(type) : null;
   const validatedSize = size || null;
   const validatedItemId = itemId ? ValidationService.validateItemId(itemId) : null;
   const validatedSessionDate = resolveSessionDate(sessionDate);
