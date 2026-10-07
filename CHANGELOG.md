@@ -21,7 +21,12 @@ All notable changes to this project are documented in this file.
 - **Identify is rolled on the server.** The player enters their Spellcraft bonus and the server rolls; there is no take 10. Hard-refresh the browser after updating, because an old Identify page sends a roll the server rejects.
 - **Wand charges are set when the wand is entered** (1 to 50) and afterwards change only by use; any other edit is DM-only. A wand that reaches 0 charges moves to Trashed.
 - **Item types are weapon, armor, magic, gear, trade good and other.** Everything else is a subtype.
-- **DM-only actions:** deleting crew, outposts and ships; Balance on the gold page (Distribute stays open to players); Search History; any edit or status change of a sold item.
+- **DM-only actions:** deleting crew, outposts and ships; Balance on the gold page (Distribute stays open to players); Search History; marking an item Sold outside the sale buttons; any edit or status change of a sold item.
+- **A DM who sets a wand to 0 charges in the item dialog is asked to confirm, and the wand is then trashed.**
+- **Generated wands come with 1 to 50 charges**, most often between 6 and 39.
+- **Generated spellbooks are stored as type magic.**
+- **Two session tasks in the same phase cannot share a name.**
+- **Everyone selected on the Tasks page appears in every phase**; someone who cannot take any task in a phase gets Free Space.
 - **The first account on an empty install is the DM and superadmin**, whatever role the form asked for.
 - **The server refuses to start in production with unsafe settings**: `JWT_SECRET` and `CSRF_SECRET` must be at least 32 characters, `DB_APP_USER` and `DB_APP_PASSWORD` must be set, and `ALLOWED_ORIGINS` must list real addresses (no `*`).
 - **Built frontend files are cached by browsers for a year.** Their names change with every build, and the page itself is never cached, so a new version still shows up straight away.
@@ -40,6 +45,7 @@ All notable changes to this project are documented in this file.
 - **The broker only passes the shared secret to backends that registered with it**, refuses a channel another running backend already owns, and lets a backend take its channels back from a registration that has gone silent.
 - **The Discord account-link menu lists only characters whose account has no Discord link**, from the campaign the channel belongs to, by name only.
 - **Gold entries are recorded against the signed-in user**, not a user id sent by the browser.
+- **The app's database login has fewer rights** (migration 079): it cannot delete users or campaigns, and can change only the user columns the app writes, which excludes the superadmin flag.
 - **Discord and global secrets are superadmin-only.** Campaign DMs can no longer change the bot token, and the settings endpoints no longer return token or key fragments.
 - **Campaign access is stricter.** A user with no campaign membership no longer falls back to another campaign; a query outside any campaign context returns nothing; city changes and the global settings endpoints are superadmin-only; DM identification needs DM rights; stored mod value formulas are no longer evaluated.
 - **Sessions end when a password changes** (migration 066), reset tokens are stored hashed and work once, every auth route is rate-limited, and registering as DM only works on an empty install.
@@ -76,7 +82,7 @@ All notable changes to this project are documented in this file.
 - Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker compose file and deploy script, `update_containers.sh`), the archived migrations folder, and the old Python utility scripts.
 
 ### Notes
-- Includes database migrations 059 to 078, which run automatically on server start. None of 061 to 078 had been run against a real database when this was written.
+- Includes database migrations 059 to 079, which run automatically on server start. None of 061 to 079 had been run against a real database when this was written.
 - Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), check the production settings listed under Changed (the server will not start without them), and check for users with no campaign membership, who lose access.
 
 ## [0.15.2]
