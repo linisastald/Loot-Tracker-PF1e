@@ -121,6 +121,14 @@ describe('goldController', () => {
       expect(createdData[0].transaction_type).toBe('Loot');
     });
 
+    it('records the authenticated user as who and ignores a client-supplied who (L-9)', async () => {
+      const res = createMockRes();
+
+      await goldController.createGoldEntry(dmReq([loot({ gold: 5, who: 999 })]), res);
+
+      expect(Gold.create.mock.calls[0][0].who).toBe(1);
+    });
+
     it('should take the per-campaign ledger lock before reading the balance through the transaction client', async () => {
       const res = createMockRes();
 

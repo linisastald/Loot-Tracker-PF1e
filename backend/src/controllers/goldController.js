@@ -65,7 +65,8 @@ const createGoldEntry = async (req, res) => {
 
         // Debits are stored as negative amounts regardless of the sign sent
         const isDebit = DEBIT_TYPES.includes(entry.transactionType);
-        const adjustedEntry = {...entry, character_id: characterId};
+        // who is the acting user, never a client-supplied value
+        const adjustedEntry = {...entry, character_id: characterId, who: req.user.id};
         for (const currency of CURRENCIES) {
             const amount = parseAmount(entry[currency], currency);
             adjustedEntry[currency] = isDebit ? -Math.abs(amount) : amount;
