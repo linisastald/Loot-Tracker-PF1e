@@ -203,6 +203,7 @@ describe('itemController', () => {
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const req = mockReq({
+        user: { id: 2, role: 'DM' },
         body: { lootIds: [1, 2], status: 'Sold' },
       });
       const res = mockRes();
@@ -227,6 +228,7 @@ describe('itemController', () => {
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const req = mockReq({
+        user: { id: 2, role: 'DM' },
         body: { lootIds: [1], status },
       });
       const res = mockRes();
@@ -340,7 +342,7 @@ describe('itemController', () => {
           release: jest.fn(),
         };
         dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
-        const req = mockReq({ body: { lootIds: [1], status: 'Sold' } });
+        const req = mockReq({ user: { id: 2, role: 'DM' }, body: { lootIds: [1], status: 'Sold' } });
         const res = mockRes();
 
         await itemController.updateLootStatus(req, res);
@@ -405,6 +407,7 @@ describe('itemController', () => {
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const req = mockReq({
+        user: { id: 2, role: 'DM' },
         body: { lootIds: [9999], status: 'Sold' },
       });
       const res = mockRes();
@@ -1230,6 +1233,33 @@ describe('itemController', () => {
   // it or change its status; the split locks the row it reads.
   describe('sold items are DM-only (M-5)', () => {
     const SOLD_MESSAGE = 'Sold items can only be changed by a DM';
+
+    describe('setting Sold is DM-only (round 4)', () => {
+      it('PATCH /items/status refuses a player setting Sold and writes nothing', async () => {
+        const res = mockRes();
+        await itemController.updateLootStatus(mockReq({ body: { lootIds: [1], status: 'Sold' } }), res);
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.forbidden.mock.calls[0][0]).toContain('Only a DM can mark an item as Sold');
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('PUT /items/:id refuses a player setting Sold and writes nothing', async () => {
+        const res = mockRes();
+        await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { status: 'Sold' } }), res);
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+        expect(dbUtils.updateById).not.toHaveBeenCalled();
+      });
+
+      it('PUT /items/:id still lets a DM set Sold', async () => {
+        dbUtils.updateById.mockResolvedValue({ id: 1, name: 'x' });
+        const res = mockRes();
+        await itemController.updateLootItem(
+          mockReq({ params: { id: '1' }, body: { status: 'Sold' }, user: { id: 9, role: 'DM' } }), res);
+        expect(res.forbidden).not.toHaveBeenCalled();
+        expect(dbUtils.updateById).toHaveBeenCalledTimes(1);
+      });
+    });
 
     describe('PATCH /items/status', () => {
       it('adds the Sold guard to the UPDATE for a non-DM', async () => {

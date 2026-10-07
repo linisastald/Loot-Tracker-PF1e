@@ -210,6 +210,9 @@ const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
 // change its status.
 const SOLD_STATUS = 'Sold';
 const SOLD_DM_ONLY_MESSAGE = 'Sold items can only be changed by a DM';
+// Owner decision (round 4): a player cannot set a row to Sold through a general
+// edit either; the sale endpoints (pending sale / sales service) do that.
+const SET_SOLD_DM_ONLY_MESSAGE = 'Only a DM can mark an item as Sold';
 
 const persistLootUpdate = async (req, res, itemId, filteredData) => {
   const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
@@ -245,6 +248,10 @@ const updateLootItem = async (req, res) => {
   }
   const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
   await assertItemTypeAllowed(itemId, filteredData);
+
+  if (!hasDmRights(req) && filteredData.status === SOLD_STATUS) {
+    throw controllerFactory.createAuthorizationError(SET_SOLD_DM_ONLY_MESSAGE);
+  }
 
   if (hasDmRights(req)) {
     return persistLootUpdate(req, res, itemId, filteredData);
@@ -309,6 +316,9 @@ const updateLootStatus = async (req, res) => {
 
   ValidationService.validateItems(lootIds, 'lootIds');
   ValidationService.validateLootStatus(status);
+  if (status === SOLD_STATUS && !hasDmRights(req)) {
+    throw controllerFactory.createAuthorizationError(SET_SOLD_DM_ONLY_MESSAGE);
+  }
 
   if (characterId) {
     ValidationService.validateCharacterId(characterId);
