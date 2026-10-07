@@ -95,7 +95,6 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (417, '+1', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (220, 'Versatile Design', NULL, 'Power', '+500', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (221, 'Vital Guard', NULL, 'Power', '+500', 'armor', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (222, 'Vitalguard', NULL, 'Power', '+500', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (223, 'Cryptstone', NULL, 'Material', '+500', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (224, 'Whipwood', NULL, 'Material', '+500', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (225, 'Living Steel', NULL, 'Material', '+500', 'weapon', NULL);

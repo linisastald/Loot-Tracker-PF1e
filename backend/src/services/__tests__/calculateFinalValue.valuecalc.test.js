@@ -225,7 +225,8 @@ describe("seed data stays inside the supported valuecalc grammar", () => {
       expect(m).not.toBeNull();
       if (m[1] !== "NULL") found.push(m[1].slice(1, -1));
     }
-    expect(found.length).toBe(269);
+    // 269 before migration 075 removed the duplicate mod 222 (Vitalguard, +500)
+    expect(found.length).toBe(268);
     const invalid = found.filter((v) => !isValidValuecalc(v));
     expect(invalid).toEqual([]);
   });

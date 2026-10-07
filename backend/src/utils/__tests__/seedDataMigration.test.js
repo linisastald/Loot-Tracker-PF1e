@@ -128,14 +128,20 @@ describe('migration 069 (seed data corrections)', () => {
     expect([...mod.values()].some(m => m.name === 'ifying')).toBe(false);
   });
 
+  // Migration 075 removed these two as duplicate-name rows (9508 duplicates 54 and 1687, 9503 duplicates 55); the
+  // corrections stay on the rows that were kept.
+  const REMOVED_BY_075 = new Set([9508, 9503]);
+
   test('every spell row exists in the seed with the corrected flag or type', () => {
     for (const [id, name] of potionRows) {
+      if (REMOVED_BY_075.has(id)) { expect(spells.has(id)).toBe(false); continue; }
       const s = spells.get(id);
       expect(s.name).toBe(name);
       expect(s.spelllevel).toBeGreaterThan(3);
       expect(s.item).toBe('{}');
     }
     for (const [id, name, , newType] of typeRows) {
+      if (REMOVED_BY_075.has(id)) { expect(spells.has(id)).toBe(false); continue; }
       const s = spells.get(id);
       expect(s.name).toBe(name);
       expect(s.type).toBe(newType);
