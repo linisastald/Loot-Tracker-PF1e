@@ -41,6 +41,13 @@ const INSERT_LOOT = `
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL)
   RETURNING id, name, quantity`;
 
+// The global (campaign_id NULL) catalog row that marks a loot row as a spellbook (migration 080).
+const SPELLBOOK_CATALOG_NAME = 'Spellbook';
+const SPELLBOOK_CATALOG_LOOKUP = `
+  SELECT id FROM item
+   WHERE name = $1 AND subtype = 'spellbook' AND campaign_id IS NULL
+   ORDER BY id LIMIT 1`;
+
 const INSERT_GOLD = `
   INSERT INTO gold (session_date, who, transaction_type, platinum, gold, silver, copper, notes)
   VALUES ($1, $2, 'Loot', $3, $4, $5, $6, $7)
@@ -150,7 +157,8 @@ const commit = async (req, res) => {
   const result = await dbUtils.executeTransaction(async (client) => {
     const createdItems = [];
     for (const [index, it] of itemList.entries()) {
-      const { itemId, modIds } = validated[index];
+      let { itemId } = validated[index];
+      const { modIds } = validated[index];
       const quantity = Math.max(1, parseInt(it.quantity, 10) || 1);
       const value = it.value === null || it.value === undefined ? null : Number(it.value);
       const modids = modIds.length > 0 ? modIds : null;
@@ -160,6 +168,14 @@ const commit = async (req, res) => {
       // Unidentified items are stored under a generic name so the loot list
       // doesn't reveal what they are; the real identity is recoverable on
       // identification via itemid/modids.
+      // A generated spellbook is linked to the global catalog 'Spellbook' so that its
+      // subtype is known (loot rows have no subtype column). The row keeps its own name,
+      // type, value and notes. Not linked when unidentified (identifying would rename it
+      // from the catalog item) or when the catalog row is missing (saved as before).
+      if (isSpellbook && itemId === null && !it.unidentified) {
+        const catalog = await client.query(SPELLBOOK_CATALOG_LOOKUP, [SPELLBOOK_CATALOG_NAME]);
+        itemId = catalog.rows[0] ? catalog.rows[0].id : null;
+      }
       const storedName = (it.unidentified && typeof it.unidentifiedName === 'string' && it.unidentifiedName.trim() !== '')
         ? it.unidentifiedName
         : it.name;
