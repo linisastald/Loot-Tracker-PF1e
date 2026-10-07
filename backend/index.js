@@ -3,6 +3,13 @@
 // require tree (we log via Winston, not dotenv's stdout banner). Must run before
 // any require that loads dotenv. dotenv honors this env var natively.
 process.env.DOTENV_CONFIG_QUIET = 'true';
+
+// Refuse to start in production with unsafe configuration (weak or missing secrets, no
+// restricted database role, wildcard CORS). This runs before anything else is loaded so
+// nothing connects to the database first; every problem is listed at once.
+require('dotenv').config();
+require('./src/config/startupChecks').enforceStartupChecks(process.env);
+
 const express = require('express');
 const compression = require('compression');
 const cors = require('cors');

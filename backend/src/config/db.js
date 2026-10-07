@@ -5,7 +5,7 @@
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
 const { DATABASE } = require('./constants');
-const { buildPoolConfig } = require('./poolConfig');
+const { buildPoolConfig, usesAppRole } = require('./poolConfig');
 require('dotenv').config();
 
 // Application credentials: prefer the dedicated (non-owner) app role when both
@@ -14,7 +14,7 @@ require('dotenv').config();
 // existing single-campaign deployments — behavior is unchanged, but RLS is
 // bypassed for table owners. The migration runner always uses the owner
 // credentials via config/adminDb.js.
-const useAppRole = Boolean(process.env.DB_APP_USER && process.env.DB_APP_PASSWORD);
+const useAppRole = usesAppRole(process.env);
 const appUser = useAppRole ? process.env.DB_APP_USER : process.env.DB_USER;
 const appPassword = useAppRole ? process.env.DB_APP_PASSWORD : process.env.DB_PASSWORD;
 

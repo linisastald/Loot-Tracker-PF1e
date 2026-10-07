@@ -41,31 +41,40 @@ describe('backend/index.js wiring', () => {
   it('does not keep the unreachable second /assets static mount', () => {
     expect(source).not.toMatch(/app\.use\('\/assets'/);
   });
-
   it('reports a wildcard ALLOWED_ORIGINS entry as an error, never as an accepted setting', () => {
-    expect(source).toMatch(/logger.error("ALLOWED_ORIGINS contains '*'/);
-    expect(source).not.toMatch(/logger.warn("ALLOWED_ORIGINS contains/);
+    expect(source).toContain(`logger.error("ALLOWED_ORIGINS contains '*'`);
+    expect(source).not.toContain(`logger.warn("ALLOWED_ORIGINS contains`);
   });
 
+  const lineWith = (text) => lines.findIndex(l => l.includes(text));
+
   it('mounts the general limiter on health, csrf-token and config BEFORE those routes are registered', () => {
-    const limiterMount = indexOfLine(/app.use(['/api/health', '/api/csrf-token', '/api/config'], limiter)/);
+    const limiterMount = lineWith("app.use(['/api/health', '/api/csrf-token', '/api/config'], limiter)");
     expect(limiterMount).toBeGreaterThan(-1);
-    expect(limiterMount).toBeLessThan(indexOfLine(/app.get('/api/health'/));
-    expect(limiterMount).toBeLessThan(indexOfLine(/app.get('/api/csrf-token'/));
-    expect(limiterMount).toBeLessThan(indexOfLine(/app.use('/api/config'/));
+    expect(limiterMount).toBeLessThan(lineWith("app.get('/api/health'"));
+    expect(limiterMount).toBeLessThan(lineWith("app.get('/api/csrf-token'"));
+    expect(limiterMount).toBeLessThan(lineWith("app.use('/api/config'"));
   });
 
   it('declares the limiter before it is used', () => {
-    expect(indexOfLine(/^const limiter = rateLimit(/)).toBeLessThan(indexOfLine(/], limiter)/));
+    expect(lineWith('const limiter = rateLimit(')).toBeLessThan(lineWith("'/api/config'], limiter)"));
   });
 
   it('uses the shared body parsers (1 MB default) instead of an inline 10 MB limit', () => {
-    expect(source).toMatch(/mountBodyParsers(app)/);
-    expect(source).not.toMatch(/10mb/);
-    expect(source).not.toMatch(/express.json(/);
+    expect(source).toContain('mountBodyParsers(app)');
+    expect(source).not.toContain('10mb');
+    expect(source).not.toContain('express.json(');
   });
 
   it('mounts the body parsers before any route', () => {
-    expect(indexOfLine(/mountBodyParsers(app)/)).toBeLessThan(indexOfLine(/app.get('/api/health'/));
+    expect(lineWith('mountBodyParsers(app)')).toBeLessThan(lineWith("app.get('/api/health'"));
+  });
+
+  it('runs the production startup checks before the database config or any other app module is required', () => {
+    const check = lineWith('enforceStartupChecks(process.env)');
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(lineWith("require('./src/config/db')"));
+    expect(check).toBeLessThan(lineWith("require('express')"));
+    expect(check).toBeLessThan(lineWith("require('./src/utils/logger')"));
   });
 });

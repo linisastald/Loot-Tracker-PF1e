@@ -17,6 +17,14 @@ const parseAllowedOrigins = (value) => {
 };
 
 /**
+ * Like parseAllowedOrigins but without the localhost default: an unset or empty
+ * value yields []. Used by the production startup checks.
+ * @param {string|undefined} value
+ * @returns {string[]}
+ */
+const parseAllowedOriginsStrict = (value) => (value || '').split(',').map(o => o.trim()).filter(Boolean);
+
+/**
  * Build the `origin` callback for the cors middleware.
  * @param {string[]} allowedOrigins
  * @returns {Function}
@@ -44,4 +52,4 @@ const createOriginCheck = (allowedOrigins) => (origin, callback) => {
  */
 const hasWildcard = (allowedOrigins) => allowedOrigins.includes('*');
 
-module.exports = { parseAllowedOrigins, createOriginCheck, hasWildcard };
+module.exports = { parseAllowedOrigins, parseAllowedOriginsStrict, createOriginCheck, hasWildcard };
