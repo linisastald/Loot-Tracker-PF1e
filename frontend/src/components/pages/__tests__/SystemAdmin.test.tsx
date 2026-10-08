@@ -465,4 +465,26 @@ describe('SystemAdmin', () => {
       expect(within(getRow('Skulls & Shackles')).getByText('Inactive')).toBeInTheDocument();
     });
   });
+
+  describe("Act as DM switch", () => {
+    it("reflects the override and turns it on from the System Admin tab", async () => {
+      const setDmOverride = vi.fn();
+      campaignContextValue = makeContext({ dmOverride: false, setDmOverride });
+
+      renderSystemAdmin();
+
+      const toggle = await screen.findByLabelText(/act as dm in campaigns where i am a player/i);
+      expect(toggle).not.toBeChecked();
+      fireEvent.click(toggle);
+      expect(setDmOverride).toHaveBeenCalledWith(true);
+    });
+
+    it("shows the switch on while the override is active", async () => {
+      campaignContextValue = makeContext({ dmOverride: true, setDmOverride: vi.fn() });
+
+      renderSystemAdmin();
+
+      expect(await screen.findByLabelText(/act as dm in campaigns where i am a player/i)).toBeChecked();
+    });
+  });
 });

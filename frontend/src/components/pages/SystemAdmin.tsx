@@ -21,11 +21,13 @@ import {
   DialogContentText,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
   Paper,
   Select,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -83,7 +85,7 @@ interface GlobalSettingRow {
 
 const SystemAdmin: React.FC = () => {
   const { user } = useAuth();
-  const { campaigns, isSuperadmin, loading: campaignLoading, refresh: refreshCampaigns } = useCampaign();
+  const { campaigns, isSuperadmin, loading: campaignLoading, refresh: refreshCampaigns, dmOverride, setDmOverride } = useCampaign();
   const { enqueueSnackbar } = useSnackbar();
 
   // --- Users section state ---------------------------------------------
@@ -526,6 +528,31 @@ const SystemAdmin: React.FC = () => {
                   Save key
                 </Button>
               </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* --------------------------- Act as DM ---------------------------- */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined">
+            <CardHeader title="Act as DM" avatar={<AdminIcon />} />
+            <CardContent>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={Boolean(dmOverride)}
+                    onChange={(event) => setDmOverride?.(event.target.checked)}
+                    disabled={typeof setDmOverride !== 'function'}
+                  />
+                )}
+                label="Act as DM in campaigns where I am a Player"
+              />
+              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
+                Normally a campaign where you are a Player treats you as one: no DM menus, no DM
+                actions. Switch this on to use DM functions there anyway. It applies to this browser
+                only, and every campaign page shows an &quot;Acting as DM!&quot; banner with a button to
+                turn it off again.
+              </Typography>
             </CardContent>
           </Card>
         </Grid>

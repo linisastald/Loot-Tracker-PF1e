@@ -2,6 +2,7 @@ import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
 import CampaignSelector from './CampaignSelector';
 import NoSessionTodayBanner from './NoSessionTodayBanner';
+import DmOverrideBanner from './DmOverrideBanner';
 import NoCampaignNotice from './NoCampaignNotice';
 import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography} from '@mui/material';
 import {ThemeProvider, useTheme} from '@mui/material/styles';
@@ -118,6 +119,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             <NoCampaignNotice onLogout={onLogout} />
           ) : (
             <>
+              {!campaignAgnostic && <DmOverrideBanner />}
               {!campaignAgnostic && <NoSessionTodayBanner />}
               <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={32} /></Box>}>
                 <Outlet />
