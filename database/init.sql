@@ -255,6 +255,24 @@ CREATE TABLE loot (
 CREATE INDEX idx_loot_campaign_id ON loot(campaign_id);
 CREATE INDEX idx_loot_status_character ON loot(status, whohas);
 
+-- lastupdate is set by the column default on insert and refreshed by this trigger
+-- whenever a row actually changes (migration 081). An explicit value in the UPDATE wins.
+CREATE OR REPLACE FUNCTION set_loot_lastupdate()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.lastupdate IS NOT DISTINCT FROM OLD.lastupdate THEN
+        NEW.lastupdate := CURRENT_TIMESTAMP;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER loot_set_lastupdate
+    BEFORE UPDATE ON loot
+    FOR EACH ROW
+    WHEN (OLD.* IS DISTINCT FROM NEW.*)
+    EXECUTE FUNCTION set_loot_lastupdate();
+
 CREATE TABLE appraisal (
     id SERIAL PRIMARY KEY,
     appraised_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
