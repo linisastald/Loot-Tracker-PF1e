@@ -39,13 +39,15 @@ import {
 import type { SelectChangeEvent } from '@mui/material';
 import {
   AdminPanelSettings as AdminIcon,
-  Groups as CampaignsIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCampaign } from '../../contexts/CampaignContext';
+import CampaignAdministration from './SystemAdmin/CampaignAdministration';
+import PasswordField from '../common/PasswordField';
 
 interface SystemUser {
   id: number;
@@ -73,9 +75,16 @@ const formatDate = (value: string | null | undefined): string => {
   return date.toLocaleDateString();
 };
 
+interface GlobalSettingRow {
+  name: string;
+  value: string | null;
+  secret?: boolean;
+  is_set?: boolean;
+}
+
 const SystemAdmin: React.FC = () => {
   const { user } = useAuth();
-  const { campaigns, isSuperadmin, loading: campaignLoading } = useCampaign();
+  const { campaigns, isSuperadmin, loading: campaignLoading, refresh: refreshCampaigns } = useCampaign();
   const { enqueueSnackbar } = useSnackbar();
 
   // --- Users section state ---------------------------------------------
@@ -99,6 +108,15 @@ const SystemAdmin: React.FC = () => {
   const [registrationMode, setRegistrationMode] = useState(DEFAULT_REGISTRATION_MODE);
   const [savingRegistrationMode, setSavingRegistrationMode] = useState(false);
   const [settingsError, setSettingsError] = useState('');
+  const [frontendUrl, setFrontendUrl] = useState('');
+  const [savedFrontendUrl, setSavedFrontendUrl] = useState('');
+  const [savingFrontendUrl, setSavingFrontendUrl] = useState(false);
+  // Secrets are write-only: the server reports only whether one is stored
+  const [botTokenSet, setBotTokenSet] = useState(false);
+  const [openAiKeySet, setOpenAiKeySet] = useState(false);
+  const [botTokenInput, setBotTokenInput] = useState('');
+  const [openAiKeyInput, setOpenAiKeyInput] = useState('');
+  const [savingSecret, setSavingSecret] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async (): Promise<void> => {
     try {
@@ -116,7 +134,7 @@ const SystemAdmin: React.FC = () => {
   const fetchSettings = useCallback(async (): Promise<void> => {
     try {
       const response: any = await api.get('/user/settings');
-      const settings: Array<{ name: string; value: string }> = Array.isArray(response?.data)
+      const settings: GlobalSettingRow[] = Array.isArray(response?.data)
         ? response.data
         : [];
       const modeSetting = settings.find((s) => s.name === 'registration_mode');
@@ -125,6 +143,11 @@ const SystemAdmin: React.FC = () => {
           ? modeSetting.value
           : DEFAULT_REGISTRATION_MODE
       );
+      const urlSetting = settings.find((s) => s.name === 'frontend_url');
+      setFrontendUrl(urlSetting?.value || '');
+      setSavedFrontendUrl(urlSetting?.value || '');
+      setBotTokenSet(!!settings.find((s) => s.name === 'discord_bot_token')?.is_set);
+      setOpenAiKeySet(!!settings.find((s) => s.name === 'openai_key')?.is_set);
       setSettingsError('');
     } catch (err: any) {
       setSettingsError(err.response?.data?.message || 'Error loading global settings.');
@@ -227,6 +250,43 @@ const SystemAdmin: React.FC = () => {
       });
     } finally {
       setSavingRegistrationMode(false);
+    }
+  };
+
+  const handleSaveFrontendUrl = async (): Promise<void> => {
+    const value = frontendUrl.trim();
+    setSavingFrontendUrl(true);
+    try {
+      await api.put('/user/update-setting', { name: 'frontend_url', value });
+      setFrontendUrl(value);
+      setSavedFrontendUrl(value);
+      enqueueSnackbar(value ? 'Frontend URL saved' : 'Frontend URL cleared', { variant: 'success' });
+    } catch (err: unknown) {
+      enqueueSnackbar(getErrorMessage(err, 'Error saving frontend URL'), { variant: 'error' });
+    } finally {
+      setSavingFrontendUrl(false);
+    }
+  };
+
+  const handleSaveSecret = async (name: 'discord_bot_token' | 'openai_key'): Promise<void> => {
+    const value = (name === 'discord_bot_token' ? botTokenInput : openAiKeyInput).trim();
+    if (!value) return;
+    setSavingSecret(name);
+    try {
+      await api.put('/user/update-setting', { name, value });
+      if (name === 'discord_bot_token') {
+        setBotTokenSet(true);
+        setBotTokenInput('');
+        enqueueSnackbar('Discord bot token saved', { variant: 'success' });
+      } else {
+        setOpenAiKeySet(true);
+        setOpenAiKeyInput('');
+        enqueueSnackbar('OpenAI key saved', { variant: 'success' });
+      }
+    } catch (err: unknown) {
+      enqueueSnackbar(getErrorMessage(err, 'Error saving setting'), { variant: 'error' });
+    } finally {
+      setSavingSecret(null);
     }
   };
 
@@ -398,56 +458,80 @@ const SystemAdmin: React.FC = () => {
                   per-campaign in the DM User Management tab.
                 </Typography>
               </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 3, alignItems: 'flex-start' }}>
+                <TextField
+                  label="Frontend URL"
+                  fullWidth
+                  size="small"
+                  value={frontendUrl}
+                  onChange={(e) => setFrontendUrl(e.target.value)}
+                  placeholder="https://loot.example.com"
+                  helperText="Base address used in password-reset emails and Discord links. Leave empty to use the server default."
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                  disabled={savingFrontendUrl || frontendUrl.trim() === savedFrontendUrl}
+                  onClick={handleSaveFrontendUrl}
+                >
+                  Save URL
+                </Button>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+                <PasswordField
+                  label="Discord bot token"
+                  fullWidth
+                  size="small"
+                  value={botTokenInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBotTokenInput(e.target.value)}
+                  autoComplete="off"
+                  helperText={botTokenSet ? 'A token is stored. Enter a new one to replace it.' : 'No token stored. Session announcements need one.'}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                  disabled={savingSecret !== null || !botTokenInput.trim()}
+                  onClick={() => handleSaveSecret('discord_bot_token')}
+                >
+                  Save token
+                </Button>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+                <PasswordField
+                  label="OpenAI API key"
+                  fullWidth
+                  size="small"
+                  value={openAiKeyInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOpenAiKeyInput(e.target.value)}
+                  autoComplete="off"
+                  helperText={openAiKeySet ? 'A key is stored. Enter a new one to replace it.' : 'No key stored. Item description parsing needs one.'}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                  disabled={savingSecret !== null || !openAiKeyInput.trim()}
+                  onClick={() => handleSaveSecret('openai_key')}
+                >
+                  Save key
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
 
         {/* --------------------------- Campaigns ---------------------------- */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined">
-            <CardHeader title="Campaigns" avatar={<CampaignsIcon />} subheader="All campaigns on this instance" />
-            <CardContent>
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Slug</TableCell>
-                      <TableCell>World</TableCell>
-                      <TableCell>Active</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {campaigns.map((campaign) => (
-                      <TableRow key={campaign.id}>
-                        <TableCell>{campaign.name}</TableCell>
-                        <TableCell>{campaign.slug}</TableCell>
-                        <TableCell>{campaign.world || '—'}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={campaign.is_active === false ? 'Inactive' : 'Active'}
-                            color={campaign.is_active === false ? 'default' : 'success'}
-                            size="small"
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {campaigns.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4}>
-                          <Typography variant="body2" sx={{
-                            color: "text.secondary"
-                          }}>
-                            No campaigns found.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
+        <Grid size={12}>
+          <CampaignAdministration
+            campaigns={campaigns}
+            users={users}
+            onCampaignsChanged={refreshCampaigns}
+          />
         </Grid>
       </Grid>
       {/* Reset link dialog (loading + result) */}

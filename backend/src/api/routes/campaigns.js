@@ -3,6 +3,7 @@ const router = express.Router();
 const campaignController = require('../../controllers/campaignController');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
+const requireSuperadmin = require('../../middleware/requireSuperadmin');
 
 // Campaign picker: the requesting user's campaigns (all campaigns for superadmins)
 router.get('/', verifyToken.allowNoCampaign, campaignController.getMyCampaigns);
@@ -41,5 +42,28 @@ router.patch('/current', verifyToken, checkRole('DM'), campaignController.rename
 // via req.isSuperadmin (campaign-creation policy is still open, design doc §8).
 // CSRF protection is applied at the mount point in backend/index.js.
 router.post('/', verifyToken, campaignController.createCampaign);
+
+// ---------------------------------------------------------------------------
+// Instance administration by campaign id (System Admin page) — superadmin
+// only. These act on the campaign named in the path, not the request's
+// current campaign, so they sit after every '/current/...' route. CSRF
+// protection is applied at the mount point.
+// ---------------------------------------------------------------------------
+
+// Update name / world / is_active (deactivation is the only "delete": the
+// app's database login cannot DELETE campaigns)
+router.put('/:id', verifyToken, requireSuperadmin, campaignController.updateCampaign);
+
+// Member roster of any campaign
+router.get('/:id/members', verifyToken, requireSuperadmin, campaignController.getCampaignMembers);
+
+// Add a member (or change their role) — body { userId, role }
+router.post('/:id/members', verifyToken, requireSuperadmin, campaignController.addCampaignMember);
+
+// Change a member's role — body { role }
+router.put('/:id/members/:userId', verifyToken, requireSuperadmin, campaignController.updateCampaignMemberRole);
+
+// Remove a member (membership row only)
+router.delete('/:id/members/:userId', verifyToken, requireSuperadmin, campaignController.removeCampaignMember);
 
 module.exports = router;

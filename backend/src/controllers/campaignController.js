@@ -657,7 +657,228 @@ const createCampaign = async (req, res) => {
   controllerFactory.sendCreatedResponse(res, campaign, 'Campaign created successfully');
 };
 
+// ---------------------------------------------------------------------------
+// Instance administration by campaign id (System Admin page). Every handler
+// below sits behind requireSuperadmin at the route layer; the campaign in the
+// path is independent of the request's current-campaign context.
+// ---------------------------------------------------------------------------
+
+const MEMBER_ROLES = ['DM', 'Player'];
+
+/**
+ * Parse a positive integer id from a path parameter or body field.
+ * @param {*} value
+ * @param {string} label - Name used in the validation message
+ * @return {number}
+ * @throws {Error} ValidationError when not a positive integer
+ */
+const parseId = (value, label) => {
+  const id = parseInt(value, 10);
+  if (!/^\d+$/.test(String(value)) || !Number.isSafeInteger(id) || id < 1) {
+    throw controllerFactory.createValidationError(`${label} must be a positive integer`);
+  }
+  return id;
+};
+
+/**
+ * Load a campaign by path id or throw not-found.
+ * @param {Object} req
+ * @return {Promise<Object>} The campaign row
+ */
+const loadCampaignFromPath = async (req) => {
+  const campaignId = parseId(req.params.id, 'Campaign id');
+  const campaign = await Campaign.getById(campaignId);
+  if (!campaign) {
+    throw controllerFactory.createNotFoundError('Campaign not found');
+  }
+  return campaign;
+};
+
+/**
+ * Validate a member role from the body.
+ * @param {*} role
+ * @return {string} 'DM' | 'Player'
+ */
+const validateMemberRole = (role) => {
+  if (!MEMBER_ROLES.includes(role)) {
+    throw controllerFactory.createValidationError(`role must be one of: ${MEMBER_ROLES.join(', ')}`);
+  }
+  return role;
+};
+
+/**
+ * Refuse to leave a campaign without a DM. `membership` is the row about to
+ * be demoted or removed.
+ */
+const assertNotLastDM = async (campaignId, membership) => {
+  if (membership.role !== 'DM') return;
+  const dms = await Campaign.countDMs(campaignId);
+  if (dms <= 1) {
+    throw controllerFactory.createValidationError(
+      'A campaign must keep at least one DM; assign another DM first'
+    );
+  }
+};
+
+/**
+ * Update a campaign's name, world and/or active flag. Superadmin only.
+ *
+ * Body: { name?, world?, is_active? } — at least one. Deactivating hides the
+ * campaign from its members (they can no longer select it); the data is kept
+ * and the campaign can be reactivated here. The last active campaign cannot
+ * be deactivated.
+ */
+const updateCampaign = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const { name, world, is_active: isActive } = req.body;
+  const fields = {};
+
+  if (name !== undefined) {
+    fields.name = validateCampaignName(name);
+  }
+  if (world !== undefined) {
+    const trimmedWorld = typeof world === 'string' ? world.trim() : '';
+    if (!trimmedWorld) {
+      throw controllerFactory.createValidationError('Campaign world cannot be empty');
+    }
+    if (trimmedWorld.length > 100) {
+      throw controllerFactory.createValidationError('Campaign world cannot exceed 100 characters');
+    }
+    fields.world = trimmedWorld;
+  }
+  if (isActive !== undefined) {
+    if (typeof isActive !== 'boolean') {
+      throw controllerFactory.createValidationError('is_active must be true or false');
+    }
+    if (!isActive && campaign.is_active !== false) {
+      const active = await Campaign.countActive();
+      if (active <= 1) {
+        throw controllerFactory.createValidationError('The last active campaign cannot be deactivated');
+      }
+    }
+    fields.is_active = isActive;
+  }
+  if (Object.keys(fields).length === 0) {
+    throw controllerFactory.createValidationError('Nothing to update: provide name, world or is_active');
+  }
+
+  const updated = await Campaign.update(campaign.id, fields);
+  logger.info(`Campaign ${campaign.id} updated by superadmin ${req.user.id}: ${Object.keys(fields).join(', ')}`);
+  controllerFactory.sendSuccessResponse(res, updated, 'Campaign updated successfully');
+};
+
+/**
+ * List a campaign's members by campaign id. Superadmin only.
+ * Response data: { campaign: { id, name }, members: [...] }
+ */
+const getCampaignMembers = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const members = await Campaign.getMembers(campaign.id);
+  controllerFactory.sendSuccessResponse(
+    res,
+    { campaign: { id: campaign.id, name: campaign.name }, members },
+    'Campaign members retrieved successfully'
+  );
+};
+
+/**
+ * Add a user to a campaign with a role (or change the role of an existing
+ * member). Superadmin only. Body: { userId, role }.
+ */
+const addCampaignMember = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const userId = parseId(req.body.userId, 'userId');
+  const role = validateMemberRole(req.body.role);
+
+  const account = await Campaign.findUserAccount(userId);
+  if (!account || account.role === 'deleted') {
+    throw controllerFactory.createNotFoundError('User not found');
+  }
+
+  const existing = await Campaign.getMembership(userId, campaign.id);
+  if (existing && existing.role === 'DM' && role !== 'DM') {
+    await assertNotLastDM(campaign.id, existing);
+  }
+
+  const membership = await Campaign.addOrUpdateMember(campaign.id, userId, role);
+  logger.info(`User ${userId} ${existing ? 'changed to' : 'added as'} ${role} in campaign ${campaign.id} by superadmin ${req.user.id}`);
+  controllerFactory.sendSuccessResponse(
+    res,
+    { ...membership, username: account.username },
+    existing ? 'Member role updated successfully' : 'Member added successfully'
+  );
+};
+
+/**
+ * Change an existing member's role. Superadmin only. Body: { role }.
+ */
+const updateCampaignMemberRole = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const userId = parseId(req.params.userId, 'userId');
+  const role = validateMemberRole(req.body.role);
+
+  const existing = await Campaign.getMembership(userId, campaign.id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('User is not a member of this campaign');
+  }
+  if (existing.role === role) {
+    return controllerFactory.sendSuccessResponse(res, { user_id: userId, campaign_id: campaign.id, role }, 'Member role unchanged');
+  }
+  if (existing.role === 'DM') {
+    await assertNotLastDM(campaign.id, existing);
+  }
+
+  const membership = await Campaign.updateMemberRole(campaign.id, userId, role);
+  logger.info(`User ${userId} changed to ${role} in campaign ${campaign.id} by superadmin ${req.user.id}`);
+  controllerFactory.sendSuccessResponse(res, membership, 'Member role updated successfully');
+};
+
+/**
+ * Remove a member from a campaign by campaign id. Superadmin only. The
+ * account is never touched. The last DM of a campaign cannot be removed.
+ */
+const removeCampaignMember = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const userId = parseId(req.params.userId, 'userId');
+
+  const existing = await Campaign.getMembership(userId, campaign.id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('User is not a member of this campaign');
+  }
+  await assertNotLastDM(campaign.id, existing);
+
+  await Campaign.removeMember(campaign.id, userId);
+  logger.info(`User ${userId} removed from campaign ${campaign.id} by superadmin ${req.user.id}`);
+  controllerFactory.sendSuccessMessage(res, 'Member removed from campaign successfully');
+};
+
 // Export wrapped controllers
+exports.updateCampaign = controllerFactory.createHandler(updateCampaign, {
+  errorMessage: 'Error updating campaign'
+});
+
+exports.getCampaignMembers = controllerFactory.createHandler(getCampaignMembers, {
+  errorMessage: 'Error fetching campaign members'
+});
+
+exports.addCampaignMember = controllerFactory.createHandler(addCampaignMember, {
+  errorMessage: 'Error adding campaign member',
+  validation: {
+    requiredFields: ['userId', 'role']
+  }
+});
+
+exports.updateCampaignMemberRole = controllerFactory.createHandler(updateCampaignMemberRole, {
+  errorMessage: 'Error updating member role',
+  validation: {
+    requiredFields: ['role']
+  }
+});
+
+exports.removeCampaignMember = controllerFactory.createHandler(removeCampaignMember, {
+  errorMessage: 'Error removing campaign member'
+});
+
 exports.getMyCampaigns = controllerFactory.createHandler(getMyCampaigns, {
   errorMessage: 'Error fetching campaigns'
 });

@@ -408,7 +408,48 @@ describe('SystemAdmin', () => {
   // -------------------------------------------------------------------------
   // 4. Campaigns section
   // -------------------------------------------------------------------------
+  describe('Instance settings', () => {
+    it('shows the stored frontend URL and saves a changed one', async () => {
+      setupDefaultGetMock({ settings: [...defaultSettings, { name: 'frontend_url', value: 'https://old.example.com' }] });
+      renderSystemAdmin();
+      const field = (await screen.findByLabelText(/Frontend URL/)) as HTMLInputElement;
+      await waitFor(() => expect(field.value).toBe('https://old.example.com'));
+      expect(screen.getByRole('button', { name: 'Save URL' })).toBeDisabled();
+
+      fireEvent.change(field, { target: { value: ' https://new.example.com ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save URL' }));
+      await waitFor(() => expect(api.put).toHaveBeenCalledWith('/user/update-setting', { name: 'frontend_url', value: 'https://new.example.com' }));
+    });
+
+    it('reports whether the secrets are stored and saves a new one without echoing it', async () => {
+      setupDefaultGetMock({ settings: [
+        ...defaultSettings,
+        { name: 'discord_bot_token', value: null, secret: true, is_set: true },
+        { name: 'openai_key', value: null, secret: true, is_set: false },
+      ] });
+      renderSystemAdmin();
+      expect(await screen.findByText(/A token is stored/)).toBeInTheDocument();
+      expect(screen.getByText(/No key stored/)).toBeInTheDocument();
+
+      const keyField = screen.getByLabelText(/OpenAI API key/) as HTMLInputElement;
+      expect(keyField.type).toBe('password');
+      expect(screen.getByRole('button', { name: 'Save key' })).toBeDisabled();
+      fireEvent.change(keyField, { target: { value: 'sk-test' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save key' }));
+
+      await waitFor(() => expect(api.put).toHaveBeenCalledWith('/user/update-setting', { name: 'openai_key', value: 'sk-test' }));
+      await waitFor(() => expect(keyField.value).toBe(''));
+      expect(await screen.findByText(/A key is stored/)).toBeInTheDocument();
+    });
+  });
+
   describe('Campaigns section', () => {
+    it('offers campaign administration actions', async () => {
+      renderSystemAdmin();
+      expect(await screen.findByRole('button', { name: 'New campaign' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Members of Rise of the Runelords' })).toBeInTheDocument();
+    });
+
     it('lists every campaign with name, slug, world, and active state', async () => {
       renderSystemAdmin();
 

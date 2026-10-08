@@ -19,9 +19,11 @@ const { isTokenRevokedByPasswordChange } = require('../utils/authSession');
  * extra round trip.
  */
 const MEMBERSHIP_QUERY = `
-  SELECT u.is_superadmin, u.role AS user_role, u.password_changed_at, uc.campaign_id, uc.role
+  SELECT u.is_superadmin, u.role AS user_role, u.password_changed_at, uc.campaign_id, uc.role,
+         c.is_active AS campaign_active
   FROM users u
   LEFT JOIN user_campaign uc ON uc.user_id = u.id
+  LEFT JOIN campaigns c ON c.id = uc.campaign_id
   WHERE u.id = $1
 `;
 
@@ -154,7 +156,12 @@ const createVerifyToken = ({ allowNoCampaign = false } = {}) => async (req, res,
     }
 
     isSuperadmin = rows[0].is_superadmin === true;
-    const memberships = rows.filter((row) => row.campaign_id !== null && row.campaign_id !== undefined);
+    // A deactivated campaign is invisible to its members (superadmins still
+    // reach it, to manage or reactivate it). A row without the flag counts as
+    // active.
+    const memberships = rows.filter((row) =>
+      row.campaign_id !== null && row.campaign_id !== undefined
+      && (isSuperadmin || row.campaign_active !== false));
 
     if (requestedCampaignId !== undefined) {
       const membership = memberships.find((m) => Number(m.campaign_id) === requestedCampaignId);

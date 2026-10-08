@@ -25,7 +25,18 @@ jest.mock('../../../controllers/campaignController', () => ({
   levelUpCampaign: jest.fn(),
   renameCurrentCampaign: jest.fn(),
   createCampaign: jest.fn(),
+  updateCampaign: jest.fn(),
+  getCampaignMembers: jest.fn(),
+  addCampaignMember: jest.fn(),
+  updateCampaignMemberRole: jest.fn(),
+  removeCampaignMember: jest.fn(),
 }));
+
+jest.mock('../../../middleware/requireSuperadmin', () => {
+  const mw = (req, res, next) => next();
+  mw.requiresSuperadmin = true;
+  return mw;
+});
 
 const router = require('../campaigns');
 
@@ -59,5 +70,27 @@ describe('campaign routes', () => {
     const route = findRoute(method, path);
     expect(route).toBeDefined();
     expect(gatedRole(route)).toBeUndefined();
+  });
+
+  const requiresSuperadmin = (route) => route.stack.some((layer) => layer.handle.requiresSuperadmin === true);
+
+  it.each([
+    ['put', '/:id'],
+    ['get', '/:id/members'],
+    ['post', '/:id/members'],
+    ['put', '/:id/members/:userId'],
+    ['delete', '/:id/members/:userId'],
+  ])('%s %s is superadmin-only (not merely DM)', (method, path) => {
+    const route = findRoute(method, path);
+    expect(route).toBeDefined();
+    expect(requiresSuperadmin(route)).toBe(true);
+    expect(gatedRole(route)).toBeUndefined();
+  });
+
+  it('mounts the by-id routes after every /current route so "current" is never read as an id', () => {
+    const paths = router.stack.map((layer) => layer.route && layer.route.path).filter(Boolean);
+    const lastCurrent = Math.max(...paths.map((p, i) => (p.startsWith('/current') ? i : -1)));
+    const firstById = paths.findIndex((p) => p.startsWith('/:id'));
+    expect(firstById).toBeGreaterThan(lastCurrent);
   });
 });
