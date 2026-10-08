@@ -113,12 +113,13 @@ describe('App shell', () => {
     expect(await screen.findByText('loot-generator page')).toBeInTheDocument();
   });
 
-  it('keeps System Admin superadmin-only (a campaign DM is not enough)', async () => {
+  it('sends the old /system-admin URL to its tab under Account & Settings (gated inside that page)', async () => {
     signedIn();
     campaignState = { isDM: true, isSuperadmin: false, loading: false };
     window.history.pushState({}, '', '/system-admin');
     render(<App />);
-    await waitFor(() => expect(screen.getByText('loot-entry page')).toBeInTheDocument());
+    expect(await screen.findByText('settings page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/user-settings/system-admin');
     expect(screen.queryByText('system-admin page')).not.toBeInTheDocument();
   });
 

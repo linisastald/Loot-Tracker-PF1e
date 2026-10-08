@@ -11,10 +11,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Switch,
   Table,
   TableBody,
@@ -57,10 +61,16 @@ const CharacterTab = () => {
     // AuthContext caches the active character id, so refresh it after changes
     const { refreshUser } = useAuth();
     // ...and so does the campaign context, which serves the active character of the
-    // SELECTED campaign (what the loot pages read)
-    const { refresh: refreshCampaign } = useCampaign();
+    // SELECTED campaign (what the loot pages read). This tab is campaign-agnostic:
+    // it lists the user's characters in every campaign they belong to, and a new
+    // character can be created in any of them (default: the open campaign).
+    const { refresh: refreshCampaign, campaigns: memberCampaigns, currentCampaign } = useCampaign();
+    const campaigns = Array.isArray(memberCampaigns) ? memberCampaigns : [];
+    const multiCampaign = campaigns.length > 1;
 
     const [characterForm, setCharacterForm] = useState(EMPTY_CHARACTER);
+    // Campaign for a NEW character ('' = the open campaign, i.e. no campaignId sent)
+    const [newCharacterCampaignId, setNewCharacterCampaignId] = useState('');
 
     // Delete confirmation dialog
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -72,7 +82,8 @@ const CharacterTab = () => {
 
     const fetchCharacters = async () => {
         try {
-            const response = await api.get('/user/characters');
+            // Every campaign the user belongs to, each row with its campaign
+            const response = await api.get('/user/characters', { params: { scope: 'all' } });
             setCharacters(response.data);
         } catch {
             setError('Failed to load characters');
@@ -105,6 +116,7 @@ const CharacterTab = () => {
     const handleOpenAddDialog = () => {
         setDialogMode('add');
         setCharacterForm(EMPTY_CHARACTER);
+        setNewCharacterCampaignId(currentCampaign?.id ? String(currentCampaign.id) : '');
         setOpenDialog(true);
     };
 
@@ -169,9 +181,14 @@ const CharacterTab = () => {
 
     const handleSubmit = async () => {
         const isAdd = dialogMode === 'add';
+        // Only name a campaign when the user could choose one; otherwise the
+        // server creates the character in the open campaign.
+        const addPayload = multiCampaign && newCharacterCampaignId
+            ? {...characterForm, campaignId: Number(newCharacterCampaignId)}
+            : characterForm;
         const saved = await saveCharacter(
             () => isAdd
-                ? api.post('/user/characters', characterForm)
+                ? api.post('/user/characters', addPayload)
                 : api.put('/user/characters', {...characterForm, id: selectedCharacter.id}),
             isAdd ? 'Character created successfully' : 'Character updated successfully',
             'Failed to save character'
@@ -212,6 +229,7 @@ const CharacterTab = () => {
                         <TableHead>
                             <TableRow>
                                 <TableCell>Name</TableCell>
+                                <TableCell>Campaign</TableCell>
                                 <TableCell>Status</TableCell>
                                 <TableCell>Appraisal Bonus</TableCell>
                                 <TableCell>Birthday</TableCell>
@@ -232,6 +250,14 @@ const CharacterTab = () => {
                                                     label="Active"
                                                     sx={{ml: 1}}
                                                 />
+                                            )}
+                                        </Box>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Box sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5}}>
+                                            {character.campaign_name || '—'}
+                                            {character.campaign_active === false && (
+                                                <Chip size="small" variant="outlined" label="Inactive campaign"/>
                                             )}
                                         </Box>
                                     </TableCell>
@@ -300,6 +326,30 @@ const CharacterTab = () => {
                 </DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} sx={{mt: 1}}>
+                        {dialogMode === 'add' && multiCampaign && (
+                            <Grid size={12}>
+                                <FormControl fullWidth>
+                                    <InputLabel id="new-character-campaign-label">Campaign</InputLabel>
+                                    <Select
+                                        labelId="new-character-campaign-label"
+                                        label="Campaign"
+                                        value={newCharacterCampaignId}
+                                        onChange={(e) => setNewCharacterCampaignId(String(e.target.value))}
+                                    >
+                                        {campaigns.map((campaign) => (
+                                            <MenuItem key={campaign.id} value={String(campaign.id)}>{campaign.name}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                        )}
+                        {dialogMode === 'edit' && selectedCharacter?.campaign_name && (
+                            <Grid size={12}>
+                                <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                                    Campaign: {selectedCharacter.campaign_name}
+                                </Typography>
+                            </Grid>
+                        )}
                         <Grid size={12}>
                             <TextField
                                 label="Character Name"

@@ -5,7 +5,7 @@ const PAGE_TITLES: Record<string, string> = {
   'loot-entry': 'Loot Entry',
   'loot-management': 'Loot Management',
   'gold-transactions': 'Gold Transactions',
-  'user-settings': 'User Settings',
+  'user-settings': 'Account & Settings',
   'character-user-management': 'Character & User Management',
   'item-management': 'Item Management',
   'consumables': 'Consumables',
@@ -23,9 +23,17 @@ const PAGE_TITLES: Record<string, string> = {
   'crew': 'Crew',
   'outposts': 'Outposts',
   'city-services': 'City Services',
-  'system-admin': 'System Admin',
 };
 
 /** The page title for a pathname, or null for an unknown path. */
 export const getPageTitle = (pathname: string): string | null =>
   PAGE_TITLES[pathname.split('/')[1] ?? ''] ?? null;
+
+/**
+ * Pages that belong to the user's account rather than to a campaign
+ * (Account & Settings: account, characters across campaigns, System Admin).
+ * The layout renders them under the default theme, without the campaign
+ * banners, and even for a user who belongs to no campaign.
+ */
+export const isCampaignAgnosticPath = (pathname: string): boolean =>
+  pathname === '/user-settings' || pathname.startsWith('/user-settings/');

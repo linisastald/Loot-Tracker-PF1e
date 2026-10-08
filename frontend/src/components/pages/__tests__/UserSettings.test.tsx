@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
@@ -16,6 +16,16 @@ vi.mock('../../../utils/api', () => ({
 // Mock CharacterTab to avoid deep dependency tree
 vi.mock('../UserSettings/CharacterTab', () => ({
   default: () => <div data-testid="character-tab">Character Tab Content</div>,
+}));
+
+// The System Admin tab is rendered for superadmins only; mock the page itself
+vi.mock('../SystemAdmin', () => ({
+  default: () => <div data-testid="system-admin-tab">System Admin Content</div>,
+}));
+
+let isSuperadmin = false;
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useCampaign: () => ({ isSuperadmin }),
 }));
 
 import api from '../../../utils/api';
@@ -63,6 +73,8 @@ describe('UserSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (api.get as any).mockResolvedValue(mockUserData);
+    // Tabs are URL-driven and jsdom shares one URL across tests
+    window.history.pushState({}, '', '/user-settings');
   });
 
   it('Unlink sends a null discord id instead of re-linking the old one', async () => {
@@ -118,7 +130,7 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Account Settings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Account' })).toBeInTheDocument();
       expect(screen.getByText('Characters')).toBeInTheDocument();
     });
   });
@@ -155,7 +167,7 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Account Settings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Account' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText('Characters'));
@@ -351,5 +363,42 @@ describe('UserSettings', () => {
 
       expect(await screen.findByText('This Discord ID is already linked to another account')).toBeInTheDocument();
     });
+  });
+});
+
+describe('UserSettings System Admin tab', () => {
+  beforeEach(() => {
+    vi.mocked(api.get).mockResolvedValue(mockUserData as never);
+  });
+
+  afterEach(() => {
+    isSuperadmin = false;
+    window.history.pushState({}, '', '/');
+  });
+
+  it('is absent for an ordinary user, and /user-settings/system-admin falls back to Account', async () => {
+    window.history.pushState({}, '', '/user-settings/system-admin');
+    renderUserSettings();
+
+    expect(await screen.findByRole('tab', { name: 'Account' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('tab', { name: 'System Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('system-admin-tab')).not.toBeInTheDocument();
+  });
+
+  it('is shown to a superadmin and selected by its URL', async () => {
+    isSuperadmin = true;
+    window.history.pushState({}, '', '/user-settings/system-admin');
+    renderUserSettings();
+
+    expect(await screen.findByRole('tab', { name: 'System Admin' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('system-admin-tab')).toBeInTheDocument();
+  });
+
+  it('selects the Characters tab from its URL', async () => {
+    window.history.pushState({}, '', '/user-settings/characters');
+    renderUserSettings();
+
+    expect(await screen.findByRole('tab', { name: 'Characters' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('character-tab')).toBeInTheDocument();
   });
 });

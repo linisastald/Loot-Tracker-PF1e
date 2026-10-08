@@ -28,6 +28,7 @@ jest.mock('jsonwebtoken', () => ({
 
 jest.mock('../../models/Campaign', () => ({
   getMembership: jest.fn(),
+  getForUser: jest.fn(),
 }));
 
 const dbUtils = require('../../utils/dbUtils');
@@ -1233,6 +1234,134 @@ describe('userController', () => {
 
         expect(client.query).toHaveBeenCalledTimes(1);
       });
+    });
+  });
+});
+
+// ---------------------------------------------------------------
+// Characters across campaigns (campaign-agnostic Characters settings tab)
+// ---------------------------------------------------------------
+describe('userController characters across campaigns', () => {
+  const campaignContext = require('../../utils/campaignContext');
+
+  /** The campaign ids runWithCampaign was entered with, in order. */
+  const contextsUsed = () => {
+    const spy = jest.spyOn(campaignContext, 'runWithCampaign');
+    return () => spy.mock.calls.map((call) => call[0]);
+  };
+
+  describe('getCharacters ?scope=all', () => {
+    it('lists the user\'s characters in every campaign they belong to, under the cross-campaign context', async () => {
+      const used = contextsUsed();
+      const req = createMockReq({ query: { scope: 'all' }, campaignId: 1 });
+      const res = createMockRes();
+      const rows = [
+        { ...mockCharacter, campaign_id: 1, campaign_name: 'Runelords', campaign_active: true },
+        { id: 20, user_id: 1, name: 'Jirelle', active: true, campaign_id: 2, campaign_name: 'Shackles', campaign_active: true },
+      ];
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows });
+
+      await userController.getCharacters(req, res);
+
+      expect(used()).toEqual(['all']);
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toMatch(/JOIN campaigns c ON c\.id = ch\.campaign_id/);
+      expect(sql).toMatch(/JOIN user_campaign uc ON uc\.campaign_id = ch\.campaign_id AND uc\.user_id = ch\.user_id/);
+      expect(sql).toMatch(/WHERE ch\.user_id = \$1/);
+      expect(params).toEqual([1]);
+      expect(res.success).toHaveBeenCalledWith(rows, 'Characters retrieved successfully');
+    });
+
+    it('stays campaign-scoped without the scope parameter', async () => {
+      const used = contextsUsed();
+      const req = createMockReq({ campaignId: 1 });
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await userController.getCharacters(req, createMockRes());
+
+      expect(used()).toEqual([]);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).not.toMatch(/JOIN campaigns/);
+    });
+  });
+
+  describe('addCharacter with campaignId', () => {
+    const mockTransaction = (rows) => {
+      const client = { query: jest.fn().mockResolvedValue({ rows }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(client));
+      return client;
+    };
+
+    it('creates the character under another campaign the user belongs to', async () => {
+      const used = contextsUsed();
+      Campaign.getForUser.mockResolvedValue([{ id: 1, role: 'Player' }, { id: 2, role: 'Player' }]);
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // name check
+      mockTransaction([{ id: 30, name: 'Jirelle', campaign_id: 2 }]);
+      const req = createMockReq({ campaignId: 1, body: { name: 'Jirelle', campaignId: 2, active: false } });
+      const res = createMockRes();
+
+      await userController.addCharacter(req, res);
+
+      // membership lookup under 'all', then the write under campaign 2
+      expect(used()).toEqual(['all', '2']);
+      expect(res.created).toHaveBeenCalledWith({ id: 30, name: 'Jirelle', campaign_id: 2 }, 'Character created successfully');
+    });
+
+    it('refuses a campaign the user is not a member of', async () => {
+      Campaign.getForUser.mockResolvedValue([{ id: 1, role: 'Player' }]);
+      const req = createMockReq({ campaignId: 1, body: { name: 'Jirelle', campaignId: 2 } });
+
+      const res = createMockRes();
+      await userController.addCharacter(req, res);
+      expect(res.forbidden).toHaveBeenCalledWith('You are not a member of that campaign');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-numeric campaignId', async () => {
+      const req = createMockReq({ campaignId: 1, body: { name: 'Jirelle', campaignId: 'two' } });
+
+      const res = createMockRes();
+      await userController.addCharacter(req, res);
+      expect(res.validationError).toHaveBeenCalledWith('Invalid campaign');
+      expect(Campaign.getForUser).not.toHaveBeenCalled();
+    });
+
+    it('uses the request context when campaignId is the current campaign', async () => {
+      const used = contextsUsed();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      mockTransaction([{ id: 31, name: 'Kyra' }]);
+      const req = createMockReq({ campaignId: 1, body: { name: 'Kyra', campaignId: '1' } });
+
+      await userController.addCharacter(req, createMockRes());
+
+      expect(used()).toEqual([]);
+      expect(Campaign.getForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateCharacter in the character\'s own campaign', () => {
+    it('finds the character across campaigns and writes under its campaign', async () => {
+      const used = contextsUsed();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ ...mockCharacter, campaign_id: 2 }] });
+      const client = { query: jest.fn().mockResolvedValue({ rows: [{ ...mockCharacter, campaign_id: 2, appraisal_bonus: 9 }] }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(client));
+      const req = createMockReq({ campaignId: 1, body: { id: 10, appraisal_bonus: 9 } });
+      const res = createMockRes();
+
+      await userController.updateCharacter(req, res);
+
+      expect(used()).toEqual(['all', '2']);
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([10, 1]);
+      expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ appraisal_bonus: 9 }), 'Character updated successfully');
+    });
+
+    it('still 404s for a character owned by someone else', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      const req = createMockReq({ campaignId: 1, body: { id: 99, name: 'x' } });
+
+      const res = createMockRes();
+      await userController.updateCharacter(req, res);
+      expect(res.notFound).toHaveBeenCalledWith(expect.stringMatching(/not found/i));
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
     });
   });
 });

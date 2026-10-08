@@ -68,6 +68,7 @@ describe('users with zero campaign memberships', () => {
     ['PUT', '/api/user/update-discord-id'],
     ['GET', '/api/campaigns'],
     ['GET', '/api/campaigns/current'],
+    ['GET', '/api/user/characters'], // the Characters settings tab lists across campaigns
     ['POST', '/api/invites/redeem'],
   ])('membership-free route %s %s', (method, path) => {
     it('returns 200', async () => {
@@ -77,7 +78,6 @@ describe('users with zero campaign memberships', () => {
   });
 
   describe.each([
-    ['GET', '/api/user/characters'],
     ['POST', '/api/user/characters'],
     ['GET', '/api/user/active-characters'],
     ['GET', '/api/campaigns/current/party-level'],

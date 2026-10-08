@@ -113,23 +113,26 @@ describe('Sidebar (campaign context integration)', () => {
     expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
   });
 
-  it('shows the System Admin entry only for superadmins', async () => {
+  it('keeps System Admin out of the campaign navigation even for a superadmin (it is a tab of Account & Settings)', async () => {
     campaignContextValue = makeContext({}, undefined, true);
 
-    renderSidebar();
-
-    await waitFor(() => {
-      expect(screen.getAllByText('System Admin').length).toBeGreaterThan(0);
-    });
-  });
-
-  it('hides the System Admin entry for plain DMs', async () => {
     renderSidebar();
 
     await waitFor(() => {
       expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0);
     });
     expect(screen.queryByText('System Admin')).not.toBeInTheDocument();
+  });
+
+  it('links the footer account block to Account & Settings', async () => {
+    renderSidebar();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0);
+    });
+    const links = screen.getAllByRole('link', { name: /account & settings/i });
+    expect(links.length).toBeGreaterThan(0);
+    expect(links[0]).toHaveAttribute('href', '/user-settings');
   });
 
   describe('DM Settings entry follows the campaign role, not the account role', () => {

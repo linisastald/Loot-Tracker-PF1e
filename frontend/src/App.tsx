@@ -38,7 +38,6 @@ const SessionsPage = React.lazy(() => import('./components/pages/Sessions/Sessio
 const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
 const TaskManagement = React.lazy(() => import('./components/pages/DMSettings/TaskManagement'));
 const CityServices = React.lazy(() => import('./components/pages/CityServices'));
-const SystemAdmin = React.lazy(() => import('./components/pages/SystemAdmin'));
 
 
 import theme from './theme';
@@ -62,7 +61,9 @@ const PAGE_ROUTES: PageRoute[] = [
   { path: 'loot-entry', Page: LootEntry },
   { path: 'loot-management/*', Page: LootManagement },
   { path: 'gold-transactions', Page: GoldTransactions },
-  { path: 'user-settings', Page: UserSettings },
+  // Account & Settings: campaign-agnostic (account, characters across
+  // campaigns, and the superadmin's System Admin tab, gated inside the page)
+  { path: 'user-settings/*', Page: UserSettings },
   { path: 'character-user-management/*', Page: CharacterAndUserManagement, require: 'dm' },
   { path: 'item-management/*', Page: ItemManagement, require: 'dm' },
   { path: 'golarion-calendar', Page: GolarionCalendar },
@@ -80,11 +81,11 @@ const PAGE_ROUTES: PageRoute[] = [
   { path: 'session-management', Page: SessionManagement, require: 'dm' },
   { path: 'task-management', Page: TaskManagement, require: 'dm' },
   { path: 'city-services', Page: CityServices },
-  { path: 'system-admin', Page: SystemAdmin, require: 'superadmin' },
 ];
 
-// Old URLs that now live under /loot-management
+// Old URLs that now live under /loot-management or /user-settings
 const LEGACY_REDIRECTS: Array<[string, string]> = [
+  ['system-admin', '/user-settings/system-admin'],
   ['unprocessed-loot', '/loot-management/unprocessed'],
   ['kept-party', '/loot-management/kept-party'],
   ['kept-character', '/loot-management/kept-character'],

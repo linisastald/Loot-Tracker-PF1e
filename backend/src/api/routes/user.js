@@ -31,7 +31,8 @@ router.get('/me', verifyToken.allowNoCampaign, userController.getCurrentUser);
 router.put('/change-password', verifyToken.allowNoCampaign, credentialCheckLimiter, userController.changePassword);
 router.put('/change-email', verifyToken.allowNoCampaign, credentialCheckLimiter, userController.changeEmail);
 router.put('/update-discord-id', verifyToken.allowNoCampaign, userController.updateDiscordId);
-router.get('/characters', verifyToken, userController.getCharacters);
+// GET may run without a campaign: the Characters settings tab lists across campaigns (?scope=all)
+router.get('/characters', verifyToken.allowNoCampaign, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);
 router.put('/characters', verifyToken, userController.updateCharacter);
 router.get('/active-characters', verifyToken, userController.getActiveCharacters);

@@ -1,4 +1,9 @@
+// Account & Settings: the user's own pages, independent of the campaign that
+// is open (the layout renders them under the default theme). Tabs are URL
+// addressed (/user-settings, /user-settings/characters,
+// /user-settings/system-admin) so the account menu can link straight to one.
 import React, {useEffect, useState} from 'react';
+import {Link as RouterLink, useLocation} from 'react-router-dom';
 import api from '../../utils/api';
 import {getErrorMessage} from '../../utils/apiErrors';
 import {isValidEmail} from '../../utils/validation';
@@ -16,6 +21,18 @@ import {
 } from '@mui/material';
 import PasswordField from '../common/PasswordField';
 import CharacterTab from './UserSettings/CharacterTab';
+import SystemAdmin from './SystemAdmin';
+import {useCampaign} from '../../contexts/CampaignContext';
+
+const TAB_PATHS = ['/user-settings', '/user-settings/characters', '/user-settings/system-admin'] as const;
+
+/** Tab index for a pathname (unknown sub-paths fall back to Account). */
+const tabForPath = (pathname: string, allowSystemAdmin: boolean): number => {
+    const trimmed = pathname.replace(/\/+$/, '');
+    if (trimmed === TAB_PATHS[1]) return 1;
+    if (trimmed === TAB_PATHS[2] && allowSystemAdmin) return 2;
+    return 0;
+};
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -76,7 +93,9 @@ const SettingsSection: React.FC<SettingsSectionProps> = ({title, status, childre
 
 const UserSettings: React.FC = () => {
     const [user, setUser] = useState<AccountUser | null>(null);
-    const [tabValue, setTabValue] = useState(0);
+    const {isSuperadmin} = useCampaign();
+    const location = useLocation();
+    const tabValue = tabForPath(location.pathname, isSuperadmin);
 
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -111,10 +130,6 @@ const UserSettings: React.FC = () => {
         } catch {
             // The account details stay empty; every form still works.
         }
-    };
-
-    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-        setTabValue(newValue);
     };
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -236,11 +251,18 @@ const UserSettings: React.FC = () => {
 
     return (
         <Container maxWidth={false} component="main">
+            <Box sx={{mb: 2}}>
+                <Typography variant="h5" gutterBottom>Account &amp; Settings</Typography>
+                <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                    These settings belong to your account and apply in every campaign you are part of.
+                </Typography>
+            </Box>
             <Paper sx={{p: 2, mb: 2}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', width: '100%'}}>
-                    <Tabs value={tabValue} onChange={handleTabChange} aria-label="user settings tabs">
-                        <Tab label="Account Settings"/>
-                        <Tab label="Characters"/>
+                    <Tabs value={tabValue} aria-label="account settings tabs" variant="scrollable" allowScrollButtonsMobile>
+                        <Tab label="Account" component={RouterLink} to={TAB_PATHS[0]}/>
+                        <Tab label="Characters" component={RouterLink} to={TAB_PATHS[1]}/>
+                        {isSuperadmin && <Tab label="System Admin" component={RouterLink} to={TAB_PATHS[2]}/>}
                     </Tabs>
                 </Box>
 
@@ -386,6 +408,12 @@ const UserSettings: React.FC = () => {
                 <TabPanel value={tabValue} index={1}>
                     <CharacterTab/>
                 </TabPanel>
+
+                {isSuperadmin && (
+                    <TabPanel value={tabValue} index={2}>
+                        <SystemAdmin/>
+                    </TabPanel>
+                )}
             </Paper>
         </Container>
     );

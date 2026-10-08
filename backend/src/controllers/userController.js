@@ -174,10 +174,30 @@ const updateDiscordId = async (req, res) => {
 };
 
 /**
- * Get user's characters
+ * Get user's characters.
+ *
+ * Default: the user's characters in the current campaign (RLS-scoped).
+ * `?scope=all`: the user's characters across every campaign they belong to,
+ * each row carrying `campaign_id`, `campaign_name` and `campaign_active`, for
+ * the campaign-agnostic Characters settings tab. "Active" is per campaign, so
+ * several rows may be active at once (one per campaign).
  */
 const getCharacters = async (req, res) => {
     const userId = req.user.id;
+
+    if (req.query.scope === 'all') {
+        const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(
+            `SELECT ch.*, c.name AS campaign_name, c.is_active AS campaign_active
+             FROM characters ch
+             JOIN campaigns c ON c.id = ch.campaign_id
+             JOIN user_campaign uc ON uc.campaign_id = ch.campaign_id AND uc.user_id = ch.user_id
+             WHERE ch.user_id = $1
+             ORDER BY c.is_active DESC, c.id, ch.active DESC, ch.name ASC`,
+            [userId]
+        ));
+        return controllerFactory.sendSuccessResponse(res, result.rows, 'Characters retrieved successfully');
+    }
+
     const result = await dbUtils.executeQuery(
         'SELECT * FROM characters WHERE user_id = $1 ORDER BY active DESC, name ASC',
         [userId]
@@ -185,6 +205,39 @@ const getCharacters = async (req, res) => {
 
     controllerFactory.sendSuccessResponse(res, result.rows, 'Characters retrieved successfully');
 };
+
+/**
+ * The campaign a character write should run in. The request's current
+ * campaign unless the body names another one (`campaignId`), which must be
+ * an active campaign the user belongs to. Returns the id as a string for
+ * runWithCampaign.
+ */
+const resolveCharacterCampaign = async (req) => {
+    const requested = req.body.campaignId;
+    if (requested === undefined || requested === null || requested === '') {
+        return null;
+    }
+    const campaignId = Number(requested);
+    if (!Number.isInteger(campaignId) || campaignId < 1) {
+        throw controllerFactory.createValidationError('Invalid campaign');
+    }
+    if (campaignId === Number(req.campaignId)) {
+        return null;
+    }
+    const memberships = await campaignContext.runWithCampaign('all', () => Campaign.getForUser(req.user.id));
+    if (!memberships.some((m) => Number(m.id) === campaignId)) {
+        throw controllerFactory.createAuthorizationError('You are not a member of that campaign');
+    }
+    return String(campaignId);
+};
+
+/**
+ * Run `fn` under `campaignId`, or in the inherited context (the request's
+ * campaign) when it is null.
+ */
+const inCampaign = (campaignId, fn) => (
+    campaignId === null || campaignId === undefined ? fn() : campaignContext.runWithCampaign(campaignId, fn)
+);
 
 /**
  * Get all active characters
@@ -204,6 +257,20 @@ const addCharacter = async (req, res) => {
     const {name, appraisal_bonus, birthday, deathday, active} = req.body;
     const userId = req.user.id;
 
+    // The Characters settings tab is campaign-agnostic and may create a
+    // character in any campaign the user belongs to; everything below (name
+    // check, deactivate-others, INSERT) runs under that campaign's RLS scope.
+    const targetCampaign = await resolveCharacterCampaign(req);
+    const newCharacter = await inCampaign(targetCampaign, () => createCharacterRow(userId, {
+        name, appraisal_bonus, birthday, deathday, active,
+    }));
+
+    logger.info(`New character "${name}" created for user ID ${userId} in campaign ${targetCampaign ?? req.campaignId}`);
+    return controllerFactory.sendCreatedResponse(res, newCharacter, 'Character created successfully');
+};
+
+/** Create a character for `userId` in the active campaign context. */
+const createCharacterRow = async (userId, {name, appraisal_bonus, birthday, deathday, active}) => {
     await assertCharacterNameFree(name);
 
     // Omitted `active` means the column default (true), not NULL
@@ -217,8 +284,9 @@ const addCharacter = async (req, res) => {
     // only after executeTransaction resolves (i.e. after COMMIT). Otherwise the
     // frontend can refetch before the commit is visible to other pool
     // clients (MVCC) and see stale data.
-    const newCharacter = await dbUtils.executeTransaction(async (client) => {
-        // If this character is being set as active, deactivate other characters
+    return dbUtils.executeTransaction(async (client) => {
+        // If this character is being set as active, deactivate the user's other
+        // characters (RLS limits this to the campaign in context)
         if (isActive) {
             await client.query(
                 'UPDATE characters SET active = false WHERE user_id = $1',
@@ -226,7 +294,7 @@ const addCharacter = async (req, res) => {
             );
         }
 
-        // Insert the new character
+        // Insert the new character (campaign_id defaults to the campaign in context)
         const result = await client.query(
             'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
             [userId, name, appraisal_bonus || 0, processedBirthday || null, processedDeathday || null, isActive]
@@ -234,9 +302,6 @@ const addCharacter = async (req, res) => {
 
         return result.rows[0];
     });
-
-    logger.info(`New character "${name}" created for user ID ${userId}`);
-    return controllerFactory.sendCreatedResponse(res, newCharacter, 'Character created successfully');
 };
 
 /**
@@ -246,18 +311,33 @@ const updateCharacter = async (req, res) => {
     const {id, name, appraisal_bonus, birthday, deathday, active} = req.body;
     const userId = req.user.id;
 
-    // Check if character exists and belongs to user
-    const characterCheck = await dbUtils.executeQuery(
+    // Check if character exists and belongs to user. Looked up across
+    // campaigns: the Characters settings tab edits characters from any of the
+    // user's campaigns, not only the one currently open. user_id is the
+    // authority here, and the write below runs in the character's own campaign.
+    const characterCheck = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(
         'SELECT * FROM characters WHERE id = $1 AND user_id = $2',
         [id, userId]
-    );
+    ));
 
     if (characterCheck.rows.length === 0) {
         throw controllerFactory.createNotFoundError('Character not found or you do not have permission to update it');
     }
 
+    const ownCampaign = characterCheck.rows[0].campaign_id;
+    const updatedCharacter = await inCampaign(
+        ownCampaign === undefined || ownCampaign === null ? null : String(ownCampaign),
+        () => updateCharacterRow(req.body, characterCheck.rows[0], userId)
+    );
+
+    logger.info(`Character ID ${id} updated for user ID ${userId}`);
+    return controllerFactory.sendSuccessResponse(res, updatedCharacter, 'Character updated successfully');
+};
+
+/** Apply a character update in the active campaign context (the character's own). */
+const updateCharacterRow = async ({id, name, appraisal_bonus, birthday, deathday, active}, current, userId) => {
     // Check for name uniqueness (excluding this character) only if name is provided
-    if (name && name !== characterCheck.rows[0].name) {
+    if (name && name !== current.name) {
         await assertCharacterNameFree(name, id);
     }
 
@@ -266,7 +346,7 @@ const updateCharacter = async (req, res) => {
     const processedDeathday = emptyToNull(deathday);
 
     // Committed before responding (see addCharacter)
-    const updatedCharacter = await dbUtils.executeTransaction(async (client) => {
+    return dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
         if (active) {
             await client.query(
@@ -279,11 +359,11 @@ const updateCharacter = async (req, res) => {
         const result = await client.query(
             'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
             [
-                name || characterCheck.rows[0].name,
-                appraisal_bonus !== undefined ? appraisal_bonus : characterCheck.rows[0].appraisal_bonus,
-                processedBirthday !== undefined ? processedBirthday : characterCheck.rows[0].birthday,
-                processedDeathday !== undefined ? processedDeathday : characterCheck.rows[0].deathday,
-                active !== undefined ? active : characterCheck.rows[0].active,
+                name || current.name,
+                appraisal_bonus !== undefined ? appraisal_bonus : current.appraisal_bonus,
+                processedBirthday !== undefined ? processedBirthday : current.birthday,
+                processedDeathday !== undefined ? processedDeathday : current.deathday,
+                active !== undefined ? active : current.active,
                 id,
                 userId
             ]
@@ -291,9 +371,6 @@ const updateCharacter = async (req, res) => {
 
         return result.rows[0];
     });
-
-    logger.info(`Character ID ${id} updated for user ID ${userId}`);
-    return controllerFactory.sendSuccessResponse(res, updatedCharacter, 'Character updated successfully');
 };
 
 /**

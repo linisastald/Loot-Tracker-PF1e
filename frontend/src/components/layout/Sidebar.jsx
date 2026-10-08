@@ -45,7 +45,7 @@ import {
   People as CrewIcon,
   Home as OutpostIcon,
   LocationCity as LocationCityIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon,
+  ManageAccounts as ManageAccountsIcon,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -386,9 +386,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
             </MenuItem>
           )}
 
-          {isSuperadmin && (
-            <MenuItem to="/system-admin" primary="System Admin" icon={<AdminPanelSettingsIcon />} isCategory />
-          )}
           {isSuperadmin && (campaignRole === 'Player' || dmOverride) && typeof setDmOverride === 'function' && (
             <Tooltip
               title={dmOverride
@@ -438,19 +435,40 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
         justifyContent: isCollapsed ? 'center' : 'space-between',
         flexDirection: isCollapsed ? 'row' : 'column',
       }}>
-        {!isCollapsed && (
+        {/* Account & Settings: the user's own pages (account, characters in
+            every campaign, System Admin for the superadmin), outside the
+            campaign navigation above. The app bar's account menu leads to
+            the same place. */}
+        {isCollapsed ? (
+          <Tooltip title="Account & settings" placement="right">
+            <IconButton
+              component={Link}
+              to="/user-settings"
+              size="small"
+              color="inherit"
+              aria-label="Account & settings"
+              sx={{ mb: 1 }}
+            >
+              <ManageAccountsIcon />
+            </IconButton>
+          </Tooltip>
+        ) : (
           <Box
             component={Link}
             to="/user-settings"
+            aria-label="Account & settings"
             sx={{
               display: 'flex',
               alignItems: 'center',
               textDecoration: 'none',
               color: 'inherit',
               mb: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
               '&:hover': {
                 backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: 1,
+                borderColor: 'primary.main',
               },
               p: 1,
               width: '100%',
@@ -468,18 +486,15 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
             >
               {username.charAt(0).toUpperCase()}
             </Avatar>
-            <Box sx={{ overflow: 'hidden' }}>
+            <Box sx={{ overflow: 'hidden', flexGrow: 1 }}>
               <Typography variant="body2" noWrap>
                 {username}
               </Typography>
-              {activeCharacter && (
-                <Typography variant="caption" noWrap sx={{
-                  color: "text.secondary"
-                }}>
-                  {activeCharacter.name}
-                </Typography>
-              )}
+              <Typography variant="caption" noWrap sx={{ color: "text.secondary", display: 'block' }}>
+                {activeCharacter ? `${activeCharacter.name} · ` : ''}Account & settings
+              </Typography>
             </Box>
+            <ManageAccountsIcon fontSize="small" sx={{ color: 'text.secondary', ml: 1 }} />
           </Box>
         )}
 

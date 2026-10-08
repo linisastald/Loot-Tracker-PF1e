@@ -15,7 +15,6 @@ import {
   CardHeader,
   Chip,
   CircularProgress,
-  Container,
   Dialog,
   DialogActions,
   DialogContent,
@@ -307,16 +306,17 @@ const SystemAdmin: React.FC = () => {
 
   if (!isSuperadmin) {
     return (
-      <Container maxWidth="md">
+      <Box sx={{ maxWidth: 'md' }}>
         <Alert severity="error" sx={{ mt: 4 }}>
           Access denied — this page is only available to the system administrator.
         </Alert>
-      </Container>
+      </Box>
     );
   }
 
+  // Rendered as the System Admin tab of Account & Settings (campaign-agnostic)
   return (
-    <Container maxWidth={false} component="main">
+    <Box>
       <Typography variant="h6" gutterBottom>
         System Administration
       </Typography>
@@ -635,7 +635,7 @@ const SystemAdmin: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </Box>
   );
 };
 
