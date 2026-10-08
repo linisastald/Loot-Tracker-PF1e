@@ -75,6 +75,7 @@ describe('campaign routes', () => {
   const requiresSuperadmin = (route) => route.stack.some((layer) => layer.handle.requiresSuperadmin === true);
 
   it.each([
+    ['post', '/'],
     ['put', '/:id'],
     ['get', '/:id/members'],
     ['post', '/:id/members'],
