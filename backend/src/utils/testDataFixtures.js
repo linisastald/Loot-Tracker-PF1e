@@ -65,32 +65,32 @@ const LOOT_SENTINEL = {name: 'Masterwork Cutlass', sessionDate: '2024-08-01'};
  */
 const lootRows = (dmId, characterIds) => [
     // Recent session loot (unprocessed)
-    ['2024-08-01', 1, 'Masterwork Cutlass', false, true, 'weapon', 'medium', 'Unprocessed', 1, 315, null, dmId, "Found in captain's quarters"],
-    ['2024-08-01', 3, 'Potion of Cure Light Wounds', false, false, 'potion', 'small', 'Unprocessed', null, 150, null, dmId, 'Standard healing potions'],
-    ['2024-08-01', 1, 'Unknown Ring', true, false, 'ring', 'tiny', 'Unprocessed', null, null, null, dmId, 'Magical aura detected'],
-    ['2024-08-01', 2, 'Bag of Holding (Type I)', false, false, 'wondrous', 'small', 'Unprocessed', null, 5000, null, dmId, 'Two matching bags found'],
-    ['2024-08-01', 50, 'Crossbow Bolts', false, false, 'ammunition', 'small', 'Unprocessed', null, 25, null, dmId, 'High quality bolts'],
+    ['2024-08-01', 1, 'Masterwork Cutlass', false, true, 'weapon', 'medium', 'Unprocessed', null, 315, null, dmId, "Found in captain's quarters"],
+    ['2024-08-01', 3, 'Potion of Cure Light Wounds', false, false, 'magic', 'small', 'Unprocessed', null, 150, null, dmId, 'Standard healing potions'],
+    ['2024-08-01', 1, 'Unknown Ring', true, false, 'magic', 'tiny', 'Unprocessed', null, null, null, dmId, 'Magical aura detected'],
+    ['2024-08-01', 2, 'Bag of Holding (Type I)', false, false, 'magic', 'small', 'Unprocessed', null, 5000, null, dmId, 'Two matching bags found'],
+    ['2024-08-01', 50, 'Crossbow Bolts', false, false, 'weapon', 'small', 'Unprocessed', null, 25, null, dmId, 'High quality bolts'],
 
     // Previous session loot (some kept, some sold)
-    ['2024-07-20', 1, 'Chain Shirt +1', false, false, 'armor', 'medium', 'Kept Self', null, 1250, characterIds[0], dmId, 'Enchanted chain armor'],
-    ['2024-07-20', 1, 'Rapier +1', false, false, 'weapon', 'medium', 'Kept Self', null, 2320, characterIds[1], dmId, 'Fencing sword with enhancement'],
-    ['2024-07-20', 4, 'Pearl', false, false, 'gem', 'tiny', 'Sold', null, 400, null, dmId, 'High quality pearls'],
-    ['2024-07-20', 1, 'Spyglass', false, true, 'tool', 'small', 'Kept Party', null, 1000, null, dmId, 'Masterwork navigation tool'],
-    ['2024-07-20', 10, 'Silver Pieces (Foreign)', false, false, 'treasure', 'tiny', 'Sold', null, 150, null, dmId, 'Chelaxian silver coins'],
+    ['2024-07-20', 1, 'Chain Shirt +1', false, false, 'armor', 'medium', 'Kept Character', null, 1250, characterIds[0], dmId, 'Enchanted chain armor'],
+    ['2024-07-20', 1, 'Rapier +1', false, false, 'weapon', 'medium', 'Kept Character', null, 2320, characterIds[1], dmId, 'Fencing sword with enhancement'],
+    ['2024-07-20', 4, 'Pearl', false, false, 'trade good', 'tiny', 'Sold', null, 400, null, dmId, 'High quality pearls'],
+    ['2024-07-20', 1, 'Spyglass', false, true, 'gear', 'small', 'Kept Party', null, 1000, null, dmId, 'Masterwork navigation tool'],
+    ['2024-07-20', 10, 'Silver Pieces (Foreign)', false, false, 'trade good', 'tiny', 'Sold', null, 150, null, dmId, 'Chelaxian silver coins'],
 
     // Older session loot
-    ['2024-07-05', 1, 'Cloak of Resistance +1', false, false, 'cloak', 'medium', 'Kept Self', null, 1000, characterIds[2], dmId, 'Provides protection against various effects'],
-    ['2024-07-05', 2, "Alchemist's Fire", false, false, 'alchemical', 'small', 'Kept Party', null, 40, null, dmId, 'For emergency use'],
-    ['2024-07-05', 1, 'Scroll of Fireball', false, false, 'scroll', 'tiny', 'Kept Party', null, 375, null, dmId, '5th level caster, 3rd level spell'],
-    ['2024-07-05', 6, 'Gems (Various)', false, false, 'gem', 'tiny', 'Sold', null, 1200, null, dmId, 'Mixed precious stones'],
-    ['2024-07-05', 1, 'Cursed Sword', false, false, 'weapon', 'medium', 'Trash', null, 0, null, dmId, 'Cursed weapon - disposed of safely'],
+    ['2024-07-05', 1, 'Cloak of Resistance +1', false, false, 'magic', 'medium', 'Kept Character', null, 1000, characterIds[2], dmId, 'Provides protection against various effects'],
+    ['2024-07-05', 2, "Alchemist's Fire", false, false, 'gear', 'small', 'Kept Party', null, 40, null, dmId, 'For emergency use'],
+    ['2024-07-05', 1, 'Scroll of Fireball', false, false, 'magic', 'tiny', 'Kept Party', null, 375, null, dmId, '5th level caster, 3rd level spell'],
+    ['2024-07-05', 6, 'Gems (Various)', false, false, 'trade good', 'tiny', 'Sold', null, 1200, null, dmId, 'Mixed precious stones'],
+    ['2024-07-05', 1, 'Cursed Sword', false, false, 'weapon', 'medium', 'Trashed', null, 0, null, dmId, 'Cursed weapon - disposed of safely'],
 
     // Additional variety
-    ['2024-06-15', 1, 'Boots of Elvenkind', false, false, 'boots', 'medium', 'Kept Self', null, 2500, characterIds[0], dmId, 'Silent movement boots'],
+    ['2024-06-15', 1, 'Boots of Elvenkind', false, false, 'magic', 'medium', 'Kept Character', null, 2500, characterIds[0], dmId, 'Silent movement boots'],
     ['2024-06-15', 3, 'Masterwork Dagger', false, true, 'weapon', 'small', 'Sold', null, 906, null, dmId, 'Well-crafted throwing knives'],
-    ['2024-06-15', 1, 'Rod of Wonder', true, false, 'rod', 'medium', 'Kept Party', null, null, null, dmId, 'Unpredictable magical effects'],
-    ['2024-06-15', 1, 'Plate Armor +2', false, false, 'armor', 'heavy', 'Kept Self', null, 5650, characterIds[3], dmId, 'Heavy magical armor'],
-    ['2024-06-15', 20, 'Arrows +1', false, false, 'ammunition', 'small', 'Kept Party', null, 164, null, dmId, 'Enchanted arrows'],
+    ['2024-06-15', 1, 'Rod of Wonder', true, false, 'magic', 'medium', 'Kept Party', null, null, null, dmId, 'Unpredictable magical effects'],
+    ['2024-06-15', 1, 'Plate Armor +2', false, false, 'armor', 'heavy', 'Kept Character', null, 5650, characterIds[3], dmId, 'Heavy magical armor'],
+    ['2024-06-15', 20, 'Arrows +1', false, false, 'weapon', 'small', 'Kept Party', null, 164, null, dmId, 'Enchanted arrows'],
 ];
 
 /** Gold rows are skipped when this seeded row already exists. */

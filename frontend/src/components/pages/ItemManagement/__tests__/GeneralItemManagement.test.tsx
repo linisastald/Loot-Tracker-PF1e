@@ -405,7 +405,7 @@ describe('GeneralItemManagement', () => {
       fireEvent.change(getSearchInput(), { target: { value: 'sword' } });
       await selectOption(/^type$/i, 'Weapon');
       await selectOption(/^size$/i, 'Medium');
-      await selectOption(/^status$/i, 'Kept Self');
+      await selectOption(/^status$/i, 'Kept Character');
 
       clickSearchButton();
 
@@ -417,7 +417,7 @@ describe('GeneralItemManagement', () => {
         query: 'sword',
         type: 'weapon',
         size: 'Medium',
-        status: 'Kept Self',
+        status: 'Kept Character',
       });
     });
   });

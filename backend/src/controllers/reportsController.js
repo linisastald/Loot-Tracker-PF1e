@@ -109,7 +109,7 @@ const getKeptCharacterLoot = async (req, res) => {
   }
 
   const page = await fetchLootViewPage(req, {
-    statuses: ['Kept Character', 'Kept Self'],
+    statuses: ['Kept Character'],
     orderBy: 'character_name, name',
     characterId: character_id
   });
@@ -153,7 +153,7 @@ const getCharacterLedger = async (req, res) => {
              LEFT JOIN (
                  SELECT whohas, SUM(value * quantity) AS loot_value
                  FROM loot
-                 WHERE status IN ('Kept Character', 'Kept Self')
+                 WHERE status = 'Kept Character'
                    AND (unidentified IS NOT TRUE OR $1::boolean)
                  GROUP BY whohas
              ) lv ON lv.whohas = c.id

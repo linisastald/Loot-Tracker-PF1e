@@ -405,7 +405,10 @@ const loginUser = async (req, res) => {
         throw controllerFactory.createValidationError('Invalid username or password');
     }
 
-    if (user.role !== 'DM' && user.role !== 'Player') {
+    // Case-insensitive: an old test-data seeder wrote 'player', and the exact
+    // comparison locked those accounts out (migration 083 recases them too).
+    const accountRole = String(user.role || '').toLowerCase();
+    if (accountRole !== 'dm' && accountRole !== 'player') {
         throw controllerFactory.createAuthorizationError('Access denied. Invalid user role.');
     }
 

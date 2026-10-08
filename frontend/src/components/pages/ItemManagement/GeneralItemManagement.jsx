@@ -37,7 +37,7 @@ const FILTERS = [
     {key: 'size', label: 'Size', options: [ANY, ...ITEM_SIZES.map((size) => ({value: size, label: size}))]},
     {
         key: 'status', label: 'Status',
-        options: [ANY, ...['Pending Sale', 'Kept Self', 'Kept Party', 'Trashed', 'Sold'].map((status) => ({value: status, label: status}))],
+        options: [ANY, ...['Pending Sale', 'Kept Character', 'Kept Party', 'Trashed', 'Sold'].map((status) => ({value: status, label: status}))],
     },
     {key: 'itemid', label: 'Item ID', options: NULL_OR_VALUE('Has Value')},
     {key: 'modids', label: 'Mod IDs', options: NULL_OR_VALUE('Has Values')},

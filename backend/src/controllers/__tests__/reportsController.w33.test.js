@@ -106,7 +106,7 @@ describe('reportsController loot_view reports (W33)', () => {
 
       const sql = dbUtils.executeQuery.mock.calls[0][0].replace(/\s+/g, ' ');
       expect(sql).toContain('SUM(value * quantity)');
-      expect(sql).toContain("status IN ('Kept Character', 'Kept Self')");
+      expect(sql).toContain("status = 'Kept Character'");
     });
 
     it('does not count unidentified loot value for players', async () => {

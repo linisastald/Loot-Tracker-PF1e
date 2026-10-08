@@ -58,6 +58,8 @@ All notable changes to this project are documented in this file.
 - **Dependency updates:** axios (all three packages), nodemailer 10, and patched moment, ip-address, proxy-addr and compression (npm audit reports 0 vulnerabilities for the backend).
 
 ### Fixed
+- **Old loot rows match the current filters** (migration 083). Items entered before a type was required had none and only appeared under "Other"; they now take the type of their catalog item, or "other" when there is no link. The legacy "Kept Self" status becomes "Kept Character", so the DM Item Management status filter, which only offered one of the two, now finds every kept item. A stray "Trash" status becomes "Trashed".
+- **Accounts whose role was saved in lowercase can log in again.** An old test-data seeder wrote "player"; the login check compared the exact text and refused them. The check now ignores case and the migration corrects the stored value.
 - **The last 61 placeholder catalog entries are resolved** (migration 082). Forty duplicated a properly named item ("Crossbow, Heavy" beside "Heavy Crossbow") and are merged into it, with any loot that pointed at the duplicate re-linked. Ten with no twin (crossbow, repeating and hushing bolts, sling bullets, silver and wooden holy symbols, mule, tower shield, and Rythius, the Kyton Scourge) get their rulebook value.
 - **Loot pages sort by when an item was last changed, not when it was entered.** The "last update" time on a loot item was never refreshed after it was created, so keeping, selling, trashing, editing or identifying an item left it where it was. It is now stamped whenever the item changes (migration 081). Existing items keep their current time until the next change.
 - **An RSVP can no longer cancel a session through a database trigger**; cancellation only happens through the scheduled confirmation check.
@@ -85,7 +87,7 @@ All notable changes to this project are documented in this file.
 - Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker compose file and deploy script, `update_containers.sh`), the archived migrations folder, and the old Python utility scripts.
 
 ### Notes
-- Includes database migrations 059 to 082, which run automatically on server start. None of 061 to 082 had been run against a real database when this was written.
+- Includes database migrations 059 to 083, which run automatically on server start. None of 061 to 083 had been run against a real database when this was written.
 - Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), check the production settings listed under Changed (the server will not start without them), and check for users with no campaign membership, who lose access.
 
 ## [0.15.2]
