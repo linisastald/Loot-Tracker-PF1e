@@ -18,10 +18,9 @@ const campaigns = [
   { id: 2, name: 'Skulls & Shackles', slug: 'sns', world: 'Golarion', is_active: false },
 ];
 const users = [
-  { id: 1, username: 'root', role: 'DM' },
-  { id: 2, username: 'alice', role: 'Player' },
-  { id: 3, username: 'bob', role: 'Player' },
-  { id: 4, username: 'gone', role: 'deleted' },
+  { id: 1, username: 'root' },
+  { id: 2, username: 'alice' },
+  { id: 3, username: 'bob' },
 ];
 const members = [
   { user_id: 1, username: 'root', role: 'DM' },
@@ -81,7 +80,6 @@ describe('CampaignAdministration', () => {
 
     fireEvent.mouseDown(within(dialog).getByLabelText('DM'));
     const listbox = await screen.findByRole('listbox');
-    expect(within(listbox).queryByText('gone')).toBeNull();
     fireEvent.click(within(listbox).getByText('bob'));
     fireEvent.change(within(dialog).getByLabelText(/Campaign name/), { target: { value: 'Giantslayer' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
@@ -129,7 +127,6 @@ describe('CampaignAdministration', () => {
       fireEvent.mouseDown(within(dialog).getByLabelText('Add user'));
       const listbox = await screen.findByRole('listbox');
       expect(within(listbox).queryByText('alice')).toBeNull();
-      expect(within(listbox).queryByText('gone')).toBeNull();
       fireEvent.click(within(listbox).getByText('bob'));
 
       fireEvent.mouseDown(within(dialog).getByLabelText('As'));

@@ -122,6 +122,11 @@ describe('authController', () => {
       await authController.loginUser(req, res);
 
       expect(bcrypt.compare).toHaveBeenCalled();
+      // A successful login resets the lockout counters and stamps last_active_at
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        'UPDATE users SET login_attempts = 0, locked_until = NULL, last_active_at = NOW() WHERE id = $1',
+        [1]
+      );
       expect(jwt.sign).toHaveBeenCalledWith(
         { id: 1, username: 'testplayer', role: 'Player' },
         process.env.JWT_SECRET,
@@ -1261,6 +1266,24 @@ describe('authController', () => {
         'authToken',
         'new-refreshed-token',
         expect.any(Object)
+      );
+      expect(res.success).toHaveBeenCalledWith(null, 'Token refreshed successfully');
+    });
+
+    it('stamps last_active_at on refresh and still succeeds when the stamp fails', async () => {
+      const req = createMockReq({ cookies: { authToken: 'old-valid-token' } });
+      const res = createMockRes();
+      jwt.verify.mockReturnValue({ id: 1, username: 'testplayer', role: 'Player' });
+      jwt.sign.mockReturnValue('new-refreshed-token');
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1, username: 'testplayer', role: 'Player', email: 't@example.com' }] })
+        .mockRejectedValueOnce(new Error('db down'));
+
+      await authController.refreshToken(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        'UPDATE users SET last_active_at = NOW() WHERE id = $1',
+        [1]
       );
       expect(res.success).toHaveBeenCalledWith(null, 'Token refreshed successfully');
     });

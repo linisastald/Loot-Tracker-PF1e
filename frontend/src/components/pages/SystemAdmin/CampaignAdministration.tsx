@@ -56,10 +56,10 @@ export interface AdminCampaign {
   is_active?: boolean;
 }
 
+// Deleted accounts are already excluded by GET /user/all
 export interface AdminUser {
   id: number;
   username: string;
-  role: string;
 }
 
 interface CampaignMember {
@@ -255,7 +255,7 @@ const CampaignAdministration: React.FC<Props> = ({ campaigns, users, currentUser
     );
 
   const memberIds = new Set(members.map((m) => m.user_id));
-  const addableUsers = users.filter((u) => u.role !== 'deleted' && !memberIds.has(u.id));
+  const addableUsers = users.filter((u) => !memberIds.has(u.id));
 
   return (
     <Card variant="outlined">
@@ -366,7 +366,7 @@ const CampaignAdministration: React.FC<Props> = ({ campaigns, users, currentUser
                 value={form.dmUserId}
                 onChange={(e: SelectChangeEvent) => setForm({ ...form, dmUserId: e.target.value })}
               >
-                {users.filter((u) => u.role !== 'deleted').map((u) => (
+                {users.map((u) => (
                   <MenuItem key={u.id} value={String(u.id)}>
                     {u.username}{u.id === currentUserId ? ' (you)' : ''}
                   </MenuItem>

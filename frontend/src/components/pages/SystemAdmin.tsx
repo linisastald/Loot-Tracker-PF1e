@@ -50,13 +50,23 @@ import { useCampaign } from '../../contexts/CampaignContext';
 import CampaignAdministration from './SystemAdmin/CampaignAdministration';
 import PasswordField from '../common/PasswordField';
 
+interface UserCampaignMembership {
+  id: number;
+  name: string;
+  role: 'DM' | 'Player';
+  is_active: boolean;
+}
+
 interface SystemUser {
   id: number;
   username: string;
   email: string | null;
-  role: string;
   is_superadmin?: boolean;
+  /** Campaign memberships with the per-campaign role (inactive campaigns included) */
+  campaigns?: UserCampaignMembership[];
   /** The all-users endpoint exposes the signup date as `joined` */
+  /** Last login, registration or session refresh; null until the account is next seen */
+  last_active_at?: string | null;
   joined?: string | null;
 }
 
@@ -354,9 +364,10 @@ const SystemAdmin: React.FC = () => {
                       <TableRow>
                         <TableCell>Username</TableCell>
                         <TableCell>Email</TableCell>
-                        <TableCell>Role</TableCell>
+                        <TableCell>Campaigns</TableCell>
                         <TableCell>Superadmin</TableCell>
                         <TableCell>Created</TableCell>
+                        <TableCell>Last active</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
@@ -365,7 +376,25 @@ const SystemAdmin: React.FC = () => {
                         <TableRow key={account.id}>
                           <TableCell>{account.username}</TableCell>
                           <TableCell>{account.email || '—'}</TableCell>
-                          <TableCell>{account.role}</TableCell>
+                          <TableCell>
+                            {account.campaigns && account.campaigns.length > 0 ? (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {account.campaigns.map((membership) => (
+                                  <Chip
+                                    key={membership.id}
+                                    size="small"
+                                    variant={membership.is_active ? 'filled' : 'outlined'}
+                                    color={membership.role === 'DM' ? 'secondary' : 'default'}
+                                    label={`${membership.name}: ${membership.role}${membership.is_active ? '' : ' (inactive)'}`}
+                                  />
+                                ))}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                No campaigns
+                              </Typography>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {account.is_superadmin ? (
                               <Chip label="Superadmin" color="primary" size="small" />
@@ -374,6 +403,7 @@ const SystemAdmin: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell>{formatDate(account.joined)}</TableCell>
+                          <TableCell>{formatDate(account.last_active_at)}</TableCell>
                           <TableCell align="right">
                             <Box
                               sx={{
@@ -405,7 +435,7 @@ const SystemAdmin: React.FC = () => {
                       ))}
                       {users.length === 0 && !usersError && (
                         <TableRow>
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={7}>
                             <Typography variant="body2" sx={{
                               color: "text.secondary"
                             }}>

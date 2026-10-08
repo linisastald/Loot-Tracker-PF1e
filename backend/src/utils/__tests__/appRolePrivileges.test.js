@@ -1,5 +1,6 @@
 /**
- * Guards migration 079 and step 3c of database/setup_app_role.sql (narrower rights
+ * Guards migration 079 (and later migrations that extend its grant) and step 3c of
+ * database/setup_app_role.sql (narrower rights
  * for the application login): the column list is the same in both, covers every
  * users column the backend updates, and nothing in the backend deletes from users
  * or campaigns. A missed column would only fail at runtime, as "permission denied".
@@ -10,14 +11,26 @@ const path = require('path');
 const root = path.join(__dirname, '../../../..');
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
-const migration = read('backend/migrations/079_narrow_app_role_privileges.sql');
 const setupScript = read('database/setup_app_role.sql');
+
+// Migration 079 narrowed the grant to a list; a later migration that adds a users
+// column the app writes extends it (085: last_active_at), so the live grant is the
+// union across all migrations.
+const migration = fs.readdirSync(path.join(root, 'backend/migrations'))
+  .filter((name) => name.endsWith('.sql'))
+  .sort()
+  .map((name) => read(path.join('backend/migrations', name)))
+  .join('\n');
 
 const stripSqlComments = (sql) => sql.replace(/--.*$/gm, '');
 
+// Every "GRANT UPDATE (cols) ON TABLE public.users TO loot_app" in the text, unioned
 const grantedColumns = (sql) => {
-  const match = stripSqlComments(sql).match(/GRANT UPDATE \(([^)]+)\)\s+ON TABLE public\.users TO loot_app/);
-  return match ? match[1].split(',').map((column) => column.trim()).sort() : null;
+  const found = new Set();
+  for (const match of stripSqlComments(sql).matchAll(/GRANT UPDATE \(([^)]+)\)\s+ON TABLE public\.users TO loot_app/g)) {
+    match[1].split(',').forEach((column) => found.add(column.trim()));
+  }
+  return found.size ? [...found].sort() : null;
 };
 
 const backendSources = () => {
@@ -56,9 +69,9 @@ const updatedUserColumns = () => {
 describe('application role privileges (migration 079, setup_app_role.sql step 3c)', () => {
   const columns = grantedColumns(migration);
 
-  it('grants the same users columns in the migration and in the setup script', () => {
+  it('grants the same users columns in the migrations and in the setup script', () => {
     expect(columns).toEqual([
-      'discord_id', 'email', 'locked_until', 'login_attempts', 'password', 'password_changed_at', 'role',
+      'discord_id', 'email', 'last_active_at', 'locked_until', 'login_attempts', 'password', 'password_changed_at', 'role',
     ]);
     expect(grantedColumns(setupScript)).toEqual(columns);
   });

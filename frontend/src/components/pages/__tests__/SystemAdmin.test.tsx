@@ -61,17 +61,22 @@ const mockUsers = [
     id: 1,
     username: 'root',
     email: 'root@example.com',
-    role: 'DM',
     is_superadmin: true,
     joined: '2025-01-01T00:00:00Z',
+    last_active_at: '2026-10-07T12:00:00Z',
+    campaigns: [
+      { id: 1, name: 'Rise of the Runelords', role: 'DM', is_active: true },
+      { id: 3, name: 'Old Pirates', role: 'Player', is_active: false },
+    ],
   },
   {
     id: 2,
     username: 'alice',
     email: 'alice@example.com',
-    role: 'Player',
     is_superadmin: false,
     joined: '2026-01-15T00:00:00Z',
+    last_active_at: null,
+    campaigns: [],
   },
 ];
 
@@ -150,7 +155,7 @@ describe('SystemAdmin', () => {
   // 2. Users section
   // -------------------------------------------------------------------------
   describe('Users section', () => {
-    it('lists all users with email, role, superadmin flag, and created date', async () => {
+    it('lists all users with email, campaign memberships, superadmin flag, and dates', async () => {
       renderSystemAdmin();
 
       await waitFor(() => {
@@ -164,6 +169,18 @@ describe('SystemAdmin', () => {
       expect(within(rootRow).getByText('Superadmin')).toBeInTheDocument();
       const aliceRow = getRow('alice');
       expect(within(aliceRow).queryByText('Superadmin')).not.toBeInTheDocument();
+
+      // Per-campaign memberships replace the deprecated global role column
+      expect(screen.getByRole('columnheader', { name: 'Campaigns' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Role' })).not.toBeInTheDocument();
+      expect(within(rootRow).getByText('Rise of the Runelords: DM')).toBeInTheDocument();
+      expect(within(rootRow).getByText('Old Pirates: Player (inactive)')).toBeInTheDocument();
+      expect(within(aliceRow).getByText('No campaigns')).toBeInTheDocument();
+
+      // Last activity: a date for root, a dash for alice who has not been seen yet
+      expect(screen.getByRole('columnheader', { name: 'Last active' })).toBeInTheDocument();
+      expect(within(rootRow).getByText(new Date('2026-10-07T12:00:00Z').toLocaleDateString())).toBeInTheDocument();
+      expect(within(aliceRow).getAllByText('—').length).toBeGreaterThanOrEqual(1);
     });
 
     it('generates a manual password reset link and shows it in a copyable dialog', async () => {

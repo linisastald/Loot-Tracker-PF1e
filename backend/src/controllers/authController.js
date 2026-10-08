@@ -253,7 +253,7 @@ const registerUser = async (req, res) => {
             }
 
             const result = await client.query(
-                'INSERT INTO users (username, password, role, email, is_superadmin) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, role, joined, email',
+                'INSERT INTO users (username, password, role, email, is_superadmin, last_active_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id, username, role, joined, email',
                 [username, hashedPassword, userRole, email, isFirstAccount]
             );
             const createdUser = result.rows[0];
@@ -412,9 +412,10 @@ const loginUser = async (req, res) => {
         throw controllerFactory.createAuthorizationError('Access denied. Invalid user role.');
     }
 
-    // Counters reset only on a successful login (or password reset / lock expiry)
+    // Counters reset only on a successful login (or password reset / lock expiry);
+    // the login also stamps last_active_at for the System Admin users list
     await dbUtils.executeQuery(
-        'UPDATE users SET login_attempts = 0, locked_until = NULL WHERE id = $1',
+        'UPDATE users SET login_attempts = 0, locked_until = NULL, last_active_at = NOW() WHERE id = $1',
         [user.id]
     );
 
@@ -561,6 +562,15 @@ const refreshToken = async (req, res) => {
     }
 
     issueAuthCookie(res, userResult.rows[0]);
+
+    // The frontend refreshes on every page load and periodically while the app
+    // is open, so this doubles as the "last active" stamp. Never fails the
+    // refresh: the cookie is already issued.
+    try {
+        await dbUtils.executeQuery('UPDATE users SET last_active_at = NOW() WHERE id = $1', [decoded.id]);
+    } catch (error) {
+        logger.warn('Could not stamp last_active_at on refresh', { userId: decoded.id, error: error.message });
+    }
 
     controllerFactory.sendSuccessMessage(res, 'Token refreshed successfully');
 };

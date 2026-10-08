@@ -107,13 +107,14 @@ END $$;
 -- 3c. Rights the application never uses on the account tables (same statements
 --     as migration 079; they are repeated here because step 3 hands the rights
 --     back on every run). The app never deletes a user or a campaign, and it
---     writes only these columns of users, so it cannot change is_superadmin.
+--     writes only these columns of users, so it cannot change is_superadmin
+--     (last_active_at was added by migration 085).
 --     When the app starts writing another users column, add it here AND in a
 --     new migration, or that write fails with "permission denied".
 REVOKE DELETE ON TABLE public.users FROM loot_app;
 REVOKE DELETE ON TABLE public.campaigns FROM loot_app;
 REVOKE UPDATE ON TABLE public.users FROM loot_app;
-GRANT UPDATE (email, password, password_changed_at, login_attempts, locked_until, discord_id, role)
+GRANT UPDATE (email, password, password_changed_at, login_attempts, locked_until, discord_id, role, last_active_at)
     ON TABLE public.users TO loot_app;
 
 -- 4. Sequences (SERIAL/BIGSERIAL columns call nextval on insert).

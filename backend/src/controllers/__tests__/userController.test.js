@@ -826,8 +826,11 @@ describe('userController', () => {
       const res = createMockRes();
 
       const users = [
-        { id: 1, username: 'player1', role: 'Player', joined: '2024-01-01', email: 'p1@test.com' },
-        { id: 2, username: 'player2', role: 'Player', joined: '2024-02-01', email: 'p2@test.com' },
+        {
+          id: 1, username: 'player1', joined: '2024-01-01', email: 'p1@test.com', is_superadmin: false,
+          campaigns: [{ id: 1, name: 'Rise of the Runelords', role: 'Player', is_active: true }],
+        },
+        { id: 2, username: 'player2', joined: '2024-02-01', email: 'p2@test.com', is_superadmin: false, campaigns: [] },
       ];
       dbUtils.executeQuery.mockResolvedValueOnce({ rows: users });
 
@@ -837,6 +840,13 @@ describe('userController', () => {
         expect.stringContaining("role != $1"),
         ['deleted']
       );
+      // The deprecated global users.role is not part of the listing; per-campaign
+      // membership (campaign + role, inactive campaigns included) is
+      const sql = dbUtils.executeQuery.mock.calls[0][0];
+      expect(sql).not.toMatch(/SELECT u\.id, u\.username, u\.role/);
+      expect(sql).toMatch(/json_agg/);
+      expect(sql).toMatch(/JOIN campaigns c ON c\.id = uc\.campaign_id/);
+      expect(sql).not.toMatch(/c\.is_active = TRUE/);
       expect(res.success).toHaveBeenCalledWith(users, 'All users retrieved successfully');
     });
 

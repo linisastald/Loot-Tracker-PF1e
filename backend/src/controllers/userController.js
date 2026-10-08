@@ -452,8 +452,22 @@ const getAllUsers = async (req, res) => {
         throw controllerFactory.createAuthorizationError('Only the system administrator can view all users');
     }
 
+    // Per-campaign membership replaces the deprecated global users.role in the
+    // listing: each account carries the campaigns it belongs to and its role in
+    // each, inactive campaigns included so an archived membership stays visible.
     const users = await dbUtils.executeQuery(
-        'SELECT id, username, role, joined, email, is_superadmin FROM users WHERE role != $1 ORDER BY username',
+        `SELECT u.id, u.username, u.joined, u.email, u.is_superadmin, u.last_active_at,
+                COALESCE(
+                    (SELECT json_agg(json_build_object(
+                                'id', c.id, 'name', c.name, 'role', uc.role, 'is_active', c.is_active)
+                            ORDER BY c.is_active DESC, c.name)
+                     FROM user_campaign uc
+                     JOIN campaigns c ON c.id = uc.campaign_id
+                     WHERE uc.user_id = u.id),
+                    '[]'::json) AS campaigns
+         FROM users u
+         WHERE u.role != $1
+         ORDER BY u.username`,
         ['deleted']
     );
 
