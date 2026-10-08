@@ -562,6 +562,15 @@ setup_worktree() {
     if [ "$branch" = "$current_branch" ]; then
         echo "Building from current branch ($current_branch), no worktree needed"
         BUILD_PATH="$ORIGINAL_DIR"
+        # The worktree path builds origin/<branch>; this path must not silently
+        # build a stale local checkout instead. Fast-forward to the remote (a
+        # diverged branch aborts, exactly like the non-worktree pull below).
+        echo "Pulling latest from origin/$branch (fast-forward only)..."
+        if ! git pull --ff-only origin "$branch"; then
+            echo "ERROR: git pull --ff-only origin $branch failed: local '$branch' has diverged from origin or the network is unavailable." >&2
+            echo "   Resolve with: git pull --rebase origin $branch   (or push your local commits), then rebuild." >&2
+            return 1
+        fi
         return 0
     fi
 
@@ -688,7 +697,10 @@ preflight_check_lock
 # --- Handle worktree setup ---
 
 if [ -n "$WORKTREE_BRANCH" ]; then
-    setup_worktree "$WORKTREE_BRANCH"
+    if ! setup_worktree "$WORKTREE_BRANCH"; then
+        echo "ERROR: could not prepare branch '$WORKTREE_BRANCH' for the build; nothing was built." >&2
+        exit 1
+    fi
     cd "$BUILD_PATH"
 else
     BUILD_PATH="$SCRIPT_DIR"
@@ -1089,7 +1101,6 @@ elif [ -z "$WORKTREE_BRANCH" ]; then
         echo "   Resolve with one of:"
         echo "     git push origin $GIT_BRANCH              # if local is simply ahead"
         echo "     git pull --rebase origin $GIT_BRANCH     # replay local commits on top"
-        echo "   Or skip the pull entirely: --branch $(git branch --show-current)"
         exit 1
     fi
 fi
