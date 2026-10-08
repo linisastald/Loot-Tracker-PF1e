@@ -295,8 +295,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (307, 'Axe Musket', 'weapon', 1600, 'ranged', 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (308, 'Axe of Felling', 'weapon', 30, 'one handed', 8, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (309, 'Axe of Forced Life', 'weapon', 10, 'one handed', 6, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (311, 'Axe, Orc Double', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (312, 'Axe, Throwing', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (314, 'Azurite', 'trade good', 10, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (315, 'Bachelor Snuff', 'gear', 1, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (318, 'Backpack', 'gear', 2, NULL, 2, NULL);
@@ -656,13 +654,13 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (704, 'Boline', 'gear', 10, NULL, 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (706, 'Bolt, Acid', 'weapon', 40, 'ammunition', 0.1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (707, 'Bolt, Alchemical Fire', 'weapon', 50, 'ammunition', NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (708, 'Bolt, Crossbow', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (708, 'Bolt, Crossbow', 'other', 0.1, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (709, 'Bolt, Dust', 'other', 1730, NULL, NULL, 5);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (710, 'Bolt, Greater Hushing', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (711, 'Bolt, Hushing', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (710, 'Bolt, Greater Hushing', 'other', 1047, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (711, 'Bolt, Hushing', 'other', 547, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (712, 'Bolt, Liquid Ice', 'weapon', 40, 'ammunition', NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (713, 'Bolt, Poison', 'weapon', 25, 'ammunition', NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (714, 'Bolt, Repeating Crossbow', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (714, 'Bolt, Repeating Crossbow', 'other', 0.2, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (715, 'Bolt, Screaming', 'other', 267, NULL, 0.1, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (716, 'Bolts, Crossbow (10)', 'weapon', 1, 'ammunition', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (717, 'Bolts, Repeating Crossbow (5)', 'weapon', 1, 'ammunition', 1, NULL);
@@ -851,7 +849,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (914, 'Bullet (Firearm/Silver)', 'weapon', 25, 'ammunition', NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (915, 'Bullet (Screaming)', 'weapon', 20, 'ammunition', NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (916, 'Bullets, Groaning (10)', 'weapon', 2, 'ammunition', 5, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (917, 'Bullet, Sling', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (917, 'Bullet, Sling', 'other', 0.01, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (918, 'Bullet, Sling (Alchemical)', 'weapon', 5, 'ammunition', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (919, 'Bullets, Sling (10)', 'weapon', 0, 'ammunition', 5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (921, 'Bullseye Lantern', 'gear', 12, NULL, 3, NULL);
@@ -1054,7 +1052,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1131, 'Chains of Contrition', 'gear', 200, NULL, 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1132, 'Chain Spear', 'weapon', 15, 'two handed', 13, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1133, 'Chain Spear (Flying Talon)', 'weapon', 15, 'melee', 13, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1134, 'Chain, Spiked', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1135, 'Chakram', 'weapon', 1, 'ranged', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1136, 'Chalcedony', 'trade good', 50, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1140, 'Chalkboard', 'gear', 1, NULL, 2, NULL);
@@ -1302,12 +1299,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1417, 'Cranial Bomb', 'other', 4500, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1421, 'Crook', 'weapon', 1, 'two handed', 5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1423, 'Crossbow (Double)', 'weapon', 300, 'ranged', 18, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1424, 'Crossbow, Hand', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1425, 'Crossbow, Heavy', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1426, 'Crossbow (Launching)', 'weapon', 75, 'ranged', 8, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1427, 'Crossbow, Light', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1428, 'Crossbow, Repeating Heavy', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1429, 'Crossbow, Repeating Light', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1431, 'Crowbar', 'gear', 2, NULL, 5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1338, 'Collapsible Plank', 'gear', 0.4, NULL, 10, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1392, 'Corset (Common)', 'gear', 0.1, NULL, 3, NULL);
@@ -1361,7 +1353,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1472, 'Cureall', 'gear', 1400, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1473, 'Cursed Backbiter Spear', 'weapon', 0, 'one handed', 3, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1474, 'Cursed Sword (-2)', 'weapon', 0, 'one handed', 4, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1475, 'Curve Blade, Elven', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1477, 'Cutlass', 'weapon', 15, 'one handed', 4, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1479, 'Cyberart', 'other', 100, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1480, 'Cyberfiber Muscles (Mark I)', 'other', 8000, NULL, NULL, NULL);
@@ -1379,7 +1370,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1492, 'Daggermark Blade', 'weapon', 2, 'light', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1494, 'Dagger of Black Sands', 'other', 2, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1498, 'Dagger Pistol', 'weapon', 740, 'ranged', 1, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1499, 'Dagger, Punching', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1500, 'Dahak''s Fire', 'gear', 50, NULL, 0.5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1501, 'Dakak''s Tusks', 'weapon', 8, 'one handed', 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1503, 'Dancer''s Garb', 'gear', 100, NULL, 5, NULL);
@@ -1397,7 +1387,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1526, 'Darkwood Mwangi Harp', 'other', 130, NULL, 1.5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1527, 'Darkwood (per lb.)', 'trade good', 10, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1436, 'Crown of Conquest', 'magic', 24600, NULL, 3, 7);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1530, 'Dart, Blowgun', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1532, 'Dart Gun', 'weapon', 3000, 'one handed', 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1533, 'Darting-Eye Concoction', 'gear', 50, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (1535, 'Darts, Blowgun (10)', 'weapon', 0, 'ammunition', 0, NULL);
@@ -2008,9 +1997,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2164, 'Flag, Ensign of Courtesy, Small', 'gear', 2, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2165, 'Flag, Personal Signal, Large', 'gear', 10, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2166, 'Flag, Personal Signal, Small', 'gear', 4, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2167, 'Flail, Dire', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2168, 'Flail, Heavy', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2169, 'Flail, Light', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2170, 'Flailpole', 'weapon', 15, 'two handed', 10, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2172, 'Flame Fountain Firework', 'weapon', 100, 'one handed', NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2174, 'Flame-Retardant Outfit', 'gear', 50, NULL, 10, NULL);
@@ -2198,7 +2184,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2361, 'Gauntlet of Rust, Greater', 'magic', 34500, NULL, 2, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2362, 'Gauntlets', 'gear', 0, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2368, 'Gauntlets of the Weaponmaster', 'magic', 110000, NULL, 5, 10);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2370, 'Gauntlet, Spiked', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2371, 'Gear Maintenance Kit', 'gear', 5, NULL, 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2372, 'Gecko Gloves', 'gear', 300, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2373, 'Gecko (Riding)', 'gear', 300, NULL, 1200, NULL);
@@ -2466,8 +2451,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2650, 'Hamatulsu Robe', 'magic', 14000, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4091, 'Oil of Flame Arrow', 'magic', 750, 'potion', 0, 5);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2652, 'Hammer, Dwarfbond', 'other', 25312, NULL, NULL, 7);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2653, 'Hammer, Gnome Hooked', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2655, 'Hammer, Light', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2656, 'Hammer of Thunderbolts', 'weapon', 0, 'one handed', 15, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2657, 'Hammer, Ricochet', 'weapon', 20301, 'light', 2, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2659, 'Hanbo', 'weapon', 1, 'light', 2, NULL);
@@ -2679,10 +2662,8 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2885, 'Holy Fountain Firework', 'gear', 110, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2886, 'Holy Staff', 'magic', 29600, NULL, 5, 8);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2887, 'Holy Symbol', 'gear', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2888, 'Holy Symbol, Compartment', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2889, 'Holy Symbol, Flask', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2890, 'Holy Symbol, Silver', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2892, 'Holy Symbol, Wooden', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2890, 'Holy Symbol, Silver', 'other', 25, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2892, 'Holy Symbol, Wooden', 'other', 1, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2893, 'Holy Text (Cheap)', 'gear', 1, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2894, 'Holy Text (Expensive)', 'gear', 100, NULL, 20, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (2895, 'Holy Text (Typical)', 'gear', 25, NULL, 2, NULL);
@@ -3186,8 +3167,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3443, 'Longaxe, Dwarven', 'weapon', 50, 'melee', 14, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3444, 'Longbeard Lambic', 'gear', 20, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3445, 'Longbow', 'weapon', 75, 'ranged', 3, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3446, 'Longbow, Composite', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3447, 'Longbow, Composite (+0 Str)', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3448, 'Long Gloves', 'gear', 15, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3449, 'Longhammer, Dwarven', 'weapon', 70, 'melee', 20, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3450, 'Longship', 'gear', 10000, NULL, NULL, NULL);
@@ -3209,8 +3188,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3483, 'Lute', 'gear', 5, NULL, 3, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3496, 'Lyddric Essence', 'weapon', 20, 'ranged', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3500, 'Mace, Boulderhead', 'weapon', 6812, 'one handed', 8, 9);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3501, 'Mace, Heavy', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3502, 'Mace, Light', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3503, 'Mace of Blood', 'weapon', 0, 'one handed', 8, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3505, 'Mace of Smiting', 'other', 75312, NULL, NULL, 11);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (3507, 'Machete', 'weapon', 10, 'light', 2, NULL);
@@ -3672,7 +3649,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4040, 'Nuclear Resonator', 'weapon', 90000, 'two handed', 11, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4041, 'Null Blade', 'weapon', 58835, 'one handed', 4, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4044, 'Nunchaku', 'weapon', 2, 'light', 2, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4045, 'Nunchaku, Metal', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4049, 'Nursing Necklace (Mosquito)', 'magic', 10000, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4051, 'Nushadir (Vial)', 'gear', 10, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4052, 'Nutmeg (per lb.)', 'trade good', 1, NULL, 1, NULL);
@@ -3878,9 +3854,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4262, 'Owl (Verduran)', 'gear', 20, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4263, 'Ox', 'trade good', 15, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4264, 'O-yoroi', 'armor', 1700, 'heavy', 45, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4265, 'Pack Animal, Donkey', 'other', NULL, NULL, 600, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4266, 'Pack Animal, Mule', 'other', NULL, NULL, 600, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4267, 'Pack Animal, Ox', 'other', NULL, NULL, 2000, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4266, 'Pack Animal, Mule', 'other', 8, NULL, 600, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4268, 'Pack Animal (Yak)', 'gear', 24, NULL, 4000, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4269, 'Pack Saddle', 'gear', 5, NULL, 15, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4271, 'Padded Armor', 'armor', 5, 'light', 10, NULL);
@@ -3982,9 +3956,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4403, 'Phylactery of the Shepherd', 'magic', 7000, NULL, 1, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4405, 'Piano', 'gear', 5, NULL, 3, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4406, 'Pickaxe', 'weapon', 14, 'melee', 12, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4407, 'Pick, Heavy', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4371, 'Periapt of Placebos', 'magic', 3600, NULL, 1, 5);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4409, 'Pick, Light', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4411, 'Piecemeal Weapon', 'gear', 50, NULL, 10, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4412, 'Piercing Metamagic Rod', 'magic', 11000, NULL, 5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4413, 'Pig', 'trade good', 3, NULL, NULL, NULL);
@@ -4731,7 +4703,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5329, 'Rusting Powder', 'gear', 60, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5330, 'Rusting Teeth Of The Rough Beast', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5331, 'Rust Repellent', 'gear', 25, NULL, 2, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5332, 'Rythius, The Kyton Scourge', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5332, 'Rythius, The Kyton Scourge', 'other', 53000, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5279, 'Rope Gauntlet', 'weapon', 0.2, 'melee', 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5293, 'Rounders Gear', 'gear', 0.1, NULL, 0.5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (5301, 'Rumboozle (Cup)', 'gear', 0.1, NULL, 0.5, NULL);
@@ -5277,11 +5249,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6190, 'Shelyn''s Nectar', 'magic', 2250, 'potion', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6191, 'Sheriff''s Whistle', 'gear', 1, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6192, 'Shieldbash', 'armor', 0, 'shield', 0, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6194, 'Shield, Heavy Steel', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6195, 'Shield, Heavy Wooden', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6196, 'Shield, Light Steel', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6197, 'Shield, Light Steel Quickdraw', 'armor', 59, 'shield', 7, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6198, 'Shield, Light Wooden', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6199, 'Shield, Light Wooden Quickdraw', 'armor', 53, 'shield', 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6151, 'Shadow Piercing (Chest/Greater)', 'magic', 5750, NULL, NULL, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6201, 'Shield of Countless Causes', 'armor', 7, 'shield', 10, NULL);
@@ -5292,7 +5260,7 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6206, 'Shields'' Bane', 'weapon', 10, 'one handed', 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6207, 'Shield Sconce', 'gear', 1, NULL, 0.5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6208, 'Shieldsplitter Lance', 'weapon', 18310, 'one handed', 10, 10);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6209, 'Shield, Tower', 'other', NULL, NULL, NULL, NULL);
+INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6209, 'Shield, Tower', 'other', 30, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6152, 'Shadow Piercing (Chest/Major)', 'magic', 3750, NULL, NULL, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6153, 'Shadow Piercing (Chest/Minor)', 'magic', 2200, NULL, NULL, 3);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6154, 'Shadow Piercing (Eye/Greater)', 'magic', 32000, NULL, NULL, 5);
@@ -5342,8 +5310,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6240, 'Shoes', 'gear', 0, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6241, 'Shoes Mending Kit', 'gear', 5, NULL, 10, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6245, 'Shortbow', 'weapon', 30, 'ranged', 2, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6246, 'Shortbow, Composite', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6247, 'Shortbow, Composite (+0 Str)', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6248, 'Shortspear', 'weapon', 1, 'one handed', 3, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6249, 'Short Sword', 'weapon', 10, 'light', 2, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6251, 'Shotel', 'weapon', 30, 'one handed', 3, NULL);
@@ -5461,7 +5427,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6368, 'Sling (Double)', 'weapon', 10, 'ranged', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6369, 'Sling, Frostbite', 'other', 9380, NULL, NULL, 6);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4630, 'Potion of Darkvision', 'magic', 300, 'potion', 0, 3);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6371, 'Sling Staff, Halfling', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6372, 'Sling (Stiched)', 'weapon', 0, 'ranged', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6373, 'Slippers', 'gear', 0, NULL, 0, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6380, 'Slow Burn Bolt', 'weapon', 60, 'ammunition', NULL, NULL);
@@ -5854,7 +5819,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (4634, 'Potion of Endure Elements', 'magic', 50, 'potion', 0, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6796, 'Switchblade Knife', 'weapon', 5, 'light', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6797, 'Switchscythe', 'weapon', 18, 'two handed', 10, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6798, 'Sword, Bastard', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6799, 'Swordbreaker (Dagger)', 'weapon', 10, 'light', 3, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6800, 'Sword Cane', 'weapon', 45, 'one handed', 4, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6801, 'Sword Cane Pistol', 'weapon', 775, 'ranged', 1, NULL);
@@ -5872,8 +5836,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6822, 'Sword of Tempests', 'weapon', 15, 'melee', 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6825, 'Sword of Vengeance', 'weapon', 50, 'two handed', 8, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6826, 'Sword of Wrath (Dormant)', 'weapon', 0, 'two handed', 8, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6827, 'Sword, Short', 'other', NULL, NULL, NULL, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6828, 'Sword, Two-Bladed', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6829, 'Sylirican Lemons', 'gear', 1, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6833, 'Symptom Kit', 'gear', 25, NULL, 5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (6834, 'Syringe spear', 'weapon', 100, 'melee', 6, NULL);
@@ -6186,7 +6148,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7169, 'Unstable Accelerant', 'gear', 50, NULL, 0.5, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7170, 'Unstable Musket', 'weapon', 0, 'ranged', 9, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7172, 'Unwieldy Glaive', 'weapon', 0, 'two handed', 10, NULL);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7175, 'Urgrosh, Dwarven', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7178, 'Urumi', 'weapon', 30, 'one handed', 6, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7114, 'Trollbane Blanch', 'magic', 200, NULL, NULL, 1);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7183, 'Vambraces of the Genie (Djinni)', 'magic', 18900, NULL, 3, 5);
@@ -6320,7 +6281,6 @@ INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VA
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7480, 'Wand of Lesser Geas', 'magic', 420, 'wand', 0.0625, 7);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7514, 'Wand of Misery', 'weapon', 5, 'melee', 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7545, 'Wand of Ray of Enfeeblement', 'magic', 15, 'wand', 0.0625, 1);
-INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7639, 'Waraxe, Dwarven', 'other', NULL, NULL, NULL, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7640, 'Waraxe, Dwarven Double', 'weapon', 60, 'melee', 10, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7642, 'Warchanter''s Torch', 'magic', 30000, NULL, 1, NULL);
 INSERT INTO public.item (id, name, type, value, subtype, weight, casterlevel) VALUES (7643, 'Warden of The Woods', 'armor', 29350, 'heavy', 25, 11);
