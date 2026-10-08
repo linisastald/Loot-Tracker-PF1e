@@ -80,18 +80,34 @@ describe('users with zero campaign memberships', () => {
     ['GET', '/api/user/characters'],
     ['POST', '/api/user/characters'],
     ['GET', '/api/user/active-characters'],
-    ['GET', '/api/user/all'],
     ['GET', '/api/campaigns/current/party-level'],
     ['GET', '/api/campaigns/current/members'],
     ['GET', '/api/invites'],
     ['POST', '/api/invites/quick'],
-    ['POST', '/api/campaigns'],
   ])('campaign-scoped route %s %s', (method, path) => {
     it('returns 403 with a readable message, even with a stale JWT DM role', async () => {
       const res = await authed(request(app)[method.toLowerCase()](path));
       expect(res.status).toBe(403);
       expect(res.body.message).toMatch(/not a member of any campaign/i);
     });
+  });
+
+  it('instance-admin route /api/user/all is membership-free but refuses a non-superadmin', async () => {
+    const res = await authed(request(app).get('/api/user/all'));
+    expect(res.status).toBe(403);
+    expect(res.body.message).toMatch(/superadmin only/i);
+  });
+
+  it('campaign creation is membership-free but refuses a non-superadmin', async () => {
+    const res = await authed(request(app).post('/api/campaigns').send({}));
+    expect(res.status).toBe(403);
+    expect(res.body.message).toMatch(/superadmin only/i);
+  });
+
+  it('instance-admin route /api/user/all admits a superadmin without memberships', async () => {
+    dbUtils.executeQuery.mockResolvedValue(noMembership(true));
+    const res = await authed(request(app).get('/api/user/all'));
+    expect(res.status).toBe(200);
   });
 
   it('superadmin without memberships still reaches campaign-scoped routes', async () => {

@@ -5,7 +5,10 @@
  * now lives on the CSRF-protected /api/user mount as
  * POST /api/user/generate-manual-reset-link (same body { username }, same
  * handler — authController.generateManualResetLink, which enforces
- * superadmin-only itself), and the DM-gated routes are wrapped in checkRole.
+ * superadmin-only itself), the instance-admin routes are gated by
+ * requireSuperadmin (not by the per-campaign DM check, so a superadmin who is
+ * a Player in their open campaign still runs the instance), and the DM-gated
+ * routes are wrapped in checkRole.
  *
  * Approach: mount the router on a minimal Express app via supertest with the
  * controllers and middleware mocked, so only the route table is exercised.
@@ -29,6 +32,17 @@ jest.mock('../../../middleware/auth', () => {
 jest.mock('../../../middleware/checkRole', () => {
   const factory = jest.fn(() => (req, res, next) => next());
   return factory;
+});
+
+// Real requireSuperadmin semantics are tested in middleware/__tests__/requireSuperadmin.test.js;
+// here it is a pass-through that records which routes it guards.
+// (A plain function, not a jest.fn: resetMocks would wipe a jest.fn's
+// implementation between tests and the request would hang.)
+jest.mock('../../../middleware/requireSuperadmin', () => {
+  const calls = [];
+  const mw = (req, res, next) => { calls.push(req.originalUrl); next(); };
+  mw.calls = calls;
+  return mw;
 });
 
 jest.mock('../../../controllers/userController', () => {
@@ -58,6 +72,7 @@ jest.mock('../../../utils/logger', () => ({
 const express = require('express');
 const request = require('supertest');
 const checkRole = require('../../../middleware/checkRole');
+const requireSuperadmin = require('../../../middleware/requireSuperadmin');
 const userRouter = require('../user');
 
 // The route table is built at require time (above); snapshot the checkRole
@@ -105,10 +120,26 @@ describe('user routes', () => {
       expect(res.body.body.username).toEqual({ $ne: 'x' });
     });
 
-    it('is registered behind a checkRole(DM) gate', () => {
-      // The route table was built at require time; checkRole must have been
-      // used to construct the route's middleware (superadmin enforcement is
-      // inside the controller).
+    it('is gated by requireSuperadmin, not the per-campaign DM check', async () => {
+      requireSuperadmin.calls.length = 0;
+      await request(app).post('/api/user/generate-manual-reset-link').send({ username: 'x' });
+      expect(requireSuperadmin.calls).toEqual(['/api/user/generate-manual-reset-link']);
+    });
+  });
+
+  describe('instance administration is independent of the campaign role', () => {
+    it.each([
+      ['get', '/api/user/all'],
+      ['put', '/api/user/delete-user'],
+      ['get', '/api/user/settings'],
+      ['put', '/api/user/update-setting'],
+    ])('%s %s passes through requireSuperadmin', async (method, path) => {
+      requireSuperadmin.calls.length = 0;
+      await request(app)[method](path).send({});
+      expect(requireSuperadmin.calls).toEqual([path]);
+    });
+
+    it('still gates the DM character-management routes with checkRole(DM)', () => {
       expect(checkRoleArgsAtLoad).toContainEqual(['DM']);
     });
   });

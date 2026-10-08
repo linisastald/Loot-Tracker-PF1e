@@ -38,10 +38,11 @@ router.post('/current/level-up', verifyToken, checkRole('DM'), campaignControlle
 // current campaign only. Supersedes the deprecated 'campaign_name' setting.
 router.patch('/current', verifyToken, checkRole('DM'), campaignController.renameCurrentCampaign);
 
-// Create a campaign — superadmin only for v1, enforced inside the controller
-// via req.isSuperadmin (campaign-creation policy is still open, design doc §8).
+// Create a campaign — superadmin only for v1 (campaign-creation policy is
+// still open, design doc §8). Instance administration: membership-free and
+// gated by requireSuperadmin (the controller also checks req.isSuperadmin).
 // CSRF protection is applied at the mount point in backend/index.js.
-router.post('/', verifyToken, campaignController.createCampaign);
+router.post('/', verifyToken.allowNoCampaign, requireSuperadmin, campaignController.createCampaign);
 
 // ---------------------------------------------------------------------------
 // Instance administration by campaign id (System Admin page) — superadmin
@@ -52,18 +53,18 @@ router.post('/', verifyToken, campaignController.createCampaign);
 
 // Update name / world / is_active (deactivation is the only "delete": the
 // app's database login cannot DELETE campaigns)
-router.put('/:id', verifyToken, requireSuperadmin, campaignController.updateCampaign);
+router.put('/:id', verifyToken.allowNoCampaign, requireSuperadmin, campaignController.updateCampaign);
 
 // Member roster of any campaign
-router.get('/:id/members', verifyToken, requireSuperadmin, campaignController.getCampaignMembers);
+router.get('/:id/members', verifyToken.allowNoCampaign, requireSuperadmin, campaignController.getCampaignMembers);
 
 // Add a member (or change their role) — body { userId, role }
-router.post('/:id/members', verifyToken, requireSuperadmin, campaignController.addCampaignMember);
+router.post('/:id/members', verifyToken.allowNoCampaign, requireSuperadmin, campaignController.addCampaignMember);
 
 // Change a member's role — body { role }
-router.put('/:id/members/:userId', verifyToken, requireSuperadmin, campaignController.updateCampaignMemberRole);
+router.put('/:id/members/:userId', verifyToken.allowNoCampaign, requireSuperadmin, campaignController.updateCampaignMemberRole);
 
 // Remove a member (membership row only)
-router.delete('/:id/members/:userId', verifyToken, requireSuperadmin, campaignController.removeCampaignMember);
+router.delete('/:id/members/:userId', verifyToken.allowNoCampaign, requireSuperadmin, campaignController.removeCampaignMember);
 
 module.exports = router;
