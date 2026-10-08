@@ -296,24 +296,27 @@ describe('campaignController', () => {
       expect(res.success).toHaveBeenCalledWith(memberships, 'Campaigns retrieved successfully');
     });
 
-    it('should return all campaigns annotated role DM for a superadmin', async () => {
+    it('should return all campaigns for a superadmin, with their real membership role where they have one', async () => {
       const allCampaigns = [
         { id: 1, name: 'Rise of the Runelords', slug: 'rotr', world: 'Golarion', is_active: true },
         { id: 2, name: 'Skulls & Shackles', slug: 'sns', world: 'Golarion', is_active: false },
+        { id: 3, name: 'Curse', slug: 'curse', world: 'Golarion', is_active: true },
       ];
       const req = createMockReq({ isSuperadmin: true });
       const res = createMockRes();
 
       Campaign.getAll.mockResolvedValue(allCampaigns);
+      Campaign.getForUser.mockResolvedValue([{ id: 3, role: 'Player' }]);
 
       await campaignController.getMyCampaigns(req, res);
 
       expect(Campaign.getAll).toHaveBeenCalled();
-      expect(Campaign.getForUser).not.toHaveBeenCalled();
+      expect(Campaign.getForUser).toHaveBeenCalledWith(1);
       expect(res.success).toHaveBeenCalledWith(
         [
           expect.objectContaining({ id: 1, slug: 'rotr', role: 'DM' }),
           expect.objectContaining({ id: 2, slug: 'sns', role: 'DM' }),
+          expect.objectContaining({ id: 3, slug: 'curse', role: 'Player' }),
         ],
         'Campaigns retrieved successfully'
       );
@@ -364,6 +367,7 @@ describe('campaignController', () => {
           campaignId: 2,
           role: 'DM',
           isSuperadmin: false,
+          dmOverride: false,
           activeCharacterId: 31,
           campaign: {
             id: 2,
@@ -441,6 +445,7 @@ describe('campaignController', () => {
           campaignId: null,
           role: null,
           isSuperadmin: false,
+          dmOverride: false,
           activeCharacterId: null,
           campaign: null,
           settings: {},

@@ -79,6 +79,11 @@ api.interceptors.request.use(
         if (!isAuthUrl(config.url) && activeCampaignId && /^\d+$/.test(activeCampaignId) && config.headers) {
             config.headers['X-Campaign-Id'] = activeCampaignId;
         }
+        // Superadmin "act as DM" override (see CampaignContext.setDmOverride);
+        // the server ignores it for anyone who is not a superadmin.
+        if (!isAuthUrl(config.url) && config.headers && localStorage.getItem('superadminDmOverride') === '1') {
+            config.headers['X-Superadmin-DM'] = '1';
+        }
 
         if (config.url && CSRF_EXEMPT_PATHS.some((path) => config.url!.includes(path))) {
             return config;

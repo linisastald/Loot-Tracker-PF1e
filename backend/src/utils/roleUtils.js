@@ -13,15 +13,17 @@
 /**
  * Whether the requester has DM rights for this request.
  *
- * Superadmins always do. Otherwise the per-campaign role (`req.campaignRole`,
- * set by verifyToken) decides. The legacy JWT role (`req.user.role`) is never
+ * The per-campaign role (`req.campaignRole`, set by verifyToken) decides. A
+ * superadmin counts as DM in any campaign where they are not an explicit
+ * Player (no membership, or a DM membership); where they chose to be a
+ * Player, they are one. The legacy JWT role (`req.user.role`) is never
  * consulted: it is frozen at login and would outlive a membership removal.
  *
  * @param {Object} req - Express request object (after verifyToken)
  * @return {boolean} True when the requester may perform DM actions
  */
 const hasDmRights = (req) =>
-  req.isSuperadmin === true || req.campaignRole === 'DM';
+  req.campaignRole === 'DM' || (req.isSuperadmin === true && req.campaignRole !== 'Player');
 
 /**
  * Whether the requester is a superadmin (global operator). Account-level

@@ -40,7 +40,7 @@ describe('ValidationService', () => {
     });
 
     it('should not throw for a superadmin without any DM role', () => {
-      expect(() => ValidationService.requireDM({ isSuperadmin: true, campaignRole: 'Player', user: { role: 'Player' } }))
+      expect(() => ValidationService.requireDM({ isSuperadmin: true, campaignRole: null, user: { role: 'Player' } }))
         .not.toThrow();
     });
   });

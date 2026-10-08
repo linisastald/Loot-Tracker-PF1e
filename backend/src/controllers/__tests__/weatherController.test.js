@@ -242,7 +242,7 @@ describe('weatherController', () => {
     it('shows the forecast to a superadmin without any DM role', async () => {
       const req = createMockReq({
         user: { role: 'Player' },
-        campaignRole: 'Player',
+        campaignRole: null,
         isSuperadmin: true,
         params: rangeParams(),
       });

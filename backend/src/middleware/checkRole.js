@@ -15,8 +15,11 @@ const checkRole = (roles) => (req, res, next) => {
     // Ensure roles is always an array
     const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
-    // Global operator outranks per-campaign roles
-    if (req.isSuperadmin) {
+    // Global operator outranks per-campaign roles, EXCEPT where they chose to
+    // be a plain Player: an explicit Player membership makes the superadmin a
+    // player in that campaign (they still run the instance from the System
+    // Admin page, which is gated by requireSuperadmin, not by this).
+    if (req.isSuperadmin === true && req.campaignRole !== 'Player') {
       logger.debug(`Superadmin authorized for ${req.method} ${req.originalUrl}`);
       return next();
     }

@@ -202,9 +202,19 @@ const createVerifyToken = ({ allowNoCampaign = false } = {}) => async (req, res,
     return reject(res, 500, 'Failed to resolve campaign context');
   }
 
+  // DM override: a superadmin who is a Player in this campaign can opt back
+  // into DM powers for their browser session (System Admin / sidebar switch,
+  // sent as X-Superadmin-DM: 1). Ignored for everyone else.
+  const dmOverride = isSuperadmin && req.headers['x-superadmin-dm'] === '1' && campaignId !== null;
+  if (dmOverride && campaignRole !== 'DM') {
+    logger.info(`Superadmin user ${decoded.id} acting as DM in campaign ${campaignId} by override`);
+    campaignRole = 'DM';
+  }
+
   req.campaignId = campaignId;
   req.campaignRole = campaignRole;
   req.isSuperadmin = isSuperadmin;
+  req.superadminDmOverride = dmOverride;
 
   // Run the rest of the chain inside the tenant context so every downstream
   // query (async continuations included) is scoped to this campaign.

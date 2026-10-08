@@ -181,7 +181,7 @@ describe('calendarController', () => {
       const req = createMockReq({
         isSuperadmin: true,
         user: { role: 'Player', id: 3 },
-        campaignRole: 'Player',
+        campaignRole: null,
         body: { year: 4723, month: 3, day: 15 },
       });
       const res = createMockRes();
@@ -665,7 +665,7 @@ describe('calendarController', () => {
     it('includes dm_only notes for a superadmin without any DM role', async () => {
       const req = createMockReq({
         user: { role: 'Player', id: 4 },
-        campaignRole: 'Player',
+        campaignRole: null,
         isSuperadmin: true,
       });
       const res = createMockRes();

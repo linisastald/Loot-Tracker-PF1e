@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 - **Item availability is labelled as a house rule** on the City Services result, with the rulebook rule beside it.
 
 ### Changed
+- **A superadmin who is a Player in a campaign is a Player there.** Before, the superadmin had DM powers in every campaign no matter what role they held in it. Now an explicit Player membership is honoured, so the superadmin can play in a campaign someone else runs. In campaigns where they have no membership, or a DM one, nothing changes. A sidebar switch, "Act as DM", turns the DM powers back on for that browser when needed; the System Admin page is unaffected either way.
 - **Every task is always dealt.** A task is only held back when its own conditions are not met: it is switched off, the number of characters is outside its range, or nobody selected is eligible. The Tasks page lists any task nobody could take. When there are more tasks than people, people double up; "Free Space" fills the remaining slots so everyone shows the same number, which means someone can hold more than one Free Space.
 - **Item-entry defaults now work, per campaign.** With "Default quantity" on, new rows on the loot entry page start with the configured quantity. With "Auto-split stacks" on, entering an item with quantity N saves N separate rows of 1 (up to 100).
 - **Session auto-cancel rules.** A session short of its minimum is cancelled only once the reminder is at least 12 hours old, or straight away when nobody is left to remind.

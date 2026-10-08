@@ -213,11 +213,21 @@ describe('CampaignContext', () => {
       expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('false');
     });
 
-    it('is true for a superadmin whatever the campaign role', async () => {
+    it('is false for a superadmin who chose to be a Player in this campaign', async () => {
       setupApiMock(asMember('Player', true));
       renderBoth();
       await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('false');
+    });
+
+    it('is true for a superadmin who is a DM member or has no membership', async () => {
+      setupApiMock(asMember('DM', true));
+      renderBoth();
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
       expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('true');
+      setupApiMock({ ...asMember('DM', true), role: 'DM', campaignId: 2 });
+      fireEvent.click(screen.getByText('do-refresh'));
+      await waitFor(() => expect(screen.getByTestId('is-dm')).toHaveTextContent('true'));
     });
 
     it('follows the campaign: DM in one campaign, player in another', async () => {

@@ -352,7 +352,7 @@ describe('salesController', () => {
     });
 
     it.each(gated)('%s allows a superadmin whose JWT role is Player', async (name, extra) => {
-      const req = createMockReq({ user: { id: 4, role: 'Player' }, campaignRole: 'Player', isSuperadmin: true, ...extra });
+      const req = createMockReq({ user: { id: 4, role: 'Player' }, campaignRole: null, isSuperadmin: true, ...extra });
       const res = createMockRes();
 
       await salesController[name](req, res);

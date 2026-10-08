@@ -273,8 +273,11 @@ const validateCampaignName = (name) => {
  */
 const getMyCampaigns = async (req, res) => {
   if (req.isSuperadmin) {
-    const campaigns = await Campaign.getAll();
-    const annotated = campaigns.map((campaign) => ({ ...campaign, role: 'DM' }));
+    // Every campaign, with the superadmin's real membership role where they
+    // have one (a Player membership is honoured) and 'DM' elsewhere.
+    const [campaigns, memberships] = await Promise.all([Campaign.getAll(), Campaign.getForUser(req.user.id)]);
+    const roleByCampaign = new Map(memberships.map((m) => [m.id, m.role]));
+    const annotated = campaigns.map((campaign) => ({ ...campaign, role: roleByCampaign.get(campaign.id) || 'DM' }));
     return controllerFactory.sendSuccessResponse(res, annotated, 'Campaigns retrieved successfully');
   }
 
@@ -304,6 +307,8 @@ const getCurrentCampaign = async (req, res) => {
     campaignId: req.campaignId ?? null,
     role: req.campaignRole ?? null,
     isSuperadmin: !!req.isSuperadmin,
+    // True when this request's DM role comes from the superadmin override header
+    dmOverride: !!req.superadminDmOverride,
     activeCharacterId,
     campaign: campaign
       ? {

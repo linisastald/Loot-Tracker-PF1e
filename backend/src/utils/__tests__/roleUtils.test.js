@@ -27,8 +27,12 @@ describe('roleUtils', () => {
       expect(hasDmRights({ campaignRole: 'DM', user: { role: 'Player' } })).toBe(true);
     });
 
-    it('returns true for a superadmin regardless of roles', () => {
-      expect(hasDmRights({ isSuperadmin: true, campaignRole: 'Player', user: { role: 'Player' } })).toBe(true);
+    it('returns false for a superadmin who is an explicit Player in the campaign', () => {
+      expect(hasDmRights({ isSuperadmin: true, campaignRole: 'Player', user: { role: 'Player' } })).toBe(false);
+    });
+
+    it('returns true for a superadmin who is a DM member', () => {
+      expect(hasDmRights({ isSuperadmin: true, campaignRole: 'DM' })).toBe(true);
     });
 
     it('returns true for a superadmin with no campaign role and a non-DM JWT role', () => {

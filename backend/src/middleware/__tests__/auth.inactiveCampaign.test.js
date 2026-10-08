@@ -69,6 +69,35 @@ describe('verifyToken with deactivated campaigns', () => {
     expect(req.campaignRole).toBe('DM');
   });
 
+  describe('superadmin DM override header', () => {
+    const withOverride = (req) => ({ ...req, headers: { ...req.headers, 'x-superadmin-dm': '1' } });
+
+    it('turns a superadmin Player membership into DM for the request and flags it', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [row(5, 'Player', true, true)] });
+      const req = withOverride(makeReq('5')); const next = jest.fn();
+      await verifyToken(req, makeRes(), next);
+      expect(next).toHaveBeenCalled();
+      expect(req.campaignRole).toBe('DM');
+      expect(req.superadminDmOverride).toBe(true);
+    });
+
+    it('does nothing for a non-superadmin', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [row(5, 'Player', true, false)] });
+      const req = withOverride(makeReq('5')); const next = jest.fn();
+      await verifyToken(req, makeRes(), next);
+      expect(req.campaignRole).toBe('Player');
+      expect(req.superadminDmOverride).toBe(false);
+    });
+
+    it('is off without the header', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [row(5, 'Player', true, true)] });
+      const req = makeReq('5'); const next = jest.fn();
+      await verifyToken(req, makeRes(), next);
+      expect(req.campaignRole).toBe('Player');
+      expect(req.superadminDmOverride).toBe(false);
+    });
+  });
+
   it('counts a row without the flag as active (older query shapes)', async () => {
     dbUtils.executeQuery.mockResolvedValue({ rows: [{ is_superadmin: false, user_role: 'Player', campaign_id: 2, role: 'Player', password_changed_at: null }] });
     const req = makeReq(); const next = jest.fn();

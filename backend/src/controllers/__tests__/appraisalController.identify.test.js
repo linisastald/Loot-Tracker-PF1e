@@ -58,7 +58,7 @@ describe('appraisalController.identifyItems', () => {
   });
 
   it('honours dmIdentify from a superadmin', async () => {
-    const arg = await run({ user: { id: 1, role: 'Player' }, campaignRole: 'Player', isSuperadmin: true });
+    const arg = await run({ user: { id: 1, role: 'Player' }, campaignRole: null, isSuperadmin: true });
     expect(arg.dmIdentify).toBe(true);
   });
 

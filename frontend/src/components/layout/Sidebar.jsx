@@ -20,6 +20,8 @@ import {
   Tooltip,
   Typography,
   Button,
+  FormControlLabel,
+  Switch,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
@@ -155,7 +157,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   // Infamy nav entries follow the campaign's infamy_system_enabled setting.
   // Both update live when the campaign context refreshes (e.g. after a DM
   // renames the campaign or toggles infamy in Campaign Settings).
-  const { currentCampaign, campaignSettings, isSuperadmin } = useCampaign();
+  const { currentCampaign, campaignSettings, isSuperadmin, campaignRole, dmOverride, setDmOverride } = useCampaign();
   const groupName = currentCampaign?.name || 'Loot Tracker';
   const infamyEnabled = campaignSettings?.infamy_system_enabled === '1';
   const harrowEnabled = campaignSettings?.harrow_system_enabled === '1';
@@ -386,6 +388,20 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
 
           {isSuperadmin && (
             <MenuItem to="/system-admin" primary="System Admin" icon={<AdminPanelSettingsIcon />} isCategory />
+          )}
+          {isSuperadmin && (campaignRole === 'Player' || dmOverride) && typeof setDmOverride === 'function' && (
+            <Tooltip
+              title={dmOverride
+                ? 'You are a Player in this campaign but acting as DM. Switch off to play normally.'
+                : 'You are a Player in this campaign. Switch on to use DM functions here anyway.'}
+              placement="right"
+            >
+              <FormControlLabel
+                sx={{ pl: 2, pr: 1, py: 0.5 }}
+                control={<Switch size="small" checked={!!dmOverride} onChange={(e) => setDmOverride(e.target.checked)} />}
+                label={<Typography variant="body2">Act as DM</Typography>}
+              />
+            </Tooltip>
           )}
         </List>
         </NavContext.Provider>

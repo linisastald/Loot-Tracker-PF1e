@@ -153,10 +153,29 @@ describe('checkRole middleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    it('should allow a superadmin even when campaignRole would deny', () => {
+    it('should allow a superadmin who is a DM member', () => {
+      req.isSuperadmin = true;
+      req.campaignRole = 'DM';
+      const middleware = checkRole('DM');
+      middleware(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should deny a superadmin who chose to be a Player in this campaign', () => {
       req.isSuperadmin = true;
       req.campaignRole = 'Player';
       const middleware = checkRole('DM');
+      middleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it('should still let that superadmin through a Player-level check', () => {
+      req.isSuperadmin = true;
+      req.campaignRole = 'Player';
+      const middleware = checkRole(['DM', 'Player']);
       middleware(req, res, next);
 
       expect(next).toHaveBeenCalled();

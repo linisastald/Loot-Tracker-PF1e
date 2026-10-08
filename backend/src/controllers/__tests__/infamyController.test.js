@@ -212,7 +212,7 @@ describe('infamyController', () => {
         createMockReq({
           body: { infamyChange: 5, reason: 'Story correction' },
           user: { id: 3, role: 'Player' },
-          campaignRole: 'Player',
+          campaignRole: null, // no membership: a superadmin is DM here
           isSuperadmin: true,
         }), res
       );

@@ -62,7 +62,23 @@ export interface CampaignContextType {
   switchCampaign: (id: number) => void;
   /** Refetch the campaign list and current-campaign info */
   refresh: () => Promise<void>;
+  /**
+   * Superadmin "act as DM" override is on for this browser: the server treats
+   * the superadmin as DM even in a campaign where they are a Player.
+   */
+  dmOverride: boolean;
+  /** Turn the override on or off (persisted per browser) and reload */
+  setDmOverride: (enabled: boolean) => void;
 }
+
+const DM_OVERRIDE_KEY = 'superadminDmOverride';
+const readDmOverride = (): boolean => {
+  try {
+    return localStorage.getItem(DM_OVERRIDE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 const CampaignContext = createContext<CampaignContextType | null>(null);
 
@@ -96,6 +112,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
   const [loading, setLoading] = useState(true);
   const [hasNoCampaign, setHasNoCampaign] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dmOverride, setDmOverrideState] = useState<boolean>(readDmOverride);
 
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -123,6 +140,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
       }
       setCampaignRole(current?.role ?? null);
       setIsSuperadmin(Boolean(current?.isSuperadmin));
+      if (typeof current?.dmOverride === 'boolean') setDmOverrideState(current.dmOverride);
       setActiveCharacterId(typeof current?.activeCharacterId === 'number' ? current.activeCharacterId : null);
       setHasNoCampaign(campaignList.length === 0 && !current?.isSuperadmin);
       setCampaignSettings(current?.settings ?? {});
@@ -153,19 +171,36 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
     window.location.reload();
   }, []);
 
+  const setDmOverride = useCallback((enabled: boolean): void => {
+    try {
+      if (enabled) localStorage.setItem(DM_OVERRIDE_KEY, '1');
+      else localStorage.removeItem(DM_OVERRIDE_KEY);
+    } catch {
+      // Storage unavailable: the reload below simply keeps the current state
+    }
+    // Same reasoning as switchCampaign: every mounted page holds role-scoped
+    // data, so reload rather than chase every cache.
+    window.location.reload();
+  }, []);
+
   const value: CampaignContextType = {
     campaigns,
     currentCampaign,
     campaignRole,
     isSuperadmin,
     activeCharacterId,
-    isDM: campaignRole === 'DM' || isSuperadmin,
+    // A superadmin is DM everywhere except a campaign where they are an
+    // explicit Player (mirrors backend hasDmRights / checkRole). With the
+    // override on, the server already reports role 'DM'.
+    isDM: campaignRole === 'DM' || (isSuperadmin && campaignRole !== 'Player'),
     campaignSettings,
     loading,
     error,
     hasNoCampaign,
     switchCampaign,
     refresh,
+    dmOverride,
+    setDmOverride,
   };
 
   return <CampaignContext.Provider value={value}>{children}</CampaignContext.Provider>;

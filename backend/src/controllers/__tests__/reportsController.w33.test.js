@@ -92,7 +92,8 @@ describe('reportsController loot_view reports (W33)', () => {
         .mockResolvedValueOnce({ rows: rows.map(r => ({ ...r })) })
         .mockResolvedValueOnce({ rows: [{ count: '3' }] });
 
-      await reportsController.getKeptPartyLoot({ ...playerReq(), isSuperadmin: true }, res);
+      // A superadmin with no membership in the campaign (campaignRole null) counts as DM
+      await reportsController.getKeptPartyLoot({ ...playerReq(), isSuperadmin: true, campaignRole: null }, res);
 
       expect(res.success.mock.calls[0][0].individual.find(r => r.id === 1).value).toBe(18000);
     });
