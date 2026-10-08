@@ -635,13 +635,25 @@ const createCampaign = async (req, res) => {
     throw controllerFactory.createValidationError('Campaign world cannot exceed 100 characters');
   }
 
+  // Optional DM other than the creator (System Admin page). The account must
+  // exist and be live; the creator stays recorded in created_by either way.
+  let dmUserId;
+  if (req.body.dmUserId !== undefined && req.body.dmUserId !== null && req.body.dmUserId !== '') {
+    dmUserId = parseId(req.body.dmUserId, 'dmUserId');
+    const account = await Campaign.findUserAccount(dmUserId);
+    if (!account || account.role === 'deleted') {
+      throw controllerFactory.createNotFoundError('DM user not found');
+    }
+  }
+
   let campaign;
   try {
     campaign = await Campaign.create({
       name: trimmedName,
       slug: finalSlug,
       world: finalWorld,
-      createdById: req.user.id
+      createdById: req.user.id,
+      ...(dmUserId !== undefined && dmUserId !== req.user.id ? { dmUserId } : {})
     });
   } catch (error) {
     // UNIQUE violation on campaigns.slug

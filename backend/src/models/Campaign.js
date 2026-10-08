@@ -245,10 +245,11 @@ exports.updateName = async (id, name) => {
  * @param {string} data.name - Campaign name
  * @param {string} data.slug - URL-safe unique identifier
  * @param {string} data.world - Game world (e.g. 'Golarion')
- * @param {number} data.createdById - User ID of the creator (becomes DM)
+ * @param {number} data.createdById - User ID of the creator (recorded in created_by)
+ * @param {number} [data.dmUserId] - User who becomes the campaign's DM; defaults to the creator
  * @return {Promise<Object>} The created campaign row
  */
-exports.create = async ({ name, slug, world, createdById }) => {
+exports.create = async ({ name, slug, world, createdById, dmUserId = createdById }) => {
   return await dbUtils.executeTransaction(async (client) => {
     const insertResult = await client.query(
       `INSERT INTO campaigns (name, slug, world, created_by)
@@ -258,11 +259,12 @@ exports.create = async ({ name, slug, world, createdById }) => {
     );
     const campaign = insertResult.rows[0];
 
-    // The creator is always a DM in the campaign they create
+    // Every campaign starts with exactly one DM: the chosen user, or the
+    // creator when none was chosen (a superadmin reaches any campaign anyway).
     await client.query(
       `INSERT INTO user_campaign (user_id, campaign_id, role)
        VALUES ($1, $2, 'DM')`,
-      [createdById, campaign.id]
+      [dmUserId, campaign.id]
     );
 
     // Seed explicit EMPTY Discord settings: without rows, the

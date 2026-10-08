@@ -31,7 +31,7 @@ const members = [
 const renderIt = (onChanged = vi.fn()) => {
   render(
     <SnackbarProvider>
-      <CampaignAdministration campaigns={campaigns} users={users} onCampaignsChanged={onChanged} />
+      <CampaignAdministration campaigns={campaigns} users={users} currentUserId={1} onCampaignsChanged={onChanged} />
     </SnackbarProvider>
   );
   return onChanged;
@@ -69,8 +69,24 @@ describe('CampaignAdministration', () => {
     fireEvent.change(within(dialog).getByLabelText(/World/), { target: { value: 'Golarion' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/campaigns', { name: 'Curse of the Crimson Throne', world: 'Golarion' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/campaigns', { name: 'Curse of the Crimson Throne', world: 'Golarion', dmUserId: 1 }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it('defaults the DM to the logged-in superadmin and lets another user be chosen', async () => {
+    renderIt();
+    fireEvent.click(screen.getByRole('button', { name: 'New campaign' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('DM')).toHaveTextContent('root (you)');
+
+    fireEvent.mouseDown(within(dialog).getByLabelText('DM'));
+    const listbox = await screen.findByRole('listbox');
+    expect(within(listbox).queryByText('gone')).toBeNull();
+    fireEvent.click(within(listbox).getByText('bob'));
+    fireEvent.change(within(dialog).getByLabelText(/Campaign name/), { target: { value: 'Giantslayer' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/campaigns', expect.objectContaining({ name: 'Giantslayer', dmUserId: 3 })));
   });
 
   it('edits name and world through PUT /campaigns/:id', async () => {

@@ -50,6 +50,15 @@ describe('Campaign model administration', () => {
     });
   });
 
+  it('create makes the chosen dmUserId the DM while recording the creator', async () => {
+    const client = { query: jest.fn().mockResolvedValueOnce({ rows: [{ id: 12, name: 'N', slug: 'n', world: 'Golarion' }] }).mockResolvedValue({ rows: [] }) };
+    dbUtils.executeTransaction.mockImplementation(async (fn) => fn(client));
+    await Campaign.create({ name: 'N', slug: 'n', world: 'Golarion', createdById: 3, dmUserId: 7 });
+    expect(client.query.mock.calls[0][1]).toEqual(['N', 'n', 'Golarion', 3]);
+    expect(client.query.mock.calls[1][0]).toContain("'DM'");
+    expect(client.query.mock.calls[1][1]).toEqual([7, 12]);
+  });
+
   it('countActive and countDMs return integers from COUNT', async () => {
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] }).mockResolvedValueOnce({ rows: [{ count: 1 }] });
     expect(await Campaign.countActive()).toBe(2);

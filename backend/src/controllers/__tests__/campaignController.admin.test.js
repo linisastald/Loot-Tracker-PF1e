@@ -194,6 +194,40 @@ describe('campaignController admin handlers', () => {
     });
   });
 
+  describe('createCampaign with a chosen DM', () => {
+    const created = { id: 9, name: 'Curse', slug: 'curse', world: 'Golarion' };
+
+    it('passes dmUserId to the model when another user is chosen', async () => {
+      Campaign.findUserAccount.mockResolvedValue({ id: 4, username: 'gm', role: 'Player' });
+      Campaign.create.mockResolvedValue(created);
+      const res = createMockRes();
+      await campaignController.createCampaign(createMockReq({ body: { name: 'Curse', dmUserId: '4' } }), res);
+      expect(Campaign.create).toHaveBeenCalledWith(expect.objectContaining({ createdById: 1, dmUserId: 4 }));
+      expect(res.created).toHaveBeenCalled();
+    });
+
+    it('omits dmUserId when the chosen DM is the creator', async () => {
+      Campaign.findUserAccount.mockResolvedValue({ id: 1, username: 'root', role: 'DM' });
+      Campaign.create.mockResolvedValue(created);
+      await campaignController.createCampaign(createMockReq({ body: { name: 'Curse', dmUserId: 1 } }), createMockRes());
+      expect(Campaign.create.mock.calls[0][0]).not.toHaveProperty('dmUserId');
+    });
+
+    it('rejects an unknown or deleted DM account', async () => {
+      Campaign.findUserAccount.mockResolvedValue({ id: 4, username: 'x', role: 'deleted' });
+      const res = createMockRes();
+      await campaignController.createCampaign(createMockReq({ body: { name: 'Curse', dmUserId: 4 } }), res);
+      expect(res.notFound).toHaveBeenCalledWith('DM user not found');
+      expect(Campaign.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-numeric dmUserId', async () => {
+      const res = createMockRes();
+      await campaignController.createCampaign(createMockReq({ body: { name: 'Curse', dmUserId: 'root' } }), res);
+      expect(res.validationError).toHaveBeenCalledWith('dmUserId must be a positive integer');
+    });
+  });
+
   describe('removeCampaignMember', () => {
     it('removes a player', async () => {
       Campaign.getMembership.mockResolvedValue({ role: 'Player' });

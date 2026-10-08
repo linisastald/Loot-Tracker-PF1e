@@ -76,6 +76,8 @@ const MEMBER_ROLES: MemberRole[] = ['DM', 'Player'];
 interface Props {
   campaigns: AdminCampaign[];
   users: AdminUser[];
+  /** The logged-in superadmin: the default DM of a new campaign */
+  currentUserId?: number;
   /** Called after any campaign change so the campaign context reloads the list */
   onCampaignsChanged: () => Promise<void> | void;
 }
@@ -83,11 +85,12 @@ interface Props {
 interface CampaignForm {
   name: string;
   world: string;
+  dmUserId: string;
 }
 
-const EMPTY_FORM: CampaignForm = { name: '', world: 'Golarion' };
+const EMPTY_FORM: CampaignForm = { name: '', world: 'Golarion', dmUserId: '' };
 
-const CampaignAdministration: React.FC<Props> = ({ campaigns, users, onCampaignsChanged }) => {
+const CampaignAdministration: React.FC<Props> = ({ campaigns, users, currentUserId, onCampaignsChanged }) => {
   const { enqueueSnackbar } = useSnackbar();
 
   // Create / edit dialog
@@ -115,14 +118,14 @@ const CampaignAdministration: React.FC<Props> = ({ campaigns, users, onCampaigns
   // --- Create / edit --------------------------------------------------------
   const openCreate = (): void => {
     setEditing(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, dmUserId: currentUserId ? String(currentUserId) : '' });
     setFormError('');
     setFormOpen(true);
   };
 
   const openEdit = (campaign: AdminCampaign): void => {
     setEditing(campaign);
-    setForm({ name: campaign.name, world: campaign.world || 'Golarion' });
+    setForm({ name: campaign.name, world: campaign.world || 'Golarion', dmUserId: '' });
     setFormError('');
     setFormOpen(true);
   };
@@ -146,7 +149,11 @@ const CampaignAdministration: React.FC<Props> = ({ campaigns, users, onCampaigns
         await api.put(`/campaigns/${editing.id}`, { name, world: world || 'Golarion' });
         enqueueSnackbar(`Campaign "${name}" updated`, { variant: 'success' });
       } else {
-        await api.post('/campaigns', { name, world: world || undefined });
+        await api.post('/campaigns', {
+          name,
+          world: world || undefined,
+          ...(form.dmUserId ? { dmUserId: Number(form.dmUserId) } : {}),
+        });
         enqueueSnackbar(`Campaign "${name}" created`, { variant: 'success' });
       }
       setFormOpen(false);
@@ -351,8 +358,25 @@ const CampaignAdministration: React.FC<Props> = ({ campaigns, users, onCampaigns
             helperText={editing ? 'The slug stays as it is.' : 'The slug is derived from the name.'}
           />
           {editing === null && (
-            <DialogContentText sx={{ mt: 1 }}>
-              You are added to the new campaign as its DM. Assign another DM from the members dialog afterwards if someone else runs it.
+            <FormControl fullWidth margin="normal" size="small">
+              <InputLabel id="new-campaign-dm-label">DM</InputLabel>
+              <Select
+                labelId="new-campaign-dm-label"
+                label="DM"
+                value={form.dmUserId}
+                onChange={(e: SelectChangeEvent) => setForm({ ...form, dmUserId: e.target.value })}
+              >
+                {users.filter((u) => u.role !== 'deleted').map((u) => (
+                  <MenuItem key={u.id} value={String(u.id)}>
+                    {u.username}{u.id === currentUserId ? ' (you)' : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          {editing === null && (
+            <DialogContentText>
+              The chosen user becomes the campaign&apos;s DM. More DMs and the players can be added from the members dialog afterwards.
             </DialogContentText>
           )}
           {formError && <Alert severity="error" sx={{ mt: 1 }}>{formError}</Alert>}

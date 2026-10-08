@@ -464,6 +464,9 @@ const SystemAdmin: React.FC = () => {
                   label="Frontend URL"
                   fullWidth
                   size="small"
+                  type="url"
+                  name="instance-frontend-url"
+                  autoComplete="off"
                   value={frontendUrl}
                   onChange={(e) => setFrontendUrl(e.target.value)}
                   placeholder="https://loot.example.com"
@@ -487,7 +490,8 @@ const SystemAdmin: React.FC = () => {
                   size="small"
                   value={botTokenInput}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBotTokenInput(e.target.value)}
-                  autoComplete="off"
+                  name="instance-discord-bot-token"
+                  autoComplete="new-password"
                   helperText={botTokenSet ? 'A token is stored. Enter a new one to replace it.' : 'No token stored. Session announcements need one.'}
                 />
                 <Button
@@ -508,7 +512,8 @@ const SystemAdmin: React.FC = () => {
                   size="small"
                   value={openAiKeyInput}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOpenAiKeyInput(e.target.value)}
-                  autoComplete="off"
+                  name="instance-openai-key"
+                  autoComplete="new-password"
                   helperText={openAiKeySet ? 'A key is stored. Enter a new one to replace it.' : 'No key stored. Item description parsing needs one.'}
                 />
                 <Button
@@ -530,6 +535,7 @@ const SystemAdmin: React.FC = () => {
           <CampaignAdministration
             campaigns={campaigns}
             users={users}
+            currentUserId={user?.id}
             onCampaignsChanged={refreshCampaigns}
           />
         </Grid>
