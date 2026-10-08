@@ -70,7 +70,8 @@ const openDialog = async () => {
 };
 
 const YES = "Yes, I'll be there";
-const LATE = "Yes, but I'll be late";
+const LATE = "I'll be late";
+const EARLY = 'I need to leave early';
 const NO = "No, I can't make it";
 
 describe('SessionsPage', () => {
@@ -154,7 +155,9 @@ describe('SessionsPage', () => {
     render(<SessionsPage />);
 
     const dialog = await openDialog();
+    expect(within(dialog).getByLabelText(YES)).toBeChecked();
     expect(within(dialog).getByLabelText(LATE)).toBeChecked();
+    expect(within(dialog).getByLabelText(EARLY)).not.toBeChecked();
     expect(within(dialog).getByRole('combobox')).toHaveTextContent('Seelah');
   });
 
@@ -218,6 +221,53 @@ describe('SessionsPage', () => {
     expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
       response_type: 'late',
       late_arrival_time: '19:30',
+    });
+  });
+
+  it('sends late_and_early with both times when late and leaving early are both ticked', async () => {
+    mockApi([makeSession()]);
+    render(<SessionsPage />);
+
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByLabelText(LATE));
+    fireEvent.click(within(dialog).getByLabelText(EARLY));
+    fireEvent.change(within(dialog).getByLabelText(/Arrival Time/), { target: { value: '19:30' } });
+    fireEvent.change(within(dialog).getByLabelText(/Departure Time/), { target: { value: '21:00' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
+      response_type: 'late_and_early',
+      late_arrival_time: '19:30',
+      early_departure_time: '21:00',
+    });
+  });
+
+  it('prefills both flags from a late_and_early response and shows them in Your Status', async () => {
+    mockApi([makeSession({ user_status: 'accepted', user_response_type: 'late_and_early' })]);
+    render(<SessionsPage />);
+
+    expect(await screen.findByText(/Your Status/)).toHaveTextContent('Your Status: Attending (late, early)');
+    const dialog = await openDialog();
+    expect(within(dialog).getByLabelText(LATE)).toBeChecked();
+    expect(within(dialog).getByLabelText(EARLY)).toBeChecked();
+  });
+
+  it('drops the late and early flags when the answer is changed to Maybe', async () => {
+    mockApi([makeSession({ user_status: 'accepted', user_response_type: 'early' })]);
+    render(<SessionsPage />);
+
+    const dialog = await openDialog();
+    expect(within(dialog).getByLabelText(EARLY)).toBeChecked();
+    fireEvent.click(within(dialog).getByLabelText('Maybe / Not sure yet'));
+    expect(within(dialog).queryByLabelText(EARLY)).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
+      response_type: 'maybe',
+      late_arrival_time: null,
+      early_departure_time: null,
     });
   });
 

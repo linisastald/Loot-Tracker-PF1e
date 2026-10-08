@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import {
     Box,
     Button,
+    Checkbox,
     Dialog,
     DialogActions,
     DialogContent,
     DialogTitle,
     FormControl,
     FormControlLabel,
+    FormGroup,
     InputLabel,
     MenuItem,
     Radio,
@@ -16,24 +18,26 @@ import {
     TextField,
     Typography
 } from '@mui/material';
-import { DEFAULT_ATTENDANCE_STATUS, getUserResponse, responseTypeForStatus } from './attendanceResponse';
+import { DEFAULT_ATTENDANCE_STATUS, getUserResponse, responseTypeFor } from './attendanceResponse';
 
 const RESPONSE_OPTIONS = [
     { value: 'accepted', label: "Yes, I'll be there" },
     { value: 'tentative', label: 'Maybe / Not sure yet' },
-    { value: 'declined', label: "No, I can't make it" },
-    { value: 'late', label: "Yes, but I'll be late" },
-    { value: 'early', label: 'Yes, but I need to leave early' }
+    { value: 'declined', label: "No, I can't make it" }
 ];
 
 /**
  * Dialog for answering a session invitation. The form is re-initialised from
- * the user's existing response each time it opens for a session.
+ * the user's existing response each time it opens for a session. A "Yes" can
+ * be marked late and/or leaving early (both together = late_and_early), the
+ * same combinations the Discord buttons allow.
  *
  * onSubmit receives the body for POST /sessions/:id/attendance/detailed.
  */
 const AttendanceDialog = ({ open, session, characters, onClose, onSubmit }) => {
     const [status, setStatus] = useState(DEFAULT_ATTENDANCE_STATUS);
+    const [late, setLate] = useState(false);
+    const [early, setEarly] = useState(false);
     const [characterId, setCharacterId] = useState('');
     const [notes, setNotes] = useState('');
     const [lateArrivalTime, setLateArrivalTime] = useState('');
@@ -46,6 +50,8 @@ const AttendanceDialog = ({ open, session, characters, onClose, onSubmit }) => {
         const storedIsActive = stored && characters.some(char => char.id === stored);
 
         setStatus(existing?.status || DEFAULT_ATTENDANCE_STATUS);
+        setLate(Boolean(existing?.late));
+        setEarly(Boolean(existing?.early));
         setCharacterId(storedIsActive ? stored : (characters[0]?.id ?? ''));
         setNotes('');
         setLateArrivalTime('');
@@ -54,15 +60,18 @@ const AttendanceDialog = ({ open, session, characters, onClose, onSubmit }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, session]);
 
+    const accepted = status === 'accepted';
     const declined = status === 'declined';
 
     const handleSubmit = () => {
+        const isLate = accepted && late;
+        const isEarly = accepted && early;
         onSubmit({
-            response_type: responseTypeForStatus(status),
+            response_type: responseTypeFor(status, { late: isLate, early: isEarly }),
             character_id: declined ? null : (characterId || null),
             notes: notes || null,
-            late_arrival_time: status === 'late' ? (lateArrivalTime || null) : null,
-            early_departure_time: status === 'early' ? (earlyDepartureTime || null) : null
+            late_arrival_time: isLate ? (lateArrivalTime || null) : null,
+            early_departure_time: isEarly ? (earlyDepartureTime || null) : null
         });
     };
 
@@ -88,6 +97,42 @@ const AttendanceDialog = ({ open, session, characters, onClose, onSubmit }) => {
                             ))}
                         </RadioGroup>
                     </FormControl>
+
+                    {accepted && (
+                        <FormGroup sx={{ ml: 4 }}>
+                            <FormControlLabel
+                                control={<Checkbox checked={late} onChange={(e) => setLate(e.target.checked)} />}
+                                label="I'll be late"
+                            />
+                            {late && (
+                                <TextField
+                                    label="Arrival Time"
+                                    type="time"
+                                    fullWidth
+                                    value={lateArrivalTime}
+                                    onChange={(e) => setLateArrivalTime(e.target.value)}
+                                    sx={{ mb: 1 }}
+                                    helperText="When will you arrive?"
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                />
+                            )}
+                            <FormControlLabel
+                                control={<Checkbox checked={early} onChange={(e) => setEarly(e.target.checked)} />}
+                                label="I need to leave early"
+                            />
+                            {early && (
+                                <TextField
+                                    label="Departure Time"
+                                    type="time"
+                                    fullWidth
+                                    value={earlyDepartureTime}
+                                    onChange={(e) => setEarlyDepartureTime(e.target.value)}
+                                    helperText="When do you need to leave?"
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                />
+                            )}
+                        </FormGroup>
+                    )}
                 </Box>
 
                 {!declined && characters.length > 0 && (
@@ -104,32 +149,6 @@ const AttendanceDialog = ({ open, session, characters, onClose, onSubmit }) => {
                             ))}
                         </Select>
                     </FormControl>
-                )}
-
-                {status === 'late' && (
-                    <TextField
-                        label="Arrival Time"
-                        type="time"
-                        fullWidth
-                        value={lateArrivalTime}
-                        onChange={(e) => setLateArrivalTime(e.target.value)}
-                        sx={{ mt: 2 }}
-                        helperText="When will you arrive?"
-                        slotProps={{ inputLabel: { shrink: true } }}
-                    />
-                )}
-
-                {status === 'early' && (
-                    <TextField
-                        label="Departure Time"
-                        type="time"
-                        fullWidth
-                        value={earlyDepartureTime}
-                        onChange={(e) => setEarlyDepartureTime(e.target.value)}
-                        sx={{ mt: 2 }}
-                        helperText="When do you need to leave?"
-                        slotProps={{ inputLabel: { shrink: true } }}
-                    />
                 )}
 
                 {!declined && (
