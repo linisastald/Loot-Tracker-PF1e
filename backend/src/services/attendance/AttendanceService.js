@@ -172,6 +172,23 @@ class AttendanceService {
     }
 
     /**
+     * Get one user's current response to a session, or null if they have not
+     * responded. Used by the Discord buttons so that "Running Late" on top of
+     * "Leaving Early" (or the reverse) becomes late_and_early instead of
+     * replacing the earlier answer.
+     * @param {number} sessionId - Session ID
+     * @param {number} userId - User ID
+     * @returns {Promise<string|null>} - response_type or null
+     */
+    async getUserResponseType(sessionId, userId) {
+        const result = await dbUtils.executeQuery(
+            'SELECT response_type FROM session_attendance WHERE session_id = $1 AND user_id = $2',
+            [sessionId, userId]
+        );
+        return result.rows.length > 0 ? result.rows[0].response_type : null;
+    }
+
+    /**
      * Get confirmed attendance count
      * Counts players who are attending (status accepted: yes, late, early,
      * late_and_early, plus in-app RSVPs). Does NOT count: no, maybe

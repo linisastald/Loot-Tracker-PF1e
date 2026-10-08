@@ -441,4 +441,56 @@ describe('processSessionInteraction campaign context', () => {
     const del = mockExecuteQuery.mock.calls.find(c => String(c[0]).includes('DELETE FROM discord_reaction_tracking'));
     expect(del[1]).toEqual([ENHANCED_MESSAGE_ID, '999888777666555444', '❌']);
   });
+
+  describe('Leaving Early button', () => {
+    const setup = (currentResponse) => {
+      mockExecuteQuery.mockImplementation(async (query) => {
+        if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 6 }] };
+        if (query.includes('FROM users')) return { rows: [{ id: 7, username: 'bob' }] };
+        if (query.includes('FROM characters')) return { rows: [{ id: 3 }] };
+        if (query.includes('SELECT response_type FROM session_attendance')) {
+          return { rows: currentResponse ? [{ response_type: currentResponse }] : [] };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      sessionService.recordAttendance.mockResolvedValue({});
+      sessionService.getSession.mockResolvedValue({ id: 50 });
+      sessionService.getSessionAttendance.mockResolvedValue([]);
+      sessionDiscordService.createSessionEmbed.mockResolvedValue({});
+      sessionDiscordService.createAttendanceButtons.mockReturnValue([]);
+    };
+
+    const recorded = () => sessionService.recordAttendance.mock.calls[0][2];
+
+    it('records "early" for a first response', async () => {
+      setup(null);
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_early'), makeRes());
+      expect(recorded()).toBe('early');
+    });
+
+    it('combines Leaving Early on top of Running Late into late_and_early', async () => {
+      setup('late');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_early'), makeRes());
+      expect(recorded()).toBe('late_and_early');
+    });
+
+    it('combines Running Late on top of Leaving Early into late_and_early', async () => {
+      setup('early');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_late'), makeRes());
+      expect(recorded()).toBe('late_and_early');
+    });
+
+    it('keeps late_and_early when either button is clicked again', async () => {
+      setup('late_and_early');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_late'), makeRes());
+      expect(recorded()).toBe('late_and_early');
+    });
+
+    it('replaces an early answer when Attending is clicked', async () => {
+      setup('early');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_yes'), makeRes());
+      expect(recorded()).toBe('yes');
+      expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('SELECT response_type FROM session_attendance'))).toBe(false);
+    });
+  });
 });

@@ -22,7 +22,16 @@ const BUTTON_ACTION_RESPONSE_TYPES = {
     attend_yes: 'yes',
     attend_no: 'no',
     attend_maybe: 'maybe',
-    attend_late: 'late'
+    attend_late: 'late',
+    attend_early: 'early'
+};
+
+// Clicking Running Late when already Leaving Early (or the reverse) means
+// both; yes/no/maybe always replace the whole answer.
+const combineResponseType = (clicked, current) => {
+    if (clicked === 'late' && (current === 'early' || current === 'late_and_early')) return 'late_and_early';
+    if (clicked === 'early' && (current === 'late' || current === 'late_and_early')) return 'late_and_early';
+    return clicked;
 };
 
 // The in-app RSVP dialog also sends late/early on the legacy attendance endpoint.
@@ -581,6 +590,11 @@ const handleEnhancedSessionInteraction = async (res, sessionId, messageId, disco
     }
 
     logger.info('Found active character for Discord attendance:', { userId, characterId, discordUserId, campaignId });
+
+    if (responseType === 'late' || responseType === 'early') {
+        const current = await attendanceService.getUserResponseType(sessionId, userId);
+        responseType = combineResponseType(responseType, current);
+    }
 
     // Record attendance (Discord update is queued in the outbox within the transaction)
     await sessionService.recordAttendance(sessionId, userId, responseType, {

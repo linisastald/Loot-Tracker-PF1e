@@ -474,11 +474,13 @@ class SessionDiscordService {
      */
     createAttendanceButtons() {
         // [style, label, emoji, custom_id suffix]: 3 success, 4 danger, 2 secondary, 1 primary
+        // Discord allows at most five buttons per action row; this is all five.
         const buttons = [
             [3, 'Attending', '✅', 'yes'],
             [4, 'Not Attending', '❌', 'no'],
             [2, 'Maybe', '❓', 'maybe'],
-            [1, 'Running Late', '⏰', 'late']
+            [1, 'Running Late', '⏰', 'late'],
+            [1, 'Leaving Early', '🏃', 'early']
         ];
         return [
             {

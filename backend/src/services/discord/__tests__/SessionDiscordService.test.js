@@ -400,7 +400,7 @@ describe('SessionDiscordService', () => {
       expect(args.content).toBe('<@&222222222222222222> next session!');
       expect(args.allowedMentions).toEqual({ parse: [], roles: ['222222222222222222'] });
       expect(args.components[0].components.map(b => b.custom_id)).toEqual([
-        'session_attend_yes', 'session_attend_no', 'session_attend_maybe', 'session_attend_late',
+        'session_attend_yes', 'session_attend_no', 'session_attend_maybe', 'session_attend_late', 'session_attend_early',
       ]);
       expect(mockExecuteQuery.mock.calls[0][1]).toEqual(['333333333333333333', '111111111111111111', 1]);
     });
