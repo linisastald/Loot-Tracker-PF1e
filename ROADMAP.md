@@ -116,3 +116,38 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Filter Subtarget options based on the selected Target (weapon shows one-handed/two-handed/light/ammunition; armor shows light/medium/heavy/shield)
 - Keep storing `value="light"` so existing mod rows in the database stay valid
 - Add a frontend test covering Subtarget filtering once implemented
+
+## Deferred from the October 2026 code review
+
+The whole-repository review (shipped as 0.16.0) left these for later. Each was a deliberate decision, not an oversight; none is urgent.
+
+### Features parked at the owner's request
+- **DM catalog edits go to the superadmin for approval (B1).** A campaign DM proposes a change to the shared item or mod catalog; the superadmin accepts or rejects it from an approval queue on the System Admin tab. The System Admin page it needs now exists.
+- **First-run setup for the superadmin and instance settings** (see First-Run Setup Wizard above). Long term.
+- **Per-player calendar notes** signed with the player's name. Nice to have.
+- **Skulls & Shackles rules work** when a game is running again: the infamy reroll bonus rule, crew recruitment rolled on the server, ship statistics.
+- **Encrypting stored secrets at rest** (OpenAI key and Discord bot token are base64 in the settings table). A later hardening change: AES-256-GCM with an environment key plus a data migration.
+- **Separate database login for background jobs**, and campaign checks inside the database rather than only in the app.
+- **Multi-stage Dockerfile.** Wanted a deeper review first.
+- **Fold every migration into the fresh-install build** so a new database equals production, performance indexes included.
+
+### Data catalog cleanups still open
+Found while reviewing the test database; the migrations up to 085 fixed prices, placeholders, case duplicates and the worst junk, and these remain:
+- About 150 catalog items with a NULL value, and 11 junk pseudo-weapon rows.
+- Mod table: the Sniping duplicate, and the misspellings Fercent (Fervent) and Drowscorge.
+- Item type conventions: rows typed "other" that have a real type, and subtype slips.
+- Spells: 77 duplicated spell names with conflicting data, and about 348 bestiary spell-like-ability rows with no level or class that are not castable spells. Add a unique index on lower(name) once deduplicated. Potion flags on spells above 3rd level.
+- Seed files: the weather_regions seed duplicates rows in the init script; the dumps are non-idempotent and store the importer's local file paths as the spell source. Re-export after cleaning.
+- Stale duplicate rows in discord_reaction_tracking.
+- campaign_settings has no row-level security policy (every other per-campaign table does).
+
+### Larger refactors (71 findings, each with a written proposal at the time)
+- **One validation mechanism** across the roughly 30 controllers, replacing five validation and three DM-check styles; add checkRole('DM') to the routes that enforce it in the handler.
+- **SQL out of controllers into models** for auth, admin, user and settings.
+- **Shared frontend pieces**: one TabPanel for the seven pages that each define their own; one catalog entity form shared by AddItemMod and ItemManagementDialog; one date formatter per kind (calendar date versus timestamp); one User type and one ApiResponse type; a useActiveCharacters hook for the duplicated status and active-character fetches.
+- **Split the large components**: GolarionCalendar (about 1,800 lines), SystemSettings into cards, SystemAdmin's dialogs into components, the four loot wrapper pages into one config-driven page.
+- **Backend sharing**: one Golarion-date helper for item search, spellcasting, infamy, identification and weather; a batched weather-existence query; a shared SQL filter builder for ItemSearch and SpellcastingService; one pool-config helper for the two database pools; a Gold.insert helper; either adopt or delete the generic CRUD controller.
+- **Schema**: composite (id, campaign_id) foreign keys so a row can never reference another campaign's parent (needs a data audit per key first); convert the naive session timestamp columns to timestamptz (harmless while the database runs in UTC).
+- **Build script**: remove unconsumed flags and build arguments, make the dry run non-mutating, and gate versioning on whether the main app is built.
+- **Testing**: an injectable route-mounting module so the CSRF matrix in index.js can be tested without a database.
+- **Small**: own-character checks on the item-search and spellcasting history endpoints (DM-only listing recommended); drop the year-9000 invite branch once production has no such rows; rows in the sold table before 0.16.0 store the unit price, not the line total.
