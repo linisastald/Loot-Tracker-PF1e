@@ -47,6 +47,11 @@ Priority: very low
 Priority: medium
 - Swipe gestures for loot status changes
 
+### Additional game systems
+Priority: low
+- Pathfinder 2nd Edition first, then D&D 5th Edition
+- A campaign chooses its system; the item and spell catalogs, pricing, identification and availability rules follow it
+
 ### User Preferences
 Priority: low
 - `user_preferences` table (key-value per user, like the global `settings` table)
