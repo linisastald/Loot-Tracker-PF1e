@@ -1,6 +1,6 @@
 {
   "name": "loot-tracker-pf1e",
-  "version": "0.15.2",
+  "version": "0.16.0",
   "private": true,
   "description": "Pathfinder 1e loot and campaign management (version holder and convenience scripts; the app lives in backend/ and frontend/)",
   "scripts": {
