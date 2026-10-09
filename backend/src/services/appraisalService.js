@@ -1,137 +1,29 @@
 // src/services/appraisalService.js
 const dbUtils = require('../utils/dbUtils');
-const logger = require('../utils/logger');
 
 /**
  * Service for handling item appraisal logic
  */
 class AppraisalService {
   /**
-   * Custom rounding algorithm for appraisal values
+   * Custom rounding algorithm for appraisal values: pick a precision at random
+   * (15% hundredths, 25% tenths, 60% whole numbers), round to it, then with a
+   * precision-dependent chance snap the last digit to 0 or 5.
    * @param {number} value - The value to round
    * @returns {number} - The rounded value
    */
   static customRounding(value) {
     const randomValue = Math.random();
-    if (randomValue < 0.15) {
-      // Round to nearest hundredth
-      let roundedValue = Math.round(value * 100) / 100;
-      if (Math.random() < 0.99) {
-        const factor = 100;
-        const lastDigit = Math.round(roundedValue * factor) % 10;
-        const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-        roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-      }
-      return roundedValue;
-    } else if (randomValue < 0.4) {
-      // Round to nearest tenth
-      let roundedValue = Math.round(value * 10) / 10;
-      if (Math.random() < 0.75) {
-        const factor = 10;
-        const lastDigit = Math.round(roundedValue * factor) % 10;
-        const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-        roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-      }
-      return roundedValue;
-    } else {
-      // Round to nearest whole number
-      let roundedValue = Math.round(value);
-      if (Math.random() < 0.5) {
-        const lastDigit = roundedValue % 10;
-        const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-        roundedValue += adjust;
-      }
-      return roundedValue;
+    const [factor, snapChance] = randomValue < 0.15 ? [100, 0.99] : randomValue < 0.4 ? [10, 0.75] : [1, 0.5];
+
+    let roundedValue = Math.round(value * factor) / factor;
+    if (Math.random() < snapChance) {
+      const scaled = Math.round(roundedValue * factor);
+      const lastDigit = scaled % 10;
+      const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+      roundedValue = (scaled + adjust) / factor;
     }
-  }
-
-  /**
-   * Fetch and process appraisals for an item
-   * @param {number} lootId - The ID of the loot item
-   * @returns {Promise<Object>} - Object containing appraisals and average
-   */
-  static async fetchAndProcessAppraisals(lootId) {
-    try {
-      const appraisalsQuery = `
-        SELECT a.id   as appraisal_id,
-               a.characterid,
-               a.believedvalue,
-               a.appraisalroll,
-               c.name as character_name,
-               c.id   as character_id
-        FROM appraisal a
-                 JOIN characters c ON a.characterid = c.id
-        WHERE a.lootid = $1
-      `;
-      const appraisalsResult = await dbUtils.executeQuery(appraisalsQuery, [lootId]);
-
-      const appraisals = appraisalsResult.rows;
-
-      // Calculate average appraisal value
-      const totalValue = appraisals.reduce((sum, appraisal) => sum + parseFloat(appraisal.believedvalue || 0), 0);
-      const averageValue = appraisals.length > 0 ? totalValue / appraisals.length : null;
-      const averageAppraisal = averageValue !== null ? parseFloat(averageValue.toFixed(2)) : null;
-
-      return {
-        appraisals,
-        average_appraisal: averageAppraisal
-      };
-    } catch (error) {
-      logger.error('Error in fetchAndProcessAppraisals:', error);
-      return { appraisals: [], average_appraisal: null };
-    }
-  }
-
-  /**
-   * Update appraisals when an item's value changes
-   * @param {number} lootId - The ID of the loot item
-   * @param {number} newValue - The new value for the item
-   */
-  static async updateAppraisalsOnValueChange(lootId, newValue) {
-    try {
-      if (!lootId || newValue === undefined) return;
-
-      // Get all appraisals for the item
-      const appraisalsResult = await dbUtils.executeQuery(
-        'SELECT id, appraisalroll FROM appraisal WHERE lootid = $1',
-        [lootId]
-      );
-      const appraisals = appraisalsResult.rows;
-
-      // No need to update if there are no appraisals
-      if (appraisals.length === 0) return;
-
-      // Compute new believed values in JS (uses Math.random per row)
-      const updates = appraisals.map(appraisal => {
-        const roll = parseInt(appraisal.appraisalroll);
-        let newBelievedValue;
-
-        if (roll >= 20) {
-          newBelievedValue = newValue;
-        } else if (roll >= 15) {
-          newBelievedValue = newValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
-        } else {
-          newBelievedValue = newValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
-        }
-
-        return { id: appraisal.id, believedValue: this.customRounding(newBelievedValue) };
-      });
-
-      // Batch update all appraisals in a single query
-      const ids = updates.map(u => u.id);
-      const values = updates.map(u => u.believedValue);
-      await dbUtils.executeQuery(
-        `UPDATE appraisal SET believedvalue = v.believedvalue
-         FROM (SELECT unnest($1::int[]) AS id, unnest($2::numeric[]) AS believedvalue) v
-         WHERE appraisal.id = v.id`,
-        [ids, values]
-      );
-
-      logger.info(`Updated ${appraisals.length} appraisals for loot item ${lootId}`);
-    } catch (error) {
-      logger.error('Error updating appraisals on value change:', error);
-      throw error;
-    }
+    return roundedValue;
   }
 
   /**
@@ -146,8 +38,12 @@ class AppraisalService {
     let believedValue;
 
     if (totalRoll >= 20) {
-      believedValue = actualValue; // Accurate appraisal
-    } else if (totalRoll >= 15) {
+      // Successful appraisal: the exact value, never rounded. Rounding exists
+      // only so that a wrong (failed) appraisal does not look obviously wrong.
+      return actualValue;
+    }
+
+    if (totalRoll >= 15) {
       believedValue = actualValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
     } else {
       believedValue = actualValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
@@ -174,35 +70,6 @@ class AppraisalService {
     );
 
     return result.rows[0];
-  }
-
-  /**
-   * Get character's appraisal bonus
-   * @param {number} characterId - The character ID
-   * @returns {Promise<number>} - The appraisal bonus
-   */
-  static async getCharacterAppraisalBonus(characterId) {
-    const result = await dbUtils.executeQuery(
-      'SELECT appraisal_bonus FROM characters WHERE id = $1',
-      [characterId]
-    );
-
-    return result.rows.length > 0 ? (result.rows[0].appraisal_bonus || 0) : 0;
-  }
-
-  /**
-   * Check if character has already appraised an item
-   * @param {number} lootId - The loot item ID
-   * @param {number} characterId - The character ID
-   * @returns {Promise<boolean>} - Whether the character has already appraised
-   */
-  static async hasCharacterAppraised(lootId, characterId) {
-    const result = await dbUtils.executeQuery(
-      'SELECT id FROM appraisal WHERE lootid = $1 AND characterid = $2',
-      [lootId, characterId]
-    );
-
-    return result.rows.length > 0;
   }
 }
 

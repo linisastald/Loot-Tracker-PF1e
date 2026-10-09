@@ -15,8 +15,13 @@ jest.mock('../../utils/controllerFactory', () => ({
 
 describe('ValidationService', () => {
   describe('requireDM', () => {
-    it('should not throw for DM role (JWT fallback, no campaign resolution)', () => {
-      expect(() => ValidationService.requireDM({ user: { role: 'DM' } })).not.toThrow();
+    it('should not throw for a per-campaign DM', () => {
+      expect(() => ValidationService.requireDM({ campaignRole: 'DM', user: { role: 'DM' } })).not.toThrow();
+    });
+
+    it('should throw for a stale JWT DM role without a campaign role', () => {
+      expect(() => ValidationService.requireDM({ user: { role: 'DM' } }))
+        .toThrow('Only DMs can perform this operation');
     });
 
     it('should throw AuthorizationError for non-DM', () => {
@@ -35,7 +40,7 @@ describe('ValidationService', () => {
     });
 
     it('should not throw for a superadmin without any DM role', () => {
-      expect(() => ValidationService.requireDM({ isSuperadmin: true, campaignRole: 'Player', user: { role: 'Player' } }))
+      expect(() => ValidationService.requireDM({ isSuperadmin: true, campaignRole: null, user: { role: 'Player' } }))
         .not.toThrow();
     });
   });
@@ -137,14 +142,70 @@ describe('ValidationService', () => {
     });
   });
 
-  describe('validateEmail', () => {
-    it('should accept valid email and lowercase', () => {
-      expect(ValidationService.validateEmail('Test@Example.com')).toBe('test@example.com');
+  describe.each([
+    ['validateItemId', 'item ID'],
+    ['validateCharacterId', 'character ID'],
+    ['validateQuantity', 'quantity'],
+  ])('%s (F-0626)', (method, label) => {
+    it('accepts a positive number and returns it as a number', () => {
+      expect(ValidationService[method](7)).toBe(7);
+      expect(ValidationService[method]('12')).toBe(12);
     });
 
-    it('should reject invalid email', () => {
-      expect(() => ValidationService.validateEmail('not-an-email')).toThrow('Invalid email format');
-      expect(() => ValidationService.validateEmail('')).toThrow('email is required');
+    it('rejects zero with a "cannot be zero" message naming the field', () => {
+      expect(() => ValidationService[method](0)).toThrow(`${label} cannot be zero`);
+    });
+
+    it('rejects negative numbers', () => {
+      expect(() => ValidationService[method](-3)).toThrow(`${label} must be at least 1`);
+    });
+
+    it('rejects NaN, empty, null and non-numeric strings', () => {
+      expect(() => ValidationService[method](NaN)).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method]('')).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method](null)).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method](undefined)).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method]('abc')).toThrow(`${label} is required and must be a valid number`);
+    });
+  });
+
+  // Owner decision (2026-10-06): the canonical item types are exactly these six;
+  // anything else (consumable, shield, ...) is a subtype.
+  describe('ITEM_TYPES / validateItemType', () => {
+    it('lists exactly the six canonical item types', () => {
+      expect(ValidationService.ITEM_TYPES).toEqual(['weapon', 'armor', 'magic', 'gear', 'trade good', 'other']);
+    });
+
+    it.each(['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'])('accepts %s', (type) => {
+      expect(ValidationService.validateItemType(type)).toBe(type);
+    });
+
+    it('accepts any capitalisation and returns the stored lowercase form', () => {
+      expect(ValidationService.validateItemType('Trade Good')).toBe('trade good');
+      expect(ValidationService.validateItemType(' WEAPON ')).toBe('weapon');
+    });
+
+    it.each(['consumable', 'shield', 'item', 'potion', 'wondrous', '', 'trade_good', 5, null])(
+      'rejects %p and names the allowed types', (type) => {
+        expect(() => ValidationService.validateItemType(type)).toThrow(/weapon, armor, magic, gear, trade good, other/);
+      });
+  });
+
+  describe('LOOT_STATUSES (F-0777)', () => {
+    it('is the single status list accepted by validateLootStatus', () => {
+      expect(ValidationService.LOOT_STATUSES).toEqual([
+        'Unprocessed', 'Kept Party', 'Kept Character', 'Pending Sale', 'Sold', 'Given Away', 'Trashed'
+      ]);
+      ValidationService.LOOT_STATUSES.forEach((status) => {
+        expect(ValidationService.validateLootStatus(status)).toBe(status);
+      });
+    });
+  });
+
+  describe('removed helpers (F-0778)', () => {
+    it('no longer exposes validateEmail (nothing used it); the shared pattern stays', () => {
+      expect(ValidationService.validateEmail).toBeUndefined();
+      expect(ValidationService.EMAIL_PATTERN.test('a@b.co')).toBe(true);
     });
   });
 

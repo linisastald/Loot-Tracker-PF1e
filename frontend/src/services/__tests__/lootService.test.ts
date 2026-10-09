@@ -67,23 +67,6 @@ describe('lootService', () => {
     });
   });
 
-  describe('bulkCreateLoot', () => {
-    it('should POST to /item-creation/bulk with items array', async () => {
-      const items = [
-        { name: 'Dagger', quantity: 3 } as any,
-        { name: 'Rope', quantity: 1 } as any,
-      ];
-      await lootService.bulkCreateLoot(items);
-
-      expect(api.post).toHaveBeenCalledWith('/item-creation/bulk', { items });
-    });
-
-    it('should handle empty items array', async () => {
-      await lootService.bulkCreateLoot([]);
-      expect(api.post).toHaveBeenCalledWith('/item-creation/bulk', { items: [] });
-    });
-  });
-
   // ===== Item Retrieval & Search =====
 
   describe('getAllLoot', () => {
@@ -115,13 +98,6 @@ describe('lootService', () => {
       const params = { type: 'Weapon' as any, character: 'Valeros' };
       await lootService.searchLoot(params);
       expect(api.get).toHaveBeenCalledWith('/items/search', { params });
-    });
-  });
-
-  describe('getLootById', () => {
-    it('should GET /items/:id', async () => {
-      await lootService.getLootById(42);
-      expect(api.get).toHaveBeenCalledWith('/items/42');
     });
   });
 
@@ -210,13 +186,6 @@ describe('lootService', () => {
     });
   });
 
-  describe('deleteLootItem', () => {
-    it('should DELETE /items/:id', async () => {
-      await lootService.deleteLootItem(99);
-      expect(api.delete).toHaveBeenCalledWith('/items/99');
-    });
-  });
-
   // ===== Reports & Statistics =====
 
   describe('getKeptPartyLoot', () => {
@@ -266,13 +235,6 @@ describe('lootService', () => {
     });
   });
 
-  describe('getLootStatistics', () => {
-    it('should GET /reports/statistics', async () => {
-      await lootService.getLootStatistics();
-      expect(api.get).toHaveBeenCalledWith('/reports/statistics', { params: {} });
-    });
-  });
-
   // ===== Sales Management =====
 
   describe('getPendingSaleItems', () => {
@@ -284,14 +246,14 @@ describe('lootService', () => {
 
   describe('sellUpTo', () => {
     it('should POST to /sales/up-to with amount', async () => {
-      await lootService.sellUpTo({ amount: 5000 });
-      expect(api.post).toHaveBeenCalledWith('/sales/up-to', { amount: 5000 });
+      await lootService.sellUpTo({ maxAmount: 5000 });
+      expect(api.post).toHaveBeenCalledWith('/sales/up-to', { maxAmount: 5000 });
     });
   });
 
   describe('sellAllExcept', () => {
     it('should POST to /sales/all-except with items to keep', async () => {
-      const data = { itemsToKeep: [1, 5, 10] };
+      const data = { keepIds: [1, 5, 10] };
       await lootService.sellAllExcept(data);
       expect(api.post).toHaveBeenCalledWith('/sales/all-except', data);
     });
@@ -299,7 +261,7 @@ describe('lootService', () => {
 
   describe('sellSelected', () => {
     it('should POST to /sales/selected with items to sell', async () => {
-      const data = { itemsToSell: [2, 3, 7] };
+      const data = { itemIds: [2, 3, 7] };
       await lootService.sellSelected(data);
       expect(api.post).toHaveBeenCalledWith('/sales/selected', data);
     });
@@ -320,10 +282,7 @@ describe('lootService', () => {
       const data = {
         lootIds: [1, 2],
         characterId: 5,
-        appraisalRolls: [
-          { lootId: 1, roll: 18 },
-          { lootId: 2, roll: 12, believedValue: 500 },
-        ],
+        appraisalRolls: [18, 12],
       };
       await lootService.appraiseLoot(data);
       expect(api.post).toHaveBeenCalledWith('/appraisal/appraise', data);
@@ -347,7 +306,7 @@ describe('lootService', () => {
       const data = {
         items: [1, 2],
         characterId: 5,
-        spellcraftRolls: [22, 18],
+        spellcraftBonus: 7,
       };
       await lootService.identifyItems(data);
       expect(api.post).toHaveBeenCalledWith('/appraisal/identify', data);
@@ -357,17 +316,10 @@ describe('lootService', () => {
       const data = {
         items: [3],
         characterId: null,
-        spellcraftRolls: [25],
+        spellcraftBonus: 7,
       };
       await lootService.identifyItems(data);
       expect(api.post).toHaveBeenCalledWith('/appraisal/identify', data);
-    });
-  });
-
-  describe('getItemAppraisals', () => {
-    it('should GET /appraisal/item/:itemId', async () => {
-      await lootService.getItemAppraisals(42);
-      expect(api.get).toHaveBeenCalledWith('/appraisal/item/42');
     });
   });
 
@@ -407,14 +359,6 @@ describe('lootService', () => {
     });
   });
 
-  describe('suggestMods', () => {
-    it('should GET /item-creation/mods/suggest with query params', async () => {
-      const params = { query: 'flam' };
-      await lootService.suggestMods(params);
-      expect(api.get).toHaveBeenCalledWith('/item-creation/mods/suggest', { params });
-    });
-  });
-
   // ===== Error propagation =====
 
   describe('error handling', () => {
@@ -438,10 +382,5 @@ describe('lootService', () => {
       ).rejects.toThrow('Forbidden');
     });
 
-    it('should propagate API errors from deleteLootItem', async () => {
-      const error = new Error('Not Found');
-      vi.mocked(api.delete).mockRejectedValueOnce(error);
-      await expect(lootService.deleteLootItem(999)).rejects.toThrow('Not Found');
-    });
   });
 });

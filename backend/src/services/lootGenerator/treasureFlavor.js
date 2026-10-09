@@ -10,6 +10,8 @@
 // allow-list materials (volcano/underwater = durable only), exclude some
 // (swamp), and/or cap the size (open terrain). Gems are always allowed.
 
+const { pickRandom } = require('./random');
+
 // Gem names by GEM_TIERS index (0 = cheapest ornamental stones .. 5 = jewels).
 const GEM_NAMES = [
   ['Banded agate', 'Azurite', 'Blue quartz', 'Hematite', 'Lapis lazuli', 'Malachite', 'Obsidian', 'Rhodochrosite', 'Tiger-eye', 'Turquoise'],
@@ -71,7 +73,6 @@ const ENVIRONMENTS = {
   underwater: { label: 'Underwater / Aquatic', materials: DURABLE },
 };
 
-const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 const materialAllowed = (env, material) => {
   if (!env) return true;
@@ -109,7 +110,6 @@ const listEnvironments = () =>
   Object.entries(ENVIRONMENTS).map(([value, { label }]) => ({ value, label }));
 
 module.exports = {
-  GEM_NAMES,
   ART_OBJECTS,
   ENVIRONMENTS,
   describeGem,

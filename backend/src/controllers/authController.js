@@ -8,27 +8,111 @@ const logger = require('../utils/logger');
 const emailService = require('../services/emailService');
 const campaignContext = require('../utils/campaignContext');
 const Invite = require('../models/Invite');
-const { AUTH, COOKIES } = require('../config/constants');
+const { assertRedeemable } = require('../utils/inviteRules');
+const { CODE_PATTERN, CODE_FORMAT_MESSAGE } = require('../utils/inviteCode');
+const { AUTH } = require('../config/constants');
+const { assertPasswordPolicy, hashPassword } = require('../utils/passwordPolicy');
+const ValidationService = require('../services/validationService');
+const { AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange, passwordChangeTimestamp } = require('../utils/authSession');
 require('dotenv').config();
 
 /** Valid values for the registration_mode setting. */
 const REGISTRATION_MODES = ['open', 'invite-only', 'closed'];
 
 /**
- * Constant key for the pg_advisory_xact_lock serializing the first-user DM
- * bootstrap: two concurrent registrations both requesting 'DM' must not both
- * pass the no-DM-exists check. The value is arbitrary but must be unique
- * among this app's advisory-lock keys (currently the only one). The lock is
- * transaction-scoped (auto-released at COMMIT/ROLLBACK) and only taken when a
- * registration actually requests the DM role, so normal registrations are
- * never serialized.
+ * Key for the pg_advisory_xact_lock serializing the first-user DM bootstrap:
+ * two concurrent registrations both requesting 'DM' must not both see an empty
+ * users table. Must be unique among this app's advisory-lock keys; the lock is
+ * transaction-scoped and only taken when a registration requests the DM role.
  */
 const FIRST_DM_BOOTSTRAP_LOCK_KEY = 727450001;
 
+/** Password-reset links stay valid for one hour. */
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Pre-computed bcrypt hash compared against when the username is unknown, so a
+ * failed login costs the same whether or not the account exists.
+ */
+const DUMMY_PASSWORD_HASH = '$2b$10$Pxby/iwm0i3..o2tXYCUUuvbnxdzgvOBKAXeKVsKLGQ.QxrD8CRy.';
+
+/**
+ * Reject request-body fields that are not strings (JSON bodies can carry
+ * arrays/objects, which would otherwise throw TypeErrors and surface as 500s).
+ * @param {Object} fields - Map of field name to value
+ * @param {string[]} names - Names that must be strings
+ */
+const assertStrings = (fields, names) => {
+    for (const name of names) {
+        if (typeof fields[name] !== 'string') {
+            throw controllerFactory.createValidationError(`${name} must be a string`);
+        }
+    }
+};
+
+/** SHA-256 of a reset token: only the hash is stored, the raw token only travels in the link. */
+const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+/**
+ * Replace the user's outstanding reset token with a fresh one, using the
+ * caller's transaction client.
+ * @param {Object} client - Transaction client
+ * @param {number} userId
+ * @returns {Promise<{token: string, expiresAt: Date}>} The raw token (for the link) and its expiry
+ */
+const createPasswordResetToken = async (client, userId) => {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+    await client.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+    await client.query(
+        'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+        [userId, hashResetToken(token), expiresAt]
+    );
+    return {token, expiresAt};
+};
+
+/**
+ * The user's active character in one campaign (null when none).
+ * @param {number} userId
+ * @param {number|null} campaignId - null means "no campaign": no lookup
+ * @returns {Promise<number|null>}
+ */
+const findActiveCharacterId = async (userId, campaignId) => {
+    if (campaignId === null || campaignId === undefined) return null;
+    const result = await dbUtils.executeQuery(
+        'SELECT id FROM characters WHERE user_id = $1 AND campaign_id = $2 AND active = true ORDER BY id LIMIT 1',
+        [userId, campaignId]
+    );
+    return result.rows[0]?.id ?? null;
+};
+
+/**
+ * Active character at login. /auth/login has no campaign context, so resolve
+ * the same default campaign verifyToken would pick (lowest membership id;
+ * campaign 1 for a superadmin without memberships) and look the character up
+ * there. 'all' mode is needed only because RLS would otherwise pin the query
+ * to campaign 1; the explicit campaign_id predicate scopes it.
+ * @param {{id: number, is_superadmin?: boolean}} user
+ * @returns {Promise<number|null>}
+ */
+const findLoginActiveCharacterId = async (user) => {
+    const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(
+        `SELECT id FROM characters
+         WHERE user_id = $1 AND active = true
+           AND campaign_id = COALESCE(
+               (SELECT MIN(campaign_id) FROM user_campaign WHERE user_id = $1),
+               CASE WHEN $2::boolean THEN 1 END)
+         ORDER BY id LIMIT 1`,
+        [user.id, user.is_superadmin === true]
+    ));
+    return result.rows[0]?.id ?? null;
+};
+
 /**
  * Read the registration_mode setting ('open' | 'invite-only' | 'closed').
- * A missing row or an unrecognized value defaults to 'open' (fresh installs
- * seed 'open'; migration 046 derives the mode for existing deployments).
+ * A missing row or an unrecognized value defaults to 'invite-only' (fail
+ * closed; fresh installs seed 'open' and migration 046 derives the mode for
+ * existing deployments, so a row normally exists).
  * @return {Promise<string>} The effective registration mode
  */
 const getRegistrationMode = async () => {
@@ -36,7 +120,24 @@ const getRegistrationMode = async () => {
         "SELECT value FROM settings WHERE name = 'registration_mode'"
     );
     const value = result.rows[0]?.value;
-    return REGISTRATION_MODES.includes(value) ? value : 'open';
+    return REGISTRATION_MODES.includes(value) ? value : 'invite-only';
+};
+
+/**
+ * Map a unique-constraint violation from the registration INSERT to the same
+ * validation errors the pre-checks raise (two simultaneous registrations can
+ * both pass the pre-checks).
+ * @param {Error} error - Error thrown by the registration transaction
+ * @throws {Error} ValidationError for a username/email duplicate; the original error otherwise
+ */
+const rethrowDuplicateAsValidation = (error) => {
+    if (error && error.code === '23505') {
+        const constraint = String(error.constraint || '');
+        throw controllerFactory.createValidationError(
+            constraint.includes('email') ? 'Email already in use' : 'Username already exists'
+        );
+    }
+    throw error;
 };
 
 /**
@@ -56,7 +157,10 @@ const getRegistrationMode = async () => {
  * (the issuing DM's campaign at creation time) and is single-use.
  */
 const registerUser = async (req, res) => {
-    const {username, password, inviteCode, email} = req.body;
+    const {username, password, inviteCode, email, role: requestedRole} = req.body;
+    assertStrings(req.body, ['username', 'password']);
+    if (email !== undefined && email !== null) assertStrings(req.body, ['email']);
+    if (inviteCode !== undefined && inviteCode !== null) assertStrings(req.body, ['inviteCode']);
 
     const registrationMode = await getRegistrationMode();
 
@@ -70,22 +174,20 @@ const registerUser = async (req, res) => {
 
     let invite = null;
     if (inviteCode) {
+        const normalizedCode = inviteCode.trim().toUpperCase();
+        if (!CODE_PATTERN.test(normalizedCode)) {
+            throw controllerFactory.createValidationError(CODE_FORMAT_MESSAGE);
+        }
         // CROSS-CAMPAIGN LOOKUP REQUIRED: /auth/register is unauthenticated,
-        // so no campaign context exists and the RLS GUC defaults to '1' — a
+        // so no campaign context exists (the GUC would be empty, matching no rows) — a
         // campaign-2 invite would be invisible here. This is the one place
         // 'all' mode is required on a request path: the code itself is the
         // credential, and it determines which campaign membership is granted.
-        invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(inviteCode));
+        invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(normalizedCode));
 
-        if (!invite || invite.is_used) {
-            throw controllerFactory.createValidationError('Invalid or used invite code');
-        }
-        if (invite.expires_at && new Date(invite.expires_at) <= new Date()) {
-            throw controllerFactory.createValidationError('This invitation code has expired');
-        }
+        assertRedeemable(invite);
     }
 
-    // Check if username already exists
     const userCheck = await dbUtils.executeQuery(
         'SELECT * FROM users WHERE username = $1',
         [username]
@@ -94,152 +196,114 @@ const registerUser = async (req, res) => {
         throw controllerFactory.createValidationError('Username already exists');
     }
 
-    // Validate email
     if (!email) {
         throw controllerFactory.createValidationError('Email is required');
     }
 
-    // Validate email format
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(email)) {
+    if (!ValidationService.EMAIL_PATTERN.test(email)) {
         throw controllerFactory.createValidationError('Please enter a valid email address');
     }
 
-    // Check if email already exists
+    // Case-insensitive: Foo@x.com and foo@x.com are the same mailbox
     const emailCheck = await dbUtils.executeQuery(
-        'SELECT * FROM users WHERE email = $1',
+        'SELECT * FROM users WHERE LOWER(email) = LOWER($1)',
         [email]
     );
     if (emailCheck.rows.length > 0) {
         throw controllerFactory.createValidationError('Email already in use');
     }
 
-    // Validate password length
-    if (!password || password.length < AUTH.PASSWORD_MIN_LENGTH) {
-        throw controllerFactory.createValidationError(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`);
-    }
-
-    // Check if password exceeds maximum length
-    if (password.length > AUTH.PASSWORD_MAX_LENGTH) {
-        throw controllerFactory.createValidationError(`Password cannot exceed ${AUTH.PASSWORD_MAX_LENGTH} characters`);
-    }
-
-    // Create the user
-    // Normalize the password (Unicode normalization)
-    const normalizedPassword = password.normalize('NFC');
-
-    // Add salt and hash the password with bcrypt (cost factor 10)
-    const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
-
-    const { role: requestedRole } = req.body;
+    assertPasswordPolicy(password);
+    const hashedPassword = await hashPassword(password);
 
     // Run the INSERT inside a transaction, but do NOT send the HTTP response
     // from inside the callback — executeTransaction only COMMITs after the
-    // callback returns, so sending the response inside would release the
-    // client to refetch before the commit is visible to other pool clients.
+    // callback returns, so the response must wait until it resolves.
     //
     // The whole transactional block runs under runWithCampaign('all'): this
-    // unauthenticated path has no campaign context (GUC would default to '1'),
+    // unauthenticated path has no campaign context (the empty GUC matches no rows),
     // and when a cross-campaign invite is redeemed both the user_campaign
     // INSERT and the invites UPDATE must pass the RLS tenant policy's
     // WITH CHECK for the invite's campaign.
-    const user = await campaignContext.runWithCampaign('all', () => dbUtils.executeTransaction(async (client) => {
-        // Role clamp (security): the stored users.role and the user_campaign
-        // membership role may only ever be 'DM' or 'Player'. 'DM' is honored
-        // exclusively via the legitimate first-user bootstrap path — when no
-        // DM account exists yet (the same condition the frontend's
-        // /auth/check-dm gate uses to enable the role selector). Once a DM
-        // exists, or for any other requested value, the role falls back to
-        // 'Player'. A future legitimate path (Phase 3 of the multi-campaign
-        // refactor) is invite-scoped roles; it does not exist yet — today's
-        // invites carry no role and therefore never grant DM.
-        //
-        // The check runs INSIDE the transaction, behind a transaction-scoped
-        // advisory lock, so two concurrent first registrations cannot both
-        // see "no DM exists" and both become DM.
-        let userRole = 'Player';
-        if (requestedRole === 'DM') {
+    let user;
+    try {
+        user = await campaignContext.runWithCampaign('all', () => dbUtils.executeTransaction(async (client) => {
+            // First-run bootstrap (security + usability): the very first account
+            // on a fresh install (the users table is completely empty, the same
+            // condition /auth/check-dm reports) is ALWAYS created as DM and
+            // superadmin, whatever role the form sent, so a fresh install has
+            // someone who can reach global settings and create campaigns. Any
+            // existing row blocks it, so deleting or demoting the last DM never
+            // reopens DM self-registration. Every later account is a Player:
+            // users.role and the membership role are only ever 'DM' or
+            // 'Player', invites never carry a role, and a requested 'DM' is
+            // clamped. (A proper first-run setup wizard is planned.)
+            //
+            // The check runs INSIDE the transaction, behind a transaction-scoped
+            // advisory lock, so two concurrent first registrations cannot both
+            // see an empty table and both become DM/superadmin.
             await client.query('SELECT pg_advisory_xact_lock($1)', [FIRST_DM_BOOTSTRAP_LOCK_KEY]);
-            const dmCheck = await client.query(
-                "SELECT 1 FROM users WHERE role = 'DM' LIMIT 1"
-            );
-            if (dmCheck.rows.length === 0) {
-                userRole = 'DM';
-            } else {
-                logger.warn(`Registration for '${username}' requested DM role but a DM already exists; clamping to Player`);
+            const anyUser = await client.query('SELECT 1 FROM users LIMIT 1');
+            const isFirstAccount = anyUser.rows.length === 0;
+            const userRole = isFirstAccount ? 'DM' : 'Player';
+            if (!isFirstAccount && requestedRole === 'DM') {
+                logger.warn(`Registration for '${username}' requested DM role but accounts already exist; clamping to Player`);
+            } else if (!isFirstAccount && requestedRole && requestedRole !== 'Player') {
+                logger.warn(`Registration for '${username}' requested invalid role '${requestedRole}'; clamping to Player`);
             }
-        } else if (requestedRole && requestedRole !== 'Player') {
-            logger.warn(`Registration for '${username}' requested invalid role '${requestedRole}'; clamping to Player`);
-        }
 
-        // Insert the user
-        const result = await client.query(
-            'INSERT INTO users (username, password, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, joined, email',
-            [username, hashedPassword, userRole, email]
-        );
-        const createdUser = result.rows[0];
-
-        if (invite) {
-            // Invite redemption grants membership in the INVITE's campaign.
-            // Invites always grant 'Player' — the single exception is the
-            // first-user DM bootstrap above: when it fired, the stored role is
-            // 'DM' and the membership mirrors it (the first account on a fresh
-            // install must be a usable DM).
-            const membershipRole = createdUser.role === 'DM' ? 'DM' : 'Player';
-            await client.query(
-                `INSERT INTO user_campaign (user_id, campaign_id, role)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT DO NOTHING`,
-                [createdUser.id, invite.campaign_id, membershipRole]
+            const result = await client.query(
+                'INSERT INTO users (username, password, role, email, is_superadmin, last_active_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id, username, role, joined, email',
+                [username, hashedPassword, userRole, email, isFirstAccount]
             );
+            const createdUser = result.rows[0];
 
-            // Mark the invite used (single-use). The is_used = FALSE guard
-            // closes the race where two registrations validated the same code
-            // concurrently: the loser updates zero rows and the whole
-            // transaction (including the user INSERT) rolls back.
-            const inviteUpdate = await client.query(
-                `UPDATE invites
-                 SET is_used = TRUE, used_by = $1, used_at = NOW()
-                 WHERE id = $2
-                   AND is_used = FALSE`,
-                [createdUser.id, invite.id]
-            );
-            if (inviteUpdate.rowCount === 0) {
-                throw controllerFactory.createValidationError('Invalid or used invite code');
+            if (invite) {
+                // Invite redemption always grants 'Player' membership in the
+                // INVITE's campaign, whatever role was requested.
+                await client.query(
+                    `INSERT INTO user_campaign (user_id, campaign_id, role)
+                     VALUES ($1, $2, 'Player')
+                     ON CONFLICT DO NOTHING`,
+                    [createdUser.id, invite.campaign_id]
+                );
+
+                // Mark the invite used (single-use). The is_used = FALSE guard
+                // closes the race where two registrations validated the same code
+                // concurrently: the loser updates zero rows and the whole
+                // transaction (including the user INSERT) rolls back.
+                const inviteUpdate = await client.query(
+                    `UPDATE invites
+                     SET is_used = TRUE, used_by = $1, used_at = NOW()
+                     WHERE id = $2
+                       AND is_used = FALSE`,
+                    [createdUser.id, invite.id]
+                );
+                if (inviteUpdate.rowCount === 0) {
+                    throw controllerFactory.createValidationError('Invalid or used invite code');
+                }
+            } else if (createdUser.role === 'DM') {
+                // First-user DM bootstrap without an invite: general registration
+                // normally grants NO membership, but a fresh single-campaign
+                // install must bootstrap usable, so the first DM gets DM
+                // membership in the seeded campaign 1.
+                await client.query(
+                    `INSERT INTO user_campaign (user_id, campaign_id, role)
+                     VALUES ($1, 1, 'DM')
+                     ON CONFLICT DO NOTHING`,
+                    [createdUser.id]
+                );
             }
-        } else if (createdUser.role === 'DM') {
-            // SPECIAL CASE — first-user DM bootstrap without an invite (open
-            // mode): general registration normally grants NO membership, but a
-            // fresh single-campaign install must bootstrap usable, so the
-            // first DM gets DM membership in the seeded campaign 1.
-            await client.query(
-                `INSERT INTO user_campaign (user_id, campaign_id, role)
-                 VALUES ($1, 1, 'DM')
-                 ON CONFLICT DO NOTHING`,
-                [createdUser.id]
-            );
-        }
-        // Otherwise (open mode, no invite, not the bootstrap DM): the account
-        // is created with NO campaign membership — joining a campaign requires
-        // an invite.
+            // Otherwise the account is created with NO campaign membership —
+            // joining a campaign requires an invite.
 
-        return createdUser;
-    }));
+            return createdUser;
+        }));
+    } catch (error) {
+        rethrowDuplicateAsValidation(error);
+    }
 
-    // Generate JWT token
-    const token = jwt.sign(
-        {id: user.id, username: user.username, role: user.role},
-        process.env.JWT_SECRET,
-        {expiresIn: AUTH.JWT_EXPIRES_IN}
-    );
-
-    // Set token in HTTP-only cookie
-    res.cookie('authToken', token, {
-        httpOnly: COOKIES.HTTP_ONLY,
-        secure: COOKIES.SECURE,
-        sameSite: COOKIES.SAME_SITE,
-        maxAge: COOKIES.MAX_AGE
-    });
+    issueAuthCookie(res, user);
 
     return controllerFactory.sendCreatedResponse(res, {
         user: {
@@ -267,8 +331,8 @@ const generateManualResetLink = async (req, res) => {
     if (!username) {
         throw controllerFactory.createValidationError('Username is required');
     }
+    assertStrings(req.body, ['username']);
 
-    // Find user by username
     const userResult = await dbUtils.executeQuery(
         'SELECT id, username, email FROM users WHERE username = $1',
         [username]
@@ -280,26 +344,10 @@ const generateManualResetLink = async (req, res) => {
 
     const user = userResult.rows[0];
 
-    // Generate secure random token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-
     // Insert the reset token inside a transaction, but send the HTTP response
-    // only after executeTransaction resolves (i.e. after COMMIT). Otherwise a
-    // follow-up request from the client could run before commit and see stale
-    // data via MVCC on another pool client.
-    const resetUrl = await dbUtils.executeTransaction(async (client) => {
-        // Clean up any existing tokens for this user
-        await client.query(
-            'DELETE FROM password_reset_tokens WHERE user_id = $1',
-            [user.id]
-        );
-
-        // Insert new reset token
-        await client.query(
-            'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-            [user.id, resetToken, expiresAt]
-        );
+    // only after executeTransaction resolves (i.e. after COMMIT).
+    const {resetUrl, expiresAt} = await dbUtils.executeTransaction(async (client) => {
+        const {token, expiresAt: expiry} = await createPasswordResetToken(client, user.id);
 
         // Look up frontend_url from settings, falling back to env, then localhost
         const frontendUrlResult = await client.query(
@@ -308,7 +356,7 @@ const generateManualResetLink = async (req, res) => {
         const frontendUrl = frontendUrlResult.rows[0]?.value
             || process.env.FRONTEND_URL
             || 'http://localhost:3000';
-        return `${frontendUrl}/reset-password?token=${resetToken}`;
+        return {resetUrl: `${frontendUrl}/reset-password?token=${token}`, expiresAt: expiry};
     });
 
     logger.info(`Manual password reset link generated for user: ${user.username} by superadmin: ${req.user.username}`);
@@ -326,8 +374,8 @@ const generateManualResetLink = async (req, res) => {
  */
 const loginUser = async (req, res) => {
     const {username, password} = req.body;
+    assertStrings(req.body, ['username', 'password']);
 
-    // Get user
     const result = await dbUtils.executeQuery(
         'SELECT * FROM users WHERE username = $1',
         [username]
@@ -335,65 +383,45 @@ const loginUser = async (req, res) => {
     const user = result.rows[0];
 
     if (!user) {
+        // Same bcrypt cost as a real failed login, so timing does not reveal
+        // which usernames exist
+        await bcrypt.compare(password.normalize('NFC'), DUMMY_PASSWORD_HASH);
         throw controllerFactory.createValidationError('Invalid username or password');
     }
 
-    // Check if account is locked
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
+        // Indistinguishable from a wrong password (same message, status and
+        // timing), so the lock state is not an oracle for the account's existence
+        // or for a correct password; the reason stays in the server log.
         const remainingLockTime = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
-        throw controllerFactory.createAuthorizationError(
-            `Account is locked. Please try again in ${remainingLockTime} minute(s).`
-        );
+        logger.warn(`Login refused for locked account ${user.username}: ${remainingLockTime} minute(s) of lock remaining`);
+        await bcrypt.compare(password.normalize('NFC'), DUMMY_PASSWORD_HASH);
+        throw controllerFactory.createValidationError('Invalid username or password');
     }
 
-    // Normalize the provided password before checking
-    const normalizedPassword = password.normalize('NFC');
-
-    // Check password
-    const isMatch = await bcrypt.compare(normalizedPassword, user.password);
+    const isMatch = await bcrypt.compare(password.normalize('NFC'), user.password);
     if (!isMatch) {
         await handleFailedLogin(user);
         throw controllerFactory.createValidationError('Invalid username or password');
     }
 
-    // Rest of the function remains the same...
-    // Check if user role is valid
-    if (user.role !== 'DM' && user.role !== 'Player') {
+    // Case-insensitive: an old test-data seeder wrote 'player', and the exact
+    // comparison locked those accounts out (migration 083 recases them too).
+    const accountRole = String(user.role || '').toLowerCase();
+    if (accountRole !== 'dm' && accountRole !== 'player') {
         throw controllerFactory.createAuthorizationError('Access denied. Invalid user role.');
     }
 
-    // Reset login attempts on successful login
+    // Counters reset only on a successful login (or password reset / lock expiry);
+    // the login also stamps last_active_at for the System Admin users list
     await dbUtils.executeQuery(
-        'UPDATE users SET login_attempts = 0, locked_until = NULL WHERE id = $1',
+        'UPDATE users SET login_attempts = 0, locked_until = NULL, last_active_at = NOW() WHERE id = $1',
         [user.id]
     );
 
-    // Get active character for player
-    let activeCharacterId = null;
-    if (user.role === 'Player') {
-        const characterResult = await dbUtils.executeQuery(
-            'SELECT id FROM characters WHERE user_id = $1 AND active = true',
-            [user.id]
-        );
-        if (characterResult.rows.length > 0) {
-            activeCharacterId = characterResult.rows[0].id;
-        }
-    }
+    const activeCharacterId = await findLoginActiveCharacterId(user);
 
-    // Generate JWT token
-    const token = jwt.sign(
-        {id: user.id, username: user.username, role: user.role},
-        process.env.JWT_SECRET,
-        {expiresIn: AUTH.JWT_EXPIRES_IN}
-    );
-
-    // Set token in HTTP-only cookie
-    res.cookie('authToken', token, {
-        httpOnly: COOKIES.HTTP_ONLY,
-        secure: COOKIES.SECURE,
-        sameSite: COOKIES.SAME_SITE,
-        maxAge: COOKIES.MAX_AGE
-    });
+    issueAuthCookie(res, user);
 
     // Only return user info, token is already in HTTP-only cookie
     controllerFactory.sendSuccessResponse(res, {
@@ -408,24 +436,32 @@ const loginUser = async (req, res) => {
 };
 
 /**
- * Handle failed login attempt
- * @param {Object} user - User object
+ * Next login_attempts value, computed from the row itself so the UPDATE below
+ * is atomic: a lock that has already expired restarts the count at 1 instead
+ * of re-locking on a single typo.
+ */
+const NEXT_ATTEMPTS_SQL = 'CASE WHEN locked_until IS NOT NULL AND locked_until <= NOW() THEN 1 ELSE COALESCE(login_attempts, 0) + 1 END';
+
+/**
+ * Failed-attempt bookkeeping as ONE atomic UPDATE (no read-modify-write, so
+ * concurrent failures are not undercounted). Reaching MAX_LOGIN_ATTEMPTS sets
+ * locked_until.
+ * @param {Object} user - User row (id, username)
  */
 const handleFailedLogin = async (user) => {
-    // Increment login attempts
-    const newAttempts = (user.login_attempts || 0) + 1;
-    if (newAttempts >= AUTH.MAX_LOGIN_ATTEMPTS) {
-        await dbUtils.executeQuery(
-            'UPDATE users SET login_attempts = $1, locked_until = $2 WHERE id = $3',
-            [newAttempts, new Date(Date.now() + AUTH.ACCOUNT_LOCK_TIME), user.id]
-        );
+    const result = await dbUtils.executeQuery(
+        `UPDATE users
+         SET login_attempts = ${NEXT_ATTEMPTS_SQL},
+             locked_until = CASE WHEN (${NEXT_ATTEMPTS_SQL}) >= $2 THEN $3::timestamptz ELSE NULL END
+         WHERE id = $1
+         RETURNING login_attempts`,
+        [user.id, AUTH.MAX_LOGIN_ATTEMPTS, new Date(Date.now() + AUTH.ACCOUNT_LOCK_TIME)]
+    );
+    const attempts = result.rows[0]?.login_attempts;
+    if (attempts >= AUTH.MAX_LOGIN_ATTEMPTS) {
         logger.warn(`Account ${user.username} locked after ${AUTH.MAX_LOGIN_ATTEMPTS} failed attempts`);
     } else {
-        await dbUtils.executeQuery(
-            'UPDATE users SET login_attempts = $1 WHERE id = $2',
-            [newAttempts, user.id]
-        );
-        logger.info(`Failed login attempt ${newAttempts}/${AUTH.MAX_LOGIN_ATTEMPTS} for user ${user.username}`);
+        logger.info(`Failed login attempt ${attempts}/${AUTH.MAX_LOGIN_ATTEMPTS} for user ${user.username}`);
     }
 };
 
@@ -433,28 +469,15 @@ const handleFailedLogin = async (user) => {
  * Get current user's authentication status
  */
 const getUserStatus = async (req, res) => {
-    // This endpoint is protected by verifyToken middleware
-    // If we get here, the user is authenticated
-
-    // Get active character for player
-    let activeCharacterId = null;
-    if (req.user.role === 'Player') {
-        const characterResult = await dbUtils.executeQuery(
-            'SELECT id FROM characters WHERE user_id = $1 AND active = true',
-            [req.user.id]
-        );
-        if (characterResult.rows.length > 0) {
-            activeCharacterId = characterResult.rows[0].id;
-        }
-    }
-
-    // Get user details including email
+    // Protected by verifyToken.allowNoCampaign: a user without any campaign
+    // arrives with req.campaignId === null and has no active character.
     const userResult = await dbUtils.executeQuery(
-        'SELECT id, username, role, email FROM users WHERE id = $1',
+        'SELECT id, username, role, email, discord_id FROM users WHERE id = $1',
         [req.user.id]
     );
-
     const userData = userResult.rows[0] || {};
+
+    const activeCharacterId = await findActiveCharacterId(req.user.id, req.campaignId);
 
     controllerFactory.sendSuccessResponse(res, {
         user: {
@@ -462,6 +485,7 @@ const getUserStatus = async (req, res) => {
             username: req.user.username,
             role: req.user.role,
             email: userData.email,
+            discord_id: userData.discord_id || null,
             activeCharacterId
         }
     }, 'User is authenticated');
@@ -471,48 +495,29 @@ const getUserStatus = async (req, res) => {
  * Logout user
  */
 const logoutUser = async (req, res) => {
-    // Clear the auth cookie
-    res.clearCookie('authToken', {
-        httpOnly: COOKIES.HTTP_ONLY,
-        secure: COOKIES.SECURE,
-        sameSite: COOKIES.SAME_SITE
-    });
+    res.clearCookie('authToken', AUTH_COOKIE_OPTIONS);
 
     controllerFactory.sendSuccessMessage(res, 'Logged out successfully');
 };
 
 /**
- * Check if DM exists
+ * Whether the first-account DM bootstrap is closed. Registration honors a
+ * requested 'DM' role only on a completely empty users table (see
+ * registerUser), so the frontend's role selector is shown only then. The
+ * response key keeps its historical name, `dmExists`.
  */
 const checkForDm = async (req, res) => {
-    const dmResult = await dbUtils.executeQuery('SELECT * FROM users WHERE role = $1', ['DM']);
-    const dmExists = dmResult.rows.length > 0;
-    controllerFactory.sendSuccessResponse(res, {dmExists});
+    const anyUser = await dbUtils.executeQuery('SELECT 1 FROM users LIMIT 1');
+    controllerFactory.sendSuccessResponse(res, {dmExists: anyUser.rows.length > 0});
 };
 
 /**
- * Check registration status.
- * Returns the registration_mode plus a registrationsOpen compatibility
- * boolean (true unless the mode is 'closed' — in invite-only mode the
- * registration form must still be reachable to enter the code).
+ * Check registration status: returns the registration_mode. In invite-only
+ * mode the registration form must still be reachable to enter the code.
  */
 const checkRegistrationStatus = async (req, res) => {
     const mode = await getRegistrationMode();
-    controllerFactory.sendSuccessResponse(res, {
-        mode,
-        registrationsOpen: mode !== 'closed'
-    });
-};
-
-/**
- * Check if an invite code is required for registration.
- */
-const checkInviteRequired = async (req, res) => {
-    const mode = await getRegistrationMode();
-    controllerFactory.sendSuccessResponse(res, {
-        isRequired: mode === 'invite-only',
-        mode
-    });
+    controllerFactory.sendSuccessResponse(res, {mode});
 };
 
 // NOTE: invite generation/listing/deactivation moved to
@@ -521,61 +526,63 @@ const checkInviteRequired = async (req, res) => {
 // lived on the CSRF-exempt /api/auth mount.
 
 /**
- * Refresh token
+ * Refresh token. Missing, invalid, expired and orphaned credentials all answer
+ * 401, so clients can tell "not authenticated" from a bad request.
  */
 const refreshToken = async (req, res) => {
+    const token = req.cookies.authToken;
+
+    if (!token) {
+        return res.unauthorized('Authentication required');
+    }
+
+    let decoded;
     try {
-        // Extract token from cookie
-        const token = req.cookies.authToken;
-
-        if (!token) {
-            throw controllerFactory.createValidationError('Authentication required');
-        }
-
-        // Verify the existing token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        // Check if user still exists and is active
-        const userResult = await dbUtils.executeQuery(
-            'SELECT id, username, role, email FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
-            [decoded.id]
-        );
-
-        if (userResult.rows.length === 0) {
-            throw controllerFactory.createAuthorizationError('User no longer exists or is inactive');
-        }
-
-        const user = userResult.rows[0];
-
-        // Generate a new token
-        const newToken = jwt.sign(
-            {id: user.id, username: user.username, role: user.role},
-            process.env.JWT_SECRET,
-            {expiresIn: AUTH.JWT_EXPIRES_IN}
-        );
-
-        // Set the new token in a cookie
-        res.cookie('authToken', newToken, {
-            httpOnly: COOKIES.HTTP_ONLY,
-            secure: COOKIES.SECURE,
-            sameSite: COOKIES.SAME_SITE,
-            maxAge: COOKIES.MAX_AGE
-        });
-
-        controllerFactory.sendSuccessMessage(res, 'Token refreshed successfully');
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (error) {
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-            throw controllerFactory.createAuthorizationError('Invalid or expired token');
+            return res.unauthorized('Invalid or expired token');
         }
         throw error;
     }
+
+    // Check if user still exists and is active
+    const userResult = await dbUtils.executeQuery(
+        'SELECT id, username, role, email, password_changed_at FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
+        [decoded.id]
+    );
+
+    if (userResult.rows.length === 0) {
+        return res.unauthorized('User no longer exists or is inactive');
+    }
+
+    // A password change ends every session issued before it
+    if (isTokenRevokedByPasswordChange(decoded, userResult.rows[0].password_changed_at)) {
+        return res.unauthorized('Invalid or expired token');
+    }
+
+    issueAuthCookie(res, userResult.rows[0]);
+
+    // The frontend refreshes on every page load and periodically while the app
+    // is open, so this doubles as the "last active" stamp. Never fails the
+    // refresh: the cookie is already issued.
+    try {
+        await dbUtils.executeQuery('UPDATE users SET last_active_at = NOW() WHERE id = $1', [decoded.id]);
+    } catch (error) {
+        logger.warn('Could not stamp last_active_at on refresh', { userId: decoded.id, error: error.message });
+    }
+
+    controllerFactory.sendSuccessMessage(res, 'Token refreshed successfully');
 };
+
+const FORGOT_PASSWORD_MESSAGE = 'If a user with those credentials exists, a password reset email has been sent.';
 
 /**
  * Initiate password reset
  */
 const forgotPassword = async (req, res) => {
     const { username, email } = req.body;
+    assertStrings(req.body, ['username', 'email']);
 
     // Find user by both username and email for security
     const userResult = await dbUtils.executeQuery(
@@ -585,40 +592,32 @@ const forgotPassword = async (req, res) => {
 
     if (userResult.rows.length === 0) {
         // For security, don't reveal if user exists or not
-        controllerFactory.sendSuccessMessage(res, 'If a user with those credentials exists, a password reset email has been sent.');
+        controllerFactory.sendSuccessMessage(res, FORGOT_PASSWORD_MESSAGE);
         return;
     }
 
     const user = userResult.rows[0];
 
-    // Generate secure random token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+    // Commit the token first; the (slow, fallible) SMTP round trip happens
+    // outside the transaction so it cannot hold a pooled connection or roll
+    // the token back.
+    const {token} = await dbUtils.executeTransaction((client) => createPasswordResetToken(client, user.id));
 
-    // Insert the reset token inside a transaction, then send the response
-    // after COMMIT so any subsequent client request sees the new row.
-    await dbUtils.executeTransaction(async (client) => {
-        // Clean up any existing tokens for this user
-        await client.query(
-            'DELETE FROM password_reset_tokens WHERE user_id = $1',
-            [user.id]
-        );
+    // Not awaited: the answer must not depend on the SMTP round trip, or the
+    // response time would reveal which username/email pairs exist. Failures
+    // are only logged, so mail errors look the same as for unknown accounts.
+    Promise.resolve()
+        .then(() => emailService.sendPasswordResetEmail(user.email, user.username, token))
+        .then((emailSent) => {
+            if (!emailSent) {
+                logger.warn(`Failed to send password reset email to ${user.email}`);
+            }
+        })
+        .catch((error) => {
+            logger.error(`Error sending password reset email to ${user.email}: ${error.message}`);
+        });
 
-        // Insert new reset token
-        await client.query(
-            'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-            [user.id, resetToken, expiresAt]
-        );
-
-        // Send email
-        const emailSent = await emailService.sendPasswordResetEmail(user.email, user.username, resetToken);
-
-        if (!emailSent) {
-            logger.warn(`Failed to send password reset email to ${user.email}`);
-        }
-    });
-
-    return controllerFactory.sendSuccessMessage(res, 'If a user with those credentials exists, a password reset email has been sent.');
+    return controllerFactory.sendSuccessMessage(res, FORGOT_PASSWORD_MESSAGE);
 };
 
 /**
@@ -626,88 +625,49 @@ const forgotPassword = async (req, res) => {
  */
 const resetPassword = async (req, res) => {
     const { token, newPassword } = req.body;
+    assertStrings(req.body, ['token', 'newPassword']);
+    assertPasswordPolicy(newPassword);
 
-    // Validate password
-    if (!newPassword || newPassword.length < AUTH.PASSWORD_MIN_LENGTH) {
-        throw controllerFactory.createValidationError(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`);
-    }
+    const hashedPassword = await hashPassword(newPassword);
 
-    if (newPassword.length > AUTH.PASSWORD_MAX_LENGTH) {
-        throw controllerFactory.createValidationError(`Password cannot exceed ${AUTH.PASSWORD_MAX_LENGTH} characters`);
-    }
-
-    // Find valid token
-    const tokenResult = await dbUtils.executeQuery(
-        `SELECT prt.*, u.id as user_id, u.username 
-         FROM password_reset_tokens prt
-         JOIN users u ON prt.user_id = u.id
-         WHERE prt.token = $1 AND prt.used = FALSE AND prt.expires_at > NOW()`,
-        [token]
-    );
-
-    if (tokenResult.rows.length === 0) {
-        throw controllerFactory.createValidationError('Invalid or expired reset token');
-    }
-
-    const resetData = tokenResult.rows[0];
-
-    // Update the password inside a transaction, then send the HTTP response
-    // only after executeTransaction resolves (i.e. after COMMIT).
-    await dbUtils.executeTransaction(async (client) => {
-        // Hash new password
-        const normalizedPassword = newPassword.normalize('NFC');
-        const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
-
-        // Update user password and reset login attempts
-        await client.query(
-            'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2',
-            [hashedPassword, resetData.user_id]
+    // Consume the token and set the password in one transaction. The token
+    // UPDATE is conditional (unused, unexpired) and RETURNING-driven, so two
+    // concurrent requests with the same token cannot both succeed. Send the
+    // HTTP response only after executeTransaction resolves (i.e. after COMMIT).
+    const username = await dbUtils.executeTransaction(async (client) => {
+        const consumed = await client.query(
+            `UPDATE password_reset_tokens SET used = TRUE
+             WHERE token = $1 AND used = FALSE AND expires_at > NOW()
+             RETURNING user_id`,
+            [hashResetToken(token)]
         );
+        if (consumed.rows.length === 0) {
+            throw controllerFactory.createValidationError('Invalid or expired reset token');
+        }
 
-        // Mark token as used
-        await client.query(
-            'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
-            [token]
+        const updated = await client.query(
+            'UPDATE users SET password = $1, password_changed_at = $2, login_attempts = 0, locked_until = NULL WHERE id = $3 RETURNING username',
+            [hashedPassword, passwordChangeTimestamp(), consumed.rows[0].user_id]
         );
+        return updated.rows[0]?.username;
     });
 
-    logger.info(`Password reset successful for user: ${resetData.username}`);
+    logger.info(`Password reset successful for user: ${username}`);
     return controllerFactory.sendSuccessResponse(res, {
         message: 'Password has been reset successfully'
     }, 'Password has been reset successfully');
-};
-
-// Define validation rules for each endpoint
-const loginValidationRules = {
-    requiredFields: ['username', 'password']
-};
-
-const registerValidationRules = {
-    requiredFields: ['username', 'password', 'email']
-};
-
-const forgotPasswordValidationRules = {
-    requiredFields: ['username', 'email']
-};
-
-const resetPasswordValidationRules = {
-    requiredFields: ['token', 'newPassword']
-};
-
-const generateManualResetLinkValidationRules = {
-    requiredFields: ['username']
 };
 
 // Use controllerFactory to create handler functions with standardized error handling
 module.exports = {
     registerUser: controllerFactory.createHandler(registerUser, {
         errorMessage: 'Error registering user',
-        validation: registerValidationRules
+        validation: {requiredFields: ['username', 'password', 'email']}
     }),
 
     loginUser: controllerFactory.createHandler(loginUser, {
         errorMessage: 'Error logging in user',
-        validation: loginValidationRules
+        validation: {requiredFields: ['username', 'password']}
     }),
 
     getUserStatus: controllerFactory.createHandler(getUserStatus, {
@@ -726,26 +686,22 @@ module.exports = {
         errorMessage: 'Error checking registration status'
     }),
 
-    checkInviteRequired: controllerFactory.createHandler(checkInviteRequired, {
-        errorMessage: 'Error checking invite requirement'
-    }),
-
     refreshToken: controllerFactory.createHandler(refreshToken, {
         errorMessage: 'Error refreshing token'
     }),
 
     forgotPassword: controllerFactory.createHandler(forgotPassword, {
         errorMessage: 'Error processing password reset request',
-        validation: forgotPasswordValidationRules
+        validation: {requiredFields: ['username', 'email']}
     }),
 
     resetPassword: controllerFactory.createHandler(resetPassword, {
         errorMessage: 'Error resetting password',
-        validation: resetPasswordValidationRules
+        validation: {requiredFields: ['token', 'newPassword']}
     }),
 
     generateManualResetLink: controllerFactory.createHandler(generateManualResetLink, {
         errorMessage: 'Error generating manual reset link',
-        validation: generateManualResetLinkValidationRules
+        validation: {requiredFields: ['username']}
     })
 };

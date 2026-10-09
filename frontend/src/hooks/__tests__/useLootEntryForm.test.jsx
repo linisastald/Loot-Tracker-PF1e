@@ -251,45 +251,6 @@ describe('useLootEntryForm', () => {
     });
   });
 
-  describe('resetForm', () => {
-    it('should reset entries to a single default item entry', () => {
-      const { result } = renderHook(() => useLootEntryForm());
-
-      // Add multiple entries and modify them
-      act(() => {
-        result.current.handleAddEntry('gold');
-        result.current.handleAddEntry('item');
-        result.current.handleEntryChange(0, { name: 'Modified item' });
-      });
-      expect(result.current.entries).toHaveLength(3);
-
-      act(() => {
-        result.current.resetForm();
-      });
-
-      expect(result.current.entries).toHaveLength(1);
-      expect(result.current.entries[0].type).toBe('item');
-      expect(result.current.entries[0].data.name).toBe('');
-      expect(result.current.entries[0].error).toBeNull();
-    });
-
-    it('should clear error and success messages', () => {
-      const { result } = renderHook(() => useLootEntryForm());
-
-      act(() => {
-        result.current.setError('Something went wrong');
-        result.current.setSuccess('Item created');
-      });
-
-      act(() => {
-        result.current.resetForm();
-      });
-
-      expect(result.current.error).toBe('');
-      expect(result.current.success).toBe('');
-    });
-  });
-
   describe('setEntries (direct setter)', () => {
     it('should allow directly setting entries', () => {
       const { result } = renderHook(() => useLootEntryForm());
@@ -328,6 +289,55 @@ describe('useLootEntryForm', () => {
     });
   });
 
+  describe('default quantity', () => {
+    it('keeps quantity blank when no default is given (default quantity off)', () => {
+      const { result } = renderHook(() => useLootEntryForm());
+
+      expect(result.current.entries[0].data.quantity).toBe('');
+      act(() => result.current.handleAddEntry('item'));
+      expect(result.current.entries[1].data.quantity).toBe('');
+    });
+
+    it('starts the first row and new item rows with the default', () => {
+      const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
+
+      expect(result.current.entries[0].data.quantity).toBe(5);
+
+      act(() => result.current.handleAddEntry('item'));
+      expect(result.current.entries[1].data.quantity).toBe(5);
+    });
+
+    it('does not give gold rows a quantity', () => {
+      const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
+
+      act(() => result.current.handleAddEntry('gold'));
+
+      expect(result.current.entries[1].data.quantity).toBeUndefined();
+    });
+
+    it('lets the user change the prefilled quantity', () => {
+      const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
+
+      act(() => result.current.handleEntryChange(0, { quantity: '2' }));
+
+      expect(result.current.entries[0].data.quantity).toBe('2');
+    });
+
+    it('fills blank rows when the default arrives after the first render, leaving edited rows alone', () => {
+      const { result, rerender } = renderHook(
+        ({ q }) => useLootEntryForm({ defaultQuantity: q }),
+        { initialProps: { q: '' } }
+      );
+      act(() => result.current.handleAddEntry('item'));
+      act(() => result.current.handleEntryChange(1, { quantity: '9' }));
+
+      rerender({ q: 3 });
+
+      expect(result.current.entries[0].data.quantity).toBe(3);
+      expect(result.current.entries[1].data.quantity).toBe('9');
+    });
+  });
+
   describe('entry independence (no shared references)', () => {
     it('should not share data objects between entries', () => {
       const { result } = renderHook(() => useLootEntryForm());
@@ -342,6 +352,21 @@ describe('useLootEntryForm', () => {
 
       // Second entry should not be affected
       expect(result.current.entries[1].data.name).toBe('');
+    });
+  });
+
+  describe('stable row ids (used as React keys)', () => {
+    it('gives every row a unique id that survives removing an earlier row', () => {
+      const { result } = renderHook(() => useLootEntryForm());
+      act(() => { result.current.handleAddEntry('gold'); });
+      act(() => { result.current.handleAddEntry('item'); });
+
+      const ids = result.current.entries.map(e => e.id);
+      expect(new Set(ids).size).toBe(3);
+
+      act(() => { result.current.handleRemoveEntry(0); });
+
+      expect(result.current.entries.map(e => e.id)).toEqual([ids[1], ids[2]]);
     });
   });
 });

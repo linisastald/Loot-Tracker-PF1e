@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const { CODE_LENGTH } = require('../utils/inviteCode');
 
 /**
  * Invite code format (Phase 3b invite overhaul):
@@ -12,13 +13,11 @@ const logger = require('../utils/logger');
  * 256 evenly, so mapping each crypto.randomBytes byte with modulo introduces
  * no bias. 32^8 ≈ 1.1 * 10^12 possible codes.
  *
- * Legacy codes generated before this overhaul are 6 characters from
- * Math.random()'s base-36 alphabet; unused ones remain redeemable (the
- * registration route accepts 6-8 character codes) but are never generated
- * anymore.
+ * Legacy codes generated before this overhaul (6-7 characters from
+ * Math.random()'s base-36 alphabet) were retired by migration 067; the
+ * registration and redeem endpoints accept exactly CODE_LENGTH characters.
  */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 8;
 
 /** UNIQUE-violation collision retries before giving up. */
 const MAX_CODE_ATTEMPTS = 5;
@@ -77,7 +76,8 @@ exports.getActiveForCampaign = async (campaignId) => {
  * @throws {Error} After MAX_CODE_ATTEMPTS consecutive UNIQUE violations
  */
 exports.create = async ({ createdBy, campaignId, expiresAt }) => {
-  for (let attempt = 1; attempt <= MAX_CODE_ATTEMPTS; attempt++) {
+  // Every iteration returns or throws, so the loop needs no trailing throw
+  for (let attempt = 1; ; attempt++) {
     const code = generateCode();
     try {
       const result = await dbUtils.executeQuery(
@@ -89,24 +89,22 @@ exports.create = async ({ createdBy, campaignId, expiresAt }) => {
       return result.rows[0];
     } catch (error) {
       // 23505 = unique_violation (duplicate code); anything else is fatal
-      if (error.code === '23505' && attempt < MAX_CODE_ATTEMPTS) {
-        logger.warn(`Invite code collision on attempt ${attempt}/${MAX_CODE_ATTEMPTS}; retrying`, {
-          campaignId,
-          createdBy,
-        });
-        continue;
+      if (error.code !== '23505') {
+        throw error;
       }
-      if (error.code === '23505') {
+      if (attempt === MAX_CODE_ATTEMPTS) {
         logger.error(`Failed to generate a unique invite code after ${MAX_CODE_ATTEMPTS} attempts — check the invites table for anomalies`, {
           campaignId,
           createdBy,
         });
+        throw error;
       }
-      throw error;
+      logger.warn(`Invite code collision on attempt ${attempt}/${MAX_CODE_ATTEMPTS}; retrying`, {
+        campaignId,
+        createdBy,
+      });
     }
   }
-  // Unreachable (the loop either returns or throws), kept for safety
-  throw new Error('Failed to generate a unique invite code');
 };
 
 /**
@@ -116,7 +114,7 @@ exports.create = async ({ createdBy, campaignId, expiresAt }) => {
  * IMPORTANT: invites are campaign-scoped under RLS. Callers on
  * unauthenticated paths (registration) must wrap this in
  * campaignContext.runWithCampaign('all', ...) or a cross-campaign invite
- * will be invisible (the GUC defaults to campaign '1').
+ * will be invisible (with no context the GUC is empty and matches no rows).
  *
  * @param {string} code - Invite code as entered by the registrant
  * @return {Promise<Object|null>} The invite row or null
@@ -168,10 +166,8 @@ exports.redeem = async ({ inviteId, campaignId, userId }) => {
       [userId, campaignId]
     );
 
-    // Mark the invite used (single-use). The is_used = FALSE guard closes the
-    // race where two redemptions validated the same code concurrently: the
-    // loser updates zero rows and the whole transaction (including the
-    // membership INSERT) rolls back.
+    // Mark the invite used (single-use); the is_used = FALSE guard is the
+    // concurrent-redemption race guard described above.
     const inviteUpdate = await client.query(
       `UPDATE invites
        SET is_used = TRUE, used_by = $1, used_at = NOW()
@@ -188,16 +184,17 @@ exports.redeem = async ({ inviteId, campaignId, userId }) => {
 };
 
 /**
- * Deactivate (mark used) an invite belonging to a specific campaign.
+ * Deactivate (mark used) an unused invite belonging to a specific campaign.
  *
  * The DM's own user id is stored in used_by (integer column) to record who
  * deactivated it. The campaign_id predicate guarantees a DM can only
- * deactivate invites of the campaign they are acting in.
+ * deactivate invites of the campaign they are acting in, and the is_used
+ * guard keeps the record of who redeemed an already-used invite intact.
  *
  * @param {number} inviteId - Invite id to deactivate
  * @param {number} campaignId - Campaign the invite must belong to
  * @param {number} deactivatedBy - User id of the DM deactivating it
- * @return {Promise<Object|null>} The updated row, or null if not found / not in this campaign
+ * @return {Promise<Object|null>} The updated row, or null if not found / not in this campaign / already used
  */
 exports.deactivate = async (inviteId, campaignId, deactivatedBy) => {
   const result = await dbUtils.executeQuery(
@@ -205,10 +202,9 @@ exports.deactivate = async (inviteId, campaignId, deactivatedBy) => {
      SET is_used = TRUE, used_by = $1, used_at = NOW()
      WHERE id = $2
        AND campaign_id = $3
+       AND is_used = FALSE
      RETURNING id, code, is_used`,
     [deactivatedBy, inviteId, campaignId]
   );
   return result.rows.length > 0 ? result.rows[0] : null;
 };
-
-module.exports = exports;

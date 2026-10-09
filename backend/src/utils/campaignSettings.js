@@ -50,6 +50,9 @@ const PER_CAMPAIGN_SETTINGS = [
   'discord_integration_enabled',
   'discord_channel_id',
   'campaign_role_id',
+  'default_quantity_enabled',
+  'default_browser_quantity',
+  'auto_split_stacks_enabled',
 ];
 
 /**
@@ -72,6 +75,11 @@ const resolveCampaignId = (campaignId) => {
   }
 
   const contextId = campaignContext.getCampaignId();
+  if (contextId === '') {
+    throw new Error(
+      'No campaign context active: pass an explicit campaignId or run inside runWithCampaign'
+    );
+  }
   if (contextId === 'all') {
     throw new Error(
       "Cannot resolve a campaign setting in cross-campaign ('all') context: " +

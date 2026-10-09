@@ -1,24 +1,43 @@
 import {createTheme} from '@mui/material/styles';
 
+// Repeated design tokens, declared once.
+const PRIMARY_MAIN = '#5c8db8';
+const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.7)';
+const DIVIDER_COLOR = 'rgba(255, 255, 255, 0.12)';
+const SHADOW_RAISED =
+  '0px 2px 4px -1px rgba(0,0,0,0.1), 0px 4px 5px 0px rgba(0,0,0,0.07), 0px 1px 10px 0px rgba(0,0,0,0.06)';
+
+// Thin dark scrollbar shared by the page body and the sidebar drawer
+const scrollbarStyles = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: '#888 #343434',
+  msOverflowStyle: 'none',
+  '&::-webkit-scrollbar': {
+    width: '8px',
+    height: '8px',
+  },
+  '&::-webkit-scrollbar-track': {
+    background: '#343434',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    background: '#888',
+    borderRadius: '4px',
+  },
+  '&::-webkit-scrollbar-thumb:hover': {
+    background: '#555',
+  },
+};
+
 /**
- * Comprehensive consolidated theme for the Pathfinder Loot Tracker application.
- * This theme incorporates styling from:
- * - theme.js
- * - buttonOverrides.css
- * - globalStyles.css
- * - index.css
- * - Sidebar.css
- * - MainLayout.css
- *
- * The raw options object is also exported so the per-campaign theme factory
- * (utils/campaignTheme.ts) can merge campaign overrides into the same base
- * design tokens instead of duplicating them.
+ * The application theme. The raw options object is also exported so the
+ * per-campaign theme factory (utils/campaignTheme.ts) can merge campaign
+ * overrides into the same base design tokens instead of duplicating them.
  */
 export const themeOptions = {
   palette: {
     mode: 'dark',
     primary: {
-      main: '#5c8db8', // Muted blue
+      main: PRIMARY_MAIN, // Muted blue
       light: '#829ebd',
       dark: '#3a6991',
       contrastText: '#121212',
@@ -53,18 +72,18 @@ export const themeOptions = {
       default: '#121212',
       paper: '#1e1e1e',
     },
-    divider: 'rgba(255, 255, 255, 0.12)',
+    divider: DIVIDER_COLOR,
     text: {
       primary: '#ffffff',
-      secondary: 'rgba(255, 255, 255, 0.7)',
+      secondary: TEXT_SECONDARY,
       disabled: 'rgba(255, 255, 255, 0.5)',
     },
     action: {
       hover: 'rgba(144, 202, 249, 0.08)',
       selected: 'rgba(144, 202, 249, 0.16)',
-      active: 'rgba(255, 255, 255, 0.7)',
+      active: TEXT_SECONDARY,
       disabled: 'rgba(255, 255, 255, 0.3)',
-      disabledBackground: 'rgba(255, 255, 255, 0.12)',
+      disabledBackground: DIVIDER_COLOR,
     },
   },
   typography: {
@@ -107,14 +126,14 @@ export const themeOptions = {
       fontWeight: 500,
     },
     subtitle2: {
-      color: 'rgba(255, 255, 255, 0.7)',
+      color: TEXT_SECONDARY,
     },
     body1: {
       fontSize: '0.9rem',
     },
     body2: {
       fontSize: '0.85rem',
-      color: 'rgba(255, 255, 255, 0.7)',
+      color: TEXT_SECONDARY,
     },
     button: {
       textTransform: 'none',
@@ -142,24 +161,7 @@ export const themeOptions = {
           width: '100%',
           height: '100%',
           padding: 0,
-          // Global scrollbar styles from globalStyles.css
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#888 #343434',
-          msOverflowStyle: 'none',
-          '&::-webkit-scrollbar': {
-            width: '8px',
-            height: '8px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: '#343434',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: '#888',
-            borderRadius: '4px',
-          },
-          '&::-webkit-scrollbar-thumb:hover': {
-            background: '#555',
-          },
+          ...scrollbarStyles,
         },
         code: {
           fontFamily: 'source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace',
@@ -209,7 +211,7 @@ export const themeOptions = {
           },
         },
         containedPrimary: {
-          backgroundColor: '#5c8db8 !important',
+          backgroundColor: PRIMARY_MAIN + ' !important',
           color: '#121212 !important',
           '&:hover': {
             backgroundColor: '#7ba7d1 !important',
@@ -222,14 +224,6 @@ export const themeOptions = {
             backgroundColor: '#d493b2 !important',
           },
         },
-        outlinedPrimary: {
-          borderColor: 'rgba(144, 202, 249, 0.5) !important',
-          color: 'rgba(255, 255, 255, 0.7) !important',
-          '&:hover': {
-            backgroundColor: 'rgba(144, 202, 249, 0.08) !important',
-            borderColor: 'rgba(144, 202, 249, 0.7) !important',
-          },
-        },
         outlinedSecondary: {
           borderColor: 'rgba(244, 143, 177, 0.5) !important',
           color: 'rgba(255, 255, 255, 0.7) !important',
@@ -239,7 +233,7 @@ export const themeOptions = {
           },
         },
         text: {
-          color: 'rgba(255, 255, 255, 0.7)',
+          color: TEXT_SECONDARY,
           '&:hover': {
             backgroundColor: 'rgba(255, 255, 255, 0.05)',
           },
@@ -249,44 +243,21 @@ export const themeOptions = {
         disableElevation: true,
       },
     },
-    // Drawer and Sidebar styles from Sidebar.css
+    // The sidebar sets its own width via sx; this is the shared chrome
     MuiDrawer: {
       styleOverrides: {
         paper: {
           backgroundColor: '#1e1e1e',
-          borderRight: '1px solid rgba(255, 255, 255, 0.12)',
-          width: (props) => props.isCollapsed ? '64px' : '240px',
+          borderRight: '1px solid ' + DIVIDER_COLOR,
           transition: 'width 0.2s',
           overflow: 'hidden',
-          // Sidebar scrollbar styles
-          '&::-webkit-scrollbar': {
-            width: '8px',
-            height: '8px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: '#343434',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: '#888',
-            borderRadius: '4px',
-          },
-          '&::-webkit-scrollbar-thumb:hover': {
-            background: '#555',
-          },
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#888 #343434',
-          msOverflowStyle: 'none',
+          ...scrollbarStyles,
         },
       },
     },
-    // ListItem styles for sidebar from Sidebar.css
     MuiListItem: {
       styleOverrides: {
         root: {
-          '&.Mui-selected': {
-            backgroundColor: '#d3d3d3',
-            borderLeft: '5px solid #3f51b5',
-          },
           paddingLeft: '16px !important',
         },
       },
@@ -298,34 +269,11 @@ export const themeOptions = {
         },
       },
     },
-    // Main layout styles from MainLayout.css
-    MuiBox: {
-      variants: [
-        {
-          props: { className: 'main-layout' },
-          style: {
-            display: 'flex',
-            minHeight: '100vh',
-          },
-        },
-        {
-          props: { className: 'main-content' },
-          style: {
-            flexGrow: 1,
-            padding: '20px',
-            marginLeft: 0,
-            width: 'calc(100% - 240px)',
-            boxSizing: 'border-box',
-            overflowX: 'auto',
-          },
-        },
-      ],
-    },
     // Other component styles
     MuiIconButton: {
       styleOverrides: {
         root: {
-          color: 'rgba(255, 255, 255, 0.7)',
+          color: TEXT_SECONDARY,
           '&:hover': {
             backgroundColor: 'rgba(255, 255, 255, 0.05)',
           },
@@ -336,7 +284,7 @@ export const themeOptions = {
       styleOverrides: {
         root: {
           backgroundImage: 'none',
-          boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.1), 0px 4px 5px 0px rgba(0,0,0,0.07), 0px 1px 10px 0px rgba(0,0,0,0.06)',
+          boxShadow: SHADOW_RAISED,
           borderRadius: 8,
         },
         elevation1: {
@@ -346,14 +294,14 @@ export const themeOptions = {
           boxShadow: '0px 1px 5px 0px rgba(0,0,0,0.12)',
         },
         elevation3: {
-          boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.1), 0px 4px 5px 0px rgba(0,0,0,0.07), 0px 1px 10px 0px rgba(0,0,0,0.06)',
+          boxShadow: SHADOW_RAISED,
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.1), 0px 4px 5px 0px rgba(0,0,0,0.07), 0px 1px 10px 0px rgba(0,0,0,0.06)',
+          boxShadow: SHADOW_RAISED,
           borderRadius: 8,
           transition: 'box-shadow 0.3s',
           '&:hover': {
@@ -435,7 +383,7 @@ export const themeOptions = {
               borderColor: 'rgba(255, 255, 255, 0.5)',
             },
             '&.Mui-focused fieldset': {
-              borderColor: '#5c8db8',
+              borderColor: PRIMARY_MAIN,
             },
           },
         },
@@ -601,14 +549,14 @@ export const themeOptions = {
     MuiDivider: {
       styleOverrides: {
         root: {
-          backgroundColor: 'rgba(255, 255, 255, 0.12)',
+          backgroundColor: DIVIDER_COLOR,
         },
       },
     },
     MuiAvatar: {
       styleOverrides: {
         root: {
-          backgroundColor: '#5c8db8',
+          backgroundColor: PRIMARY_MAIN,
         },
       },
     },

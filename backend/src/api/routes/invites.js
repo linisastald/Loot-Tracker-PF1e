@@ -21,6 +21,6 @@ router.post('/deactivate', verifyToken, checkRole('DM'), inviteController.deacti
 // campaign by code (verifyToken only — no checkRole). The invite's own
 // campaign_id determines which campaign is joined, not the requester's
 // current campaign context.
-router.post('/redeem', verifyToken, inviteController.redeemInvite);
+router.post('/redeem', verifyToken.allowNoCampaign, inviteController.redeemInvite);
 
 module.exports = router;

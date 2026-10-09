@@ -1,21 +1,10 @@
 import api from './api';
 import lootService from '../services/lootService';
+import { isWandEntryName } from './itemOptions';
 
-export const fetchInitialData = async (
-  setItemOptions,
-  setActiveCharacterId
-) => {
+export const fetchInitialData = async (setItemOptions) => {
   try {
-    const [itemNames, characterResponse] = await Promise.all([
-      fetchItemNames(),
-      api.get('/user/active-characters'),
-    ]);
-
-    setItemOptions(itemNames);
-
-    if (characterResponse.data.length > 0) {
-      setActiveCharacterId(characterResponse.data[0].id);
-    }
+    setItemOptions(await fetchItemNames());
   } catch (error) {
     console.error('Error fetching initial data:', error);
   }
@@ -24,10 +13,7 @@ export const fetchInitialData = async (
 export const fetchItemNames = async (query = '') => {
   try {
     // Use suggestItems to get base items from the item table, not loot instances
-    const params = query.trim()
-      ? { query: query.trim(), limit: 50 }
-      : { query: '', limit: 50 };
-    const response = await lootService.suggestItems(params);
+    const response = await lootService.suggestItems({ query: query.trim(), limit: 50 });
 
     // API returns { suggestions: [...], count: number }
     const items = (response.data.suggestions || []).map(item => ({
@@ -46,38 +32,49 @@ export const fetchItemNames = async (query = '') => {
   }
 };
 
+// Gold amount as a non-negative number; blank, zero or non-numeric = null. The backend derives
+// the sign from the transaction type (Withdrawal/Purchase/etc. are negated server-side via
+// -Math.abs) and its validation rejects negative inputs, so never send one.
+const toAmount = (value) => {
+  const parsed = Math.abs(parseFloat(value));
+  return Number.isNaN(parsed) || parsed === 0 ? null : parsed;
+};
+
+// Owner decision (2026-10-06): a wand is entered with 1 to 50 whole charges (blank = not set).
+export const MIN_WAND_ENTRY_CHARGES = 1;
+export const MAX_WAND_ENTRY_CHARGES = 50;
+export const WAND_CHARGES_ERROR = 'Wand charges must be a whole number from 1 to 50';
+
+export const isValidEntryCharges = (charges) => {
+  if (charges === undefined || charges === null || String(charges).trim() === '') return true;
+  const text = String(charges).trim();
+  if (!/^[0-9]+$/.test(text)) return false;
+  const value = Number(text);
+  return value >= MIN_WAND_ENTRY_CHARGES && value <= MAX_WAND_ENTRY_CHARGES;
+};
+
+const entryErrorFor = (entry) => {
+  if (entry.type === 'item') {
+    if (!entry.data.name || entry.data.name.trim() === '') return 'Item name is required';
+    if (!entry.data.quantity || entry.data.quantity <= 0) return 'Quantity must be greater than 0';
+    if (isWandEntryName(entry.data.name) && !isValidEntryCharges(entry.data.charges)) return WAND_CHARGES_ERROR;
+  } else if (entry.type === 'gold') {
+    if (!entry.data.transactionType) return 'Transaction type is required';
+    const { platinum, gold, silver, copper } = entry.data;
+    if (![platinum, gold, silver, copper].some((amount) => toAmount(amount) !== null)) {
+      return 'At least one currency amount is required';
+    }
+  }
+  return null;
+};
+
 export const validateLootEntries = entries => {
   const validEntries = [];
   const invalidEntries = [];
 
   entries.forEach(entry => {
-    let isValid = true;
-    let entryError = null;
-
-    if (entry.type === 'item') {
-      if (!entry.data.name || entry.data.name.trim() === '') {
-        isValid = false;
-        entryError = 'Item name is required';
-      } else if (!entry.data.quantity || entry.data.quantity <= 0) {
-        isValid = false;
-        entryError = 'Quantity must be greater than 0';
-      }
-    } else if (entry.type === 'gold') {
-      if (!entry.data.transactionType) {
-        isValid = false;
-        entryError = 'Transaction type is required';
-      } else if (
-        !entry.data.platinum &&
-        !entry.data.gold &&
-        !entry.data.silver &&
-        !entry.data.copper
-      ) {
-        isValid = false;
-        entryError = 'At least one currency amount is required';
-      }
-    }
-
-    if (isValid) {
+    const entryError = entryErrorFor(entry);
+    if (entryError === null) {
       validEntries.push(entry);
     } else {
       invalidEntries.push({ ...entry, error: entryError });
@@ -87,25 +84,15 @@ export const validateLootEntries = entries => {
   return { validEntries, invalidEntries };
 };
 
-export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
+export const prepareEntryForSubmission = async (entry) => {
   let data = { ...entry.data };
 
   if (entry.type === 'gold') {
-    // Send non-negative amounts: the backend derives the sign from the
-    // transaction type (Withdrawal/Purchase/etc. are negated server-side via
-    // -Math.abs), and its validation rejects negative inputs. Negating here
-    // as well used to be harmless double-negation until input validation was
-    // added; now it 400s ("must be at least 0").
-    const toAmount = (value) => {
-      const parsed = Math.abs(parseFloat(value));
-      return Number.isNaN(parsed) || parsed === 0 ? null : parsed;
-    };
-
     // Character attribution is authoritative on the server: a player's gold
     // entry is always tied to their own active character (the backend ignores
     // whatever we send), so we only forward a character_id when a DM has
-    // explicitly chosen one. "None" must stay unattributed, so there is
-    // intentionally no fallback to activeCharacterId here.
+    // explicitly chosen one. "None" must stay unattributed, so there is no
+    // fallback to the user's own character here.
     const goldData = {
       ...data,
       platinum: toAmount(data.platinum),
@@ -131,7 +118,7 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
       type: data.type ? data.type.toLowerCase() : null,
       size: data.size || null,
       masterwork: data.masterwork || null,
-      charges: data.charges || null,
+      charges: isWandEntryName(data.name) ? data.charges || null : null,
       session_date: data.sessionDate || new Date().toISOString(),
     };
 

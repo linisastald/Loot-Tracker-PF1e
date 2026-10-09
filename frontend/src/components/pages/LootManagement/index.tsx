@@ -1,6 +1,6 @@
-// frontend/src/components/pages/LootManagement/index.js
-import React, {useState} from 'react';
-import {Box, Container, Paper, Tab, Tabs, Typography} from '@mui/material';
+// frontend/src/components/pages/LootManagement/index.tsx
+import React from 'react';
+import {Box, Container, Paper, Tab, Tabs} from '@mui/material';
 import {Route, Routes, useLocation, useNavigate} from 'react-router-dom';
 
 import UnprocessedLoot from './UnprocessedLoot';
@@ -9,63 +9,43 @@ import KeptCharacter from './KeptCharacter';
 import SoldLoot from './SoldLoot';
 import GivenAwayOrTrashed from './GivenAwayOrTrashed';
 
+// One table drives the tab labels, the navigation targets, the routes and the
+// active tab, so they cannot drift apart.
+const TABS = [
+    {label: 'Unprocessed', path: 'unprocessed', element: <UnprocessedLoot/>},
+    {label: 'Party Loot', path: 'kept-party', element: <KeptParty/>},
+    {label: 'Character Loot', path: 'kept-character', element: <KeptCharacter/>},
+    {label: 'Sold', path: 'sold', element: <SoldLoot/>},
+    {label: 'Trashed', path: 'trashed', element: <GivenAwayOrTrashed/>},
+];
+
 const LootManagement = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState(() => {
-        // Determine active tab based on current path
-        const path = location.pathname;
-        if (path.includes('/kept-party')) return 1;
-        if (path.includes('/kept-character')) return 2;
-        if (path.includes('/sold-loot')) return 3;
-        if (path.includes('/given-away-or-trashed')) return 4;
-        return 0; // Default to unprocessed
-    });
 
-    const handleTabChange = (event, newValue) => {
-        setActiveTab(newValue);
-        switch (newValue) {
-            case 0:
-                navigate('/loot-management/unprocessed');
-                break;
-            case 1:
-                navigate('/loot-management/kept-party');
-                break;
-            case 2:
-                navigate('/loot-management/kept-character');
-                break;
-            case 3:
-                navigate('/loot-management/sold');
-                break;
-            case 4:
-                navigate('/loot-management/trashed');
-                break;
-            default:
-                navigate('/loot-management/unprocessed');
-        }
-    };
+    // Derived from the URL on every render, so a direct load, a refresh and the
+    // browser back/forward buttons all highlight the right tab.
+    const segment = location.pathname.split('/').filter(Boolean)[1];
+    const activeIndex = TABS.findIndex(tab => tab.path === segment);
+    const activeTab = activeIndex === -1 ? 0 : activeIndex; // default to unprocessed
 
     return (
         <Container maxWidth={false} component="main">
             <Paper sx={{p: 2, mb: 2}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
-                    <Tabs value={activeTab} onChange={handleTabChange} aria-label="loot management tabs">
-                        <Tab label="Unprocessed"/>
-                        <Tab label="Party Loot"/>
-                        <Tab label="Character Loot"/>
-                        <Tab label="Sold"/>
-                        <Tab label="Trashed"/>
+                    <Tabs
+                        value={activeTab}
+                        onChange={(_event, newValue: number) => navigate(`/loot-management/${TABS[newValue].path}`)}
+                        aria-label="loot management tabs"
+                    >
+                        {TABS.map(tab => <Tab key={tab.path} label={tab.label}/>)}
                     </Tabs>
                 </Box>
             </Paper>
 
             <Routes>
                 <Route path="/" element={<UnprocessedLoot/>}/>
-                <Route path="/unprocessed" element={<UnprocessedLoot/>}/>
-                <Route path="/kept-party" element={<KeptParty/>}/>
-                <Route path="/kept-character" element={<KeptCharacter/>}/>
-                <Route path="/sold" element={<SoldLoot/>}/>
-                <Route path="/trashed" element={<GivenAwayOrTrashed/>}/>
+                {TABS.map(tab => <Route key={tab.path} path={`/${tab.path}`} element={tab.element}/>)}
             </Routes>
         </Container>
     );

@@ -40,8 +40,8 @@ describe('campaignSettings', () => {
       expect(() => campaignSettings.resolveCampaignId('')).toThrow('Invalid campaign id');
     });
 
-    it('should fall back to the default campaign when no context is active', () => {
-      expect(campaignSettings.resolveCampaignId()).toBe('1');
+    it('should THROW (fail closed) when no context is active and no id is given', () => {
+      expect(() => campaignSettings.resolveCampaignId()).toThrow(/No campaign context/);
     });
 
     it('should resolve from the active campaign context', () => {
@@ -303,10 +303,13 @@ describe('campaignSettings', () => {
     it('should contain exactly the pinned per-campaign names', () => {
       expect([...campaignSettings.PER_CAMPAIGN_SETTINGS].sort()).toEqual([
         'auto_appraisal_enabled',
+        'auto_split_stacks_enabled',
         'auto_task_generation',
         'average_party_level',
         'campaign_role_id',
         'campaign_timezone',
+        'default_browser_quantity',
+        'default_quantity_enabled',
         'discord_channel_id',
         'discord_integration_enabled',
         'harrow_current_chapter',

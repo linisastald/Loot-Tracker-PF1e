@@ -1,10 +1,14 @@
 /**
  * Unit tests for itemSearchController
- * Tests item availability checks, search CRUD operations
+ * Tests item availability checks and the search history listing
  */
 
 jest.mock('../../models/ItemSearch');
 jest.mock('../../models/City');
+jest.mock('../../utils/timezoneUtils', () => ({
+  ...jest.requireActual('../../utils/timezoneUtils'),
+  getCampaignTimezone: jest.fn().mockResolvedValue('America/New_York'),
+}));
 jest.mock('../../utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
@@ -99,7 +103,7 @@ describe('itemSearchController', () => {
       // Item lookup
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] }) // golarion date
-        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15' }] }); // item query
+        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15', type: 'weapon' }] }); // item query
 
       ItemSearch.calculateAvailability.mockReturnValue({
         threshold: 95,
@@ -112,7 +116,7 @@ describe('itemSearchController', () => {
       await itemSearchController.checkItemAvailability(req, res);
 
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        'SELECT name, value, casterlevel FROM item WHERE id = $1',
+        'SELECT name, value, casterlevel, type, subtype, weight FROM item WHERE id = $1',
         [5]
       );
       expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(15, 1000);
@@ -125,6 +129,74 @@ describe('itemSearchController', () => {
         }),
         expect.any(String)
       );
+    });
+
+    it('F-0371 follow-up: checks a wand at full (50) charges, not the per-charge catalog value', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 7 } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Wand of Cure Light Wounds', value: '15', type: 'magic', subtype: 'wand', casterlevel: 1, weight: 1 }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(750, 1000);
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ item_value: 750 }));
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ item_name: 'Wand of Cure Light Wounds', item_value: 750 }),
+        expect.any(String)
+      );
+    });
+
+    it('F-0371 follow-up: wand detection is case-insensitive on the "wand of" prefix', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 7 } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'WAND OF Magic Missile (1st)', value: '15', type: 'magic', subtype: 'wand', casterlevel: 1, weight: 1 }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(750, 1000);
+    });
+
+    it('F-0371 follow-up: a non-wand magic item is not multiplied', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 8 } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Rod of Wonder', value: '15', type: 'magic', subtype: 'rod', casterlevel: 1, weight: 1 }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(15, 1000);
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ item_value: 15 }));
+    });
+
+    it('F-0371 follow-up: a wand with a mod applies the mod to the full-wand price', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 7, mod_ids: [20] } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Wand of Cure Light Wounds', value: '15', type: 'magic', subtype: 'wand', casterlevel: 1, weight: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Doubled', valuecalc: '*2', plus: null, target: 'all' }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      // 15 per charge * 50 charges = 750, then *2
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(1500, 1000);
     });
 
     it('should return not found when item_id does not exist', async () => {
@@ -142,7 +214,7 @@ describe('itemSearchController', () => {
       expect(res.notFound).toHaveBeenCalledWith('Item not found');
     });
 
-    it('should add mod values with PLUS-based enhancement costs (weapon)', async () => {
+    it('F-0371: prices enhancement mods that only set `plus` (valuecalc NULL), as in mod_data.sql', async () => {
       const req = createMockReq({
         body: { ...baseBody, item_id: 5, mod_ids: [10, 11] },
       });
@@ -150,16 +222,16 @@ describe('itemSearchController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
-        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15' }] }) // base item
+        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15', type: 'weapon', subtype: 'martial', casterlevel: null, weight: 4 }] }) // base item
         .mockResolvedValueOnce({
           rows: [
-            { name: '+1 Enhancement', valuecalc: 'PLUS', plus: 1, target: 'weapon' },
-            { name: 'Flaming', valuecalc: 'PLUS', plus: 2, target: 'weapon' },
+            { name: '+1', valuecalc: null, plus: 1, target: 'weapon' },
+            { name: 'Flaming', valuecalc: null, plus: 1, target: 'weapon' },
           ],
         }); // mods
 
-      // +1 weapon: 1*1*2000 = 2000, +2 weapon: 2*2*2000 = 8000, base = 15
-      // total = 15 + 2000 + 8000 = 10015
+      // +1 and Flaming = +2 total: 8000 (weapon plus table) + 300 masterwork + 15 base
+      // total = 8315 (same figure the loot pricing path produces)
       ItemSearch.calculateAvailability.mockReturnValue({
         threshold: 0,
         percentage: 0,
@@ -169,12 +241,12 @@ describe('itemSearchController', () => {
 
       await itemSearchController.checkItemAvailability(req, res);
 
-      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(10015, 1000);
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(8315, 1000);
       // too_expensive returns early without creating a search record
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({
           too_expensive: true,
-          item_value: 10015,
+          item_value: 8315,
         }),
         expect.any(String)
       );
@@ -188,14 +260,14 @@ describe('itemSearchController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
-        .mockResolvedValueOnce({ rows: [{ name: 'Chain Shirt', value: '100' }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Chain Shirt', value: '100', type: 'armor' }] })
         .mockResolvedValueOnce({
           rows: [
-            { name: '+1 Enhancement', valuecalc: 'PLUS', plus: 1, target: 'armor' },
+            { name: '+1', valuecalc: null, plus: 1, target: 'armor' },
           ],
         });
 
-      // +1 armor: 1*1*1000 = 1000, base = 100, total = 1100
+      // +1 armor: 1000 (armor plus table) + 150 masterwork + 100 base = 1250
       ItemSearch.calculateAvailability.mockReturnValue({
         threshold: 40,
         percentage: 40,
@@ -206,7 +278,7 @@ describe('itemSearchController', () => {
 
       await itemSearchController.checkItemAvailability(req, res);
 
-      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(1100, 1000);
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(1250, 1000);
     });
 
     it('should add flat numeric mod values', async () => {
@@ -217,10 +289,10 @@ describe('itemSearchController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
-        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15' }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15', type: 'weapon' }] })
         .mockResolvedValueOnce({
           rows: [
-            { name: 'Keen', valuecalc: '8000', plus: null, target: 'weapon' },
+            { name: 'Keen', valuecalc: '+8000', plus: null, target: 'weapon' },
           ],
         });
 
@@ -235,6 +307,34 @@ describe('itemSearchController', () => {
       await itemSearchController.checkItemAvailability(req, res);
 
       expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(8015, 1000);
+    });
+
+    it('F-0371: applies multiplier valuecalcs and derives caster level from mod.plus', async () => {
+      const req = createMockReq({
+        body: { ...baseBody, item_id: 5, mod_ids: [10, 11] },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Cloak', value: '100', type: 'wondrous', casterlevel: 3 }] })
+        .mockResolvedValueOnce({
+          rows: [
+            { name: 'Doubled', valuecalc: '*2', plus: null, target: null },
+            { name: '+2 thing', valuecalc: null, plus: 2, target: null },
+          ],
+        });
+
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 40, percentage: 40, description: '40%', reason: 'available',
+      });
+      ItemSearch.create.mockResolvedValue({ id: 3 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      // 100 * 2 = 200; non-weapon/armor adds no plus-table cost
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(200, 1000);
+      expect(ItemSearch.calculateCasterLevelPenalty).toHaveBeenCalledWith(6, 5); // max(3, 2*3)
     });
 
     it('should return too_expensive without creating search record', async () => {
@@ -339,7 +439,7 @@ describe('itemSearchController', () => {
 
     it('should pass filter options correctly', async () => {
       const req = createMockReq({
-        query: { city_id: '1', character_id: '5', found: 'true', limit: '10', date: '4712-03-15' },
+        query: { city_id: '1', character_id: '5', found: 'true', limit: '10', date: '2026-03-15' },
       });
       const res = createMockRes();
 
@@ -352,8 +452,17 @@ describe('itemSearchController', () => {
         character_id: 5,
         found: true,
         limit: 10,
-        date: '4712-03-15',
+        dateRange: { start: '2026-03-15T04:00:00.000Z', end: '2026-03-16T04:00:00.000Z' },
       });
+    });
+
+    it('rejects a malformed date with a validation error', async () => {
+      const res = createMockRes();
+
+      await itemSearchController.getAllSearches(createMockReq({ query: { date: 'yesterday' } }), res);
+
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(ItemSearch.getAll).not.toHaveBeenCalled();
     });
 
     it('should parse found=false correctly', async () => {
@@ -369,60 +478,156 @@ describe('itemSearchController', () => {
   });
 
   // -------------------------------------------------------------------
-  // getSearchById
+  // d100 roll and found/not-found outcome (F-0189)
   // -------------------------------------------------------------------
-  describe('getSearchById', () => {
-    it('should return a search record when found', async () => {
-      const mockSearch = { id: 1, item_value: 500, found: true };
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
+  describe('checkItemAvailability roll', () => {
+    const baseBody = { city_name: 'Sandpoint', city_size: 'Small Town' };
+    let randomSpy;
 
-      ItemSearch.findById.mockResolvedValue(mockSearch);
-
-      await itemSearchController.getSearchById(req, res);
-
-      expect(ItemSearch.findById).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(mockSearch, 'Search retrieved');
+    beforeEach(() => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      City.getOrCreate.mockResolvedValue(mockCity);
+      City.getEffectiveCasterLevel.mockReturnValue(5);
+      ItemSearch.calculateCasterLevelPenalty.mockReturnValue(0);
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 40, percentage: 40, description: '40%', reason: 'available',
+      });
+      ItemSearch.create.mockImplementation(async (data) => ({ id: 1, ...data }));
     });
 
-    it('should return 404 when search not found', async () => {
-      const req = createMockReq({ params: { id: '999' } });
+    afterEach(() => {
+      if (randomSpy) randomSpy.mockRestore();
+    });
+
+    // Math.random() = (roll - 1) / 100 gives a d100 of exactly "roll"
+    const rollOf = (roll) => { randomSpy = jest.spyOn(Math, 'random').mockReturnValue((roll - 1) / 100); };
+
+    it('finds the item when the roll equals the threshold', async () => {
+      rollOf(40);
       const res = createMockRes();
 
-      ItemSearch.findById.mockResolvedValue(null);
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
 
-      await itemSearchController.getSearchById(req, res);
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ found: true, roll_result: 40 }),
+        'Item found!'
+      );
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({
+        found: true, roll_result: 40, availability_threshold: 40,
+      }));
+    });
 
-      expect(res.notFound).toHaveBeenCalledWith('Search record not found');
+    it('does not find the item when the roll is one above the threshold', async () => {
+      rollOf(41);
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ found: false, roll_result: 41 }),
+        'Item not found'
+      );
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ found: false, roll_result: 41 }));
+    });
+
+    it('rolls 1 as found and 100 as not found for a 40% threshold', async () => {
+      rollOf(1);
+      let res = createMockRes();
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
+      expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ found: true, roll_result: 1 }), 'Item found!');
+
+      randomSpy.mockRestore();
+      rollOf(100);
+      res = createMockRes();
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
+      expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ found: false, roll_result: 100 }), 'Item not found');
     });
   });
 
   // -------------------------------------------------------------------
-  // deleteSearch
+  // Input validation (F-0370)
   // -------------------------------------------------------------------
-  describe('deleteSearch', () => {
-    it('should delete a search record successfully', async () => {
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
+  describe('checkItemAvailability input validation', () => {
+    const baseBody = { city_name: 'Sandpoint', city_size: 'Small Town' };
 
-      ItemSearch.findById.mockResolvedValue({ id: 1 });
-      ItemSearch.delete.mockResolvedValue(true);
-
-      await itemSearchController.deleteSearch(req, res);
-
-      expect(ItemSearch.delete).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(null, 'Search record deleted successfully');
+    beforeEach(() => {
+      dbUtils.executeQuery.mockReset();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      City.getOrCreate.mockResolvedValue(mockCity);
+      City.getEffectiveCasterLevel.mockReturnValue(5);
+      ItemSearch.calculateCasterLevelPenalty.mockReturnValue(0);
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 40, percentage: 40, description: '40%', reason: 'available',
+      });
+      ItemSearch.create.mockImplementation(async (data) => ({ id: 1, ...data }));
     });
 
-    it('should return 404 when deleting non-existent search', async () => {
-      const req = createMockReq({ params: { id: '999' } });
+    it.each([
+      ['a non-numeric item_id', { item_id: 'abc' }],
+      ['a non-array mod_ids', { mod_ids: '1,2' }],
+      ['a non-numeric mod id', { mod_ids: [1, 'x'] }],
+      ['a non-string city_name', { city_name: { $ne: 1 } }],
+    ])('rejects %s with a validation error', async (_label, body) => {
       const res = createMockRes();
 
-      ItemSearch.findById.mockResolvedValue(null);
+      await itemSearchController.checkItemAvailability(createMockReq({ body: { ...baseBody, ...body } }), res);
 
-      await itemSearchController.deleteSearch(req, res);
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(City.getOrCreate).not.toHaveBeenCalled();
+      expect(ItemSearch.create).not.toHaveBeenCalled();
+    });
 
-      expect(res.notFound).toHaveBeenCalledWith('Search record not found');
+    it('rejects a character that is not in the current campaign', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, body: { ...baseBody, character_id: 777 },
+      }), res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(expect.stringContaining('FROM characters'), [777, 3]);
+      expect(res.validationError).toHaveBeenCalledWith('Character not found in the current campaign');
+      expect(ItemSearch.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects another player's character for a player", async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 5, user_id: 99 }] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, campaignRole: 'Player', body: { ...baseBody, character_id: 5 },
+      }), res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+      expect(ItemSearch.create).not.toHaveBeenCalled();
+    });
+
+    it('records the search for the caller\'s own character', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 5, user_id: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, campaignRole: 'Player', body: { ...baseBody, character_id: '5' },
+      }), res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ character_id: 5 }));
+    });
+
+    it('lets a DM search as any character of the campaign', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 5, user_id: 99 }] })
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, campaignRole: 'DM', body: { ...baseBody, character_id: 5 },
+      }), res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ character_id: 5 }));
     });
   });
 });

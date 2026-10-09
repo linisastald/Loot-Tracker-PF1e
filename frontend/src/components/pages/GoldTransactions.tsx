@@ -1,14 +1,14 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
-import { useAuth } from '../../contexts/AuthContext';
+import { useIsDM } from '../../contexts/CampaignContext';
+import { getErrorMessage } from '../../utils/apiErrors';
 import {
   Alert,
   Box,
   Button,
   Card,
   CardContent,
-  CircularProgress,
   Container,
   FormControl,
   FormHelperText,
@@ -28,10 +28,8 @@ import {
   TextField,
   Typography
 } from '@mui/material';
-import {DatePicker, LocalizationProvider} from '@mui/x-date-pickers';
-import {AdapterDateFns} from '@mui/x-date-pickers/AdapterDateFns';
-import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
-import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
+import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TableSkeleton from '../common/TableSkeleton';
 
 interface TabPanelProps {
@@ -59,8 +57,10 @@ interface GoldTotals {
     fullTotal: number;
 }
 
+type CurrencyKey = 'platinum' | 'gold' | 'silver' | 'copper';
+
 interface NewEntry {
-    sessionDate: Date;
+    sessionDate: Date | null;
     transactionType: string;
     platinum: string;
     gold: string;
@@ -75,19 +75,64 @@ interface CharacterOption {
     name: string;
 }
 
-interface LedgerEntry {
-    id: number;
-    date: string;
-    type: string;
-    description: string;
-    amount: number;
-    balance: number;
-    character?: string;
-    lootvalue?: string;
-    payments?: string;
-    withdrawn?: string;
-    active?: boolean;
+/** One row of GET /reports/ledger (reportsController.getCharacterLedger). */
+interface LedgerRow {
+    character?: string | null;
+    active?: boolean | null;
+    lootValue?: number | string | null;
+    payments?: number | string | null;
+    withdrawn?: number | string | null;
 }
+
+interface LedgerEntry {
+    character: string;
+    active: boolean;
+    lootValue: number;
+    payments: number;
+    withdrawn: number;
+}
+
+interface GoldListBody {
+    data?: GoldEntry[];
+    pagination?: { hasNext?: boolean };
+}
+
+type QuickFilterMonths = 'all' | number;
+
+const CURRENCIES: Array<{ key: CurrencyKey; label: string; color: string }> = [
+    {key: 'platinum', label: 'Platinum', color: '#E5E4E2'},
+    {key: 'gold', label: 'Gold', color: '#FFD700'},
+    {key: 'silver', label: 'Silver', color: '#C0C0C0'},
+    {key: 'copper', label: 'Copper', color: '#B87333'}
+];
+
+const QUICK_FILTERS: Array<{ label: string; months: QuickFilterMonths }> = [
+    {label: 'All Time', months: 'all'},
+    {label: 'Last Month', months: 1},
+    {label: 'Last 3 Months', months: 3},
+    {label: 'Last 6 Months', months: 6},
+    {label: 'Last Year', months: 12}
+];
+
+const TRANSACTION_TYPES = [
+    'Deposit', 'Withdrawal', 'Sale', 'Purchase', 'Party Loot Purchase',
+    'Party Payment', 'Party Payback', 'Balance', 'Other'
+];
+
+// Page size and cap for the Transaction History (the backend caps limit at 500)
+const HISTORY_PAGE_SIZE = 500;
+const HISTORY_MAX_PAGES = 20;
+
+const createEmptyEntry = (): NewEntry => ({
+    sessionDate: new Date(),
+    transactionType: 'Deposit',
+    platinum: '',
+    gold: '',
+    silver: '',
+    copper: '',
+    notes: '',
+    characterId: ''
+});
 
 // Tab Panel component
 function TabPanel(props: TabPanelProps) {
@@ -117,43 +162,52 @@ function a11yProps(index: number) {
     };
 }
 
+// Safely format numbers
+const formatCurrency = (value: number | string, defaultValue: string = '0.00'): string => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num) || !isFinite(num)) {
+        return defaultValue;
+    }
+    return num.toFixed(2);
+};
+
+const formatDate = (dateString: string): string => {
+    const options: Intl.DateTimeFormatOptions = {year: 'numeric', month: 'long', day: 'numeric'};
+    return new Date(dateString).toLocaleDateString(undefined, options);
+};
+
+/** Local calendar date as YYYY-MM-DD; the server treats the end date as inclusive of that whole day. */
+const toDateParam = (date: Date): string => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+/**
+ * Parse one currency field of the entry form. Empty means 0; anything that is
+ * not a non-negative whole number is rejected (null).
+ */
+const parseAmount = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (trimmed === '') return 0;
+    return /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : null;
+};
+
 const GoldTransactions: React.FC = () => {
     const [goldEntries, setGoldEntries] = useState<GoldEntry[]>([]);
+    const [historyTruncated, setHistoryTruncated] = useState<boolean>(false);
     const [overviewTotals, setOverviewTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
-    const { user: authUser, isDM } = useAuth();
-    const userRole = authUser?.role || '';
+    const isDM = useIsDM();
     const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [activeTab, setActiveTab] = useState<number>(0);
-    // Get campaign timezone
-    const { timezone } = useCampaignTimezone();
     const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
     const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
     const [characters, setCharacters] = useState<CharacterOption[]>([]);
 
-    // Memoized utility function to safely format numbers
-    const formatCurrency = useCallback((value: number | string, defaultValue: string = '0.00'): string => {
-        const num = typeof value === 'string' ? parseFloat(value) : value;
-        if (isNaN(num) || !isFinite(num)) {
-            return defaultValue;
-        }
-        return num.toFixed(2);
-    }, []);
-
     // New gold entry form state
-    const [newEntry, setNewEntry] = useState<NewEntry>({
-        sessionDate: new Date(),
-        transactionType: 'Deposit',
-        platinum: '',
-        gold: '',
-        silver: '',
-        copper: '',
-        notes: '',
-        characterId: ''
-    });
+    const [newEntry, setNewEntry] = useState<NewEntry>(createEmptyEntry);
 
     useEffect(() => {
         fetchOverviewTotals();
@@ -165,11 +219,11 @@ const GoldTransactions: React.FC = () => {
         if (!isDM) return;
         const fetchCharacters = async () => {
             try {
-                const response: any = await api.get('/user/active-characters');
-                const rows = response.data || response;
-                setCharacters(Array.isArray(rows) ? rows.map((r: any) => ({ id: r.id, name: r.name })) : []);
-            } catch (err) {
-                console.error('Failed to fetch characters:', err);
+                const response = await api.get('/user/active-characters') as { data?: CharacterOption[] } | CharacterOption[];
+                const rows = Array.isArray(response) ? response : response.data;
+                setCharacters(Array.isArray(rows) ? rows.map((r) => ({ id: r.id, name: r.name })) : []);
+            } catch {
+                // The selector simply stays empty; an entry can still be saved unattributed
             }
         };
         fetchCharacters();
@@ -185,168 +239,119 @@ const GoldTransactions: React.FC = () => {
     const fetchGoldEntries = async (): Promise<void> => {
         try {
             setError(null);
-            const response = await api.get(`/gold`, {
-                params: {startDate, endDate}
-            });
+            const entries: GoldEntry[] = [];
+            let truncated = false;
 
-            // Handle paginated response structure
-            const entries = response.data.data || response.data || [];
+            // The server paginates (newest first); walk the pages so a long range
+            // is not silently cut off after the first one.
+            for (let page = 1; page <= HISTORY_MAX_PAGES; page++) {
+                const response = await api.get('/gold', {
+                    params: {
+                        startDate: toDateParam(startDate),
+                        endDate: toDateParam(endDate),
+                        page,
+                        limit: HISTORY_PAGE_SIZE
+                    }
+                });
+                const body = response.data as GoldListBody | GoldEntry[];
+                const rows = Array.isArray(body) ? body : (body?.data || []);
+                entries.push(...rows);
 
-            // Sort entries by complete session_date timestamp (not just the date part)
-            const sortedEntries = [...entries].sort((a: GoldEntry, b: GoldEntry) => {
-                return new Date(b.session_date).getTime() - new Date(a.session_date).getTime();
-            });
+                const hasNext = !Array.isArray(body) && body?.pagination?.hasNext === true;
+                if (!hasNext) break;
+                if (page === HISTORY_MAX_PAGES) truncated = true;
+            }
 
-            setGoldEntries(sortedEntries);
-            calculateTotals(sortedEntries);
-        } catch (error) {
-            console.error('Error fetching gold entries:', error);
+            setGoldEntries(entries);
+            setHistoryTruncated(truncated);
+        } catch {
             setError('Failed to fetch gold entries.');
         }
     };
-
 
     const fetchOverviewTotals = async (): Promise<void> => {
         try {
             setError(null);
             // Use the dedicated overview totals endpoint for efficiency
-            const response = await api.get(`/gold/overview-totals`);
-            
+            const response = await api.get('/gold/overview-totals');
+
             // Response already contains calculated totals
             setOverviewTotals(response.data);
-        } catch (error) {
-            console.error('Error fetching overview totals:', error);
+        } catch {
             setError('Failed to fetch overview totals.');
         }
     };
 
-    const calculateTotals = (entries: GoldEntry[]): void => {
-        const totals = entries.reduce(
-            (acc, entry) => {
-                acc.platinum += Number(entry.platinum) || 0;
-                acc.gold += Number(entry.gold) || 0;
-                acc.silver += Number(entry.silver) || 0;
-                acc.copper += Number(entry.copper) || 0;
-                return acc;
-            },
-            {platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0}
+    /** Refresh the totals and, when it is showing, the history list. */
+    const refreshAfterChange = (): void => {
+        fetchOverviewTotals();
+        if (activeTab === 2) {
+            // endDate is captured once at mount; move it to now so new entries stay in
+            // range. The date effect below then refetches the list.
+            setEndDate(new Date());
+        }
+    };
+
+    const runGoldAction = async (path: string, successMessage: string, failureMessage: string): Promise<void> => {
+        try {
+            setError(null);
+            await api.post(path, {});
+            setSuccess(successMessage);
+            refreshAfterChange();
+        } catch {
+            setError(failureMessage);
+        }
+    };
+
+    const handleDistributeAll = () =>
+        runGoldAction('/gold/distribute-all', 'Gold distributed successfully!', 'Failed to distribute gold.');
+
+    const handleDistributePlusPartyLoot = () =>
+        runGoldAction(
+            '/gold/distribute-plus-party-loot',
+            'Gold distributed with party loot successfully!',
+            'Failed to distribute gold plus party loot.'
         );
 
-        // Calculate full total in gold pieces
-        totals.fullTotal = (10 * totals.platinum) + totals.gold + (totals.silver / 10) + (totals.copper / 100);
-        setTotals(totals);
-    };
+    const handleBalance = () =>
+        runGoldAction('/gold/balance', 'Currency balanced successfully!', 'Failed to balance gold.');
 
-
-    const handleDistributeAll = async (): Promise<void> => {
-        try {
-            setError(null);
-            await api.post(`/gold/distribute-all`, {});
-            setSuccess('Gold distributed successfully!');
-            fetchOverviewTotals(); // Refresh overview totals
-            if (activeTab === 2) {
-                fetchGoldEntries(); // Refresh the gold entries if on history tab
-            }
-        } catch (error) {
-            console.error('Error distributing gold:', error);
-            setError('Failed to distribute gold.');
-        }
-    };
-
-    const handleDistributePlusPartyLoot = async (): Promise<void> => {
-        try {
-            setError(null);
-            await api.post(`/gold/distribute-plus-party-loot`, {});
-            setSuccess('Gold distributed with party loot successfully!');
-            fetchOverviewTotals(); // Refresh overview totals
-            if (activeTab === 2) {
-                fetchGoldEntries(); // Refresh the gold entries if on history tab
-            }
-        } catch (error) {
-            console.error('Error distributing gold plus party loot:', error);
-            setError('Failed to distribute gold plus party loot.');
-        }
-    };
-
-    const handleBalance = async (): Promise<void> => {
-        try {
-            setError(null);
-            await api.post(`/gold/balance`, {});
-            setSuccess('Currency balanced successfully!');
-            fetchOverviewTotals(); // Refresh overview totals
-            if (activeTab === 2) {
-                fetchGoldEntries(); // Refresh the gold entries if on history tab
-            }
-        } catch (error) {
-            console.error('Error balancing gold:', error);
-            setError('Failed to balance gold.');
-        }
-    };
-
-    const handleQuickFilter = (months) => {
+    const handleQuickFilter = (months: QuickFilterMonths): void => {
         if (months === 'all') {
             // For "All Time", set a very early start date to get all transactions
             setStartDate(new Date('2000-01-01'));
-            setEndDate(new Date());
         } else {
-            const startDate = new Date(new Date().setMonth(new Date().getMonth() - months));
-            const endDate = new Date();
-            setStartDate(startDate);
-            setEndDate(endDate);
+            setStartDate(new Date(new Date().setMonth(new Date().getMonth() - months)));
         }
+        setEndDate(new Date());
     };
-
-    const formatDate = useCallback((dateString: string) => {
-        const options: Intl.DateTimeFormatOptions = {year: 'numeric', month: 'long', day: 'numeric'};
-        return new Date(dateString).toLocaleDateString(undefined, options);
-    }, []);
 
     // Memoized processing of ledger data for display
     const processedLedgerData = useMemo(() => {
         return ledgerData.map((row) => {
-            // Safely parse numeric values with fallback to 0
-            const lootValue = parseFloat(row.lootvalue) || 0;
-            const payments = parseFloat(row.payments) || 0;
-            const withdrawn = parseFloat(row.withdrawn) || 0;
-            const balance = lootValue - payments;
-            
+            const balance = row.lootValue - row.payments;
+
             // Check for valid balance calculation
             const isValidBalance = !isNaN(balance) && isFinite(balance);
             const isOverpaid = isValidBalance && balance < -0.01; // Small tolerance for floating point
             const isUnderpaid = isValidBalance && balance > 0.01;
-            const isBalanced = isValidBalance && Math.abs(balance) <= 0.01;
-            
-            // Safely handle character name display
-            const characterName = row.character || 'Unknown Character';
-            const displayName = characterName.length > 30 
-                ? `${characterName.substring(0, 27)}...` 
-                : characterName;
+
+            const displayName = row.character.length > 30
+                ? `${row.character.substring(0, 27)}...`
+                : row.character;
 
             return {
                 ...row,
-                lootValue,
-                payments,
-                withdrawn,
                 balance,
                 isValidBalance,
                 isOverpaid,
                 isUnderpaid,
-                isBalanced,
-                characterName,
                 displayName
             };
         });
     }, [ledgerData]);
 
-    const handleTabChange = (event, newValue) => {
-        setActiveTab(newValue);
-        // Fetch gold entries when switching to Transaction History tab
-        if (newValue === 2 && goldEntries.length === 0) {
-            fetchGoldEntries();
-        }
-    };
-
-    const handleEntryChange = (field, value) => {
+    const handleEntryChange = (field: keyof NewEntry, value: NewEntry[keyof NewEntry]): void => {
         setNewEntry(prev => ({
             ...prev,
             [field]: value
@@ -365,27 +370,28 @@ const GoldTransactions: React.FC = () => {
                 return;
             }
 
-            if (!newEntry.platinum && !newEntry.gold && !newEntry.silver && !newEntry.copper) {
-                setError('At least one currency amount is required');
+            // Amounts are always sent as non-negative whole numbers: the backend
+            // derives the sign from the transaction type (e.g. withdrawals are
+            // negated server-side) and rejects fractions and negatives.
+            const amounts = {} as Record<CurrencyKey, number>;
+            for (const {key, label} of CURRENCIES) {
+                const amount = parseAmount(newEntry[key]);
+                if (amount === null) {
+                    setError(`${label} must be a whole number of zero or more`);
+                    return;
+                }
+                amounts[key] = amount;
+            }
+
+            if (CURRENCIES.every(({key}) => amounts[key] === 0)) {
+                setError('At least one currency amount greater than zero is required');
                 return;
             }
 
-            // Prepare entry. Amounts are always sent as non-negative numbers:
-            // the backend derives the sign from the transaction type (e.g.
-            // withdrawals are negated server-side), and its validation rejects
-            // negative inputs. Empty/invalid fields become 0.
-            const toAmount = (value: string | null | undefined): number => {
-                const parsed = parseInt(value ?? '', 10);
-                return Number.isNaN(parsed) ? 0 : Math.abs(parsed);
-            };
-
             const entry: Record<string, unknown> = {
-                sessionDate: newEntry.sessionDate,
+                sessionDate: newEntry.sessionDate ?? new Date(),
                 transactionType: newEntry.transactionType,
-                platinum: toAmount(newEntry.platinum),
-                gold: toAmount(newEntry.gold),
-                silver: toAmount(newEntry.silver),
-                copper: toAmount(newEntry.copper),
+                ...amounts,
                 notes: newEntry.notes
             };
 
@@ -400,29 +406,15 @@ const GoldTransactions: React.FC = () => {
 
             // Success! Clear form and refresh
             setSuccess('Gold entry created successfully!');
-            setNewEntry({
-                sessionDate: new Date(),
-                transactionType: 'Deposit',
-                platinum: '',
-                gold: '',
-                silver: '',
-                copper: '',
-                notes: '',
-                characterId: ''
-            });
+            setNewEntry(createEmptyEntry());
 
-            fetchOverviewTotals(); // Always refresh overview totals after new entry
-            if (activeTab === 2) {
-                fetchGoldEntries(); // Refresh filtered entries if on history tab
-            }
+            refreshAfterChange();
             // Also refresh ledger data if new entry affects character balances
             if (newEntry.transactionType === 'Party Payment' || newEntry.transactionType === 'Party Payback') {
                 fetchLedgerData();
             }
         } catch (error) {
-            console.error('Error creating gold entry:', error);
-            const err = error as { response?: { data?: { message?: string } } };
-            setError(err.response?.data?.message || 'Failed to create gold entry.');
+            setError(getErrorMessage(error, 'Failed to create gold entry.'));
         }
     };
 
@@ -432,55 +424,31 @@ const GoldTransactions: React.FC = () => {
             setLedgerLoading(true);
             setError(null); // Clear any previous errors
             const response = await lootService.getCharacterLedger();
+            const rows: LedgerRow[] | undefined = response.data?.ledger;
 
-            if (response.data && Array.isArray(response.data.ledger)) {
-                // Validate and clean the ledger data
-                const validatedData = response.data.ledger
-                    .filter(row => row && typeof row === 'object') // Filter out null/invalid rows
-                    .map(row => ({
-                        ...row,
-                        character: row.character || 'Unknown Character',
-                        lootvalue: row.lootvalue || '0',
-                        payments: row.payments || '0',
-                        withdrawn: row.withdrawn || '0',
-                        active: Boolean(row.active)
-                    }));
-
-                // Sort active characters first, then by name
-                const sortedData = validatedData
-                    .sort((a, b) => {
-                        if (a.active !== b.active) return b.active - a.active;
-                        return (a.character || '').localeCompare(b.character || '');
-                    });
-
-                setLedgerData(sortedData);
-            } else if (response.data && Array.isArray(response.data.characters)) {
-                // Fallback for old API format with validation
-                const validatedData = response.data.characters
-                    .filter(row => row && typeof row === 'object')
-                    .map(row => ({
-                        ...row,
-                        character: row.character || 'Unknown Character',
-                        lootvalue: row.lootvalue || '0',
-                        payments: row.payments || '0',
-                        withdrawn: row.withdrawn || '0',
-                        active: Boolean(row.active)
-                    }));
-
-                const sortedData = validatedData
-                    .sort((a, b) => {
-                        if (a.active !== b.active) return b.active - a.active;
-                        return (a.character || '').localeCompare(b.character || '');
-                    });
-
-                setLedgerData(sortedData);
-            } else {
-                console.error('Invalid ledger data format:', response.data);
+            if (!Array.isArray(rows)) {
                 setLedgerData([]);
                 setError('Received invalid data format from server. Please contact support if this issue persists.');
+                return;
             }
-        } catch (error) {
-            console.error('Error fetching ledger data:', error);
+
+            const normalised: LedgerEntry[] = rows
+                .filter((row) => row && typeof row === 'object') // Filter out null/invalid rows
+                .map((row) => ({
+                    character: row.character || 'Unknown Character',
+                    active: Boolean(row.active),
+                    lootValue: Number(row.lootValue) || 0,
+                    payments: Number(row.payments) || 0,
+                    withdrawn: Number(row.withdrawn) || 0
+                }))
+                // Active characters first, then by name
+                .sort((a, b) => {
+                    if (a.active !== b.active) return Number(b.active) - Number(a.active);
+                    return a.character.localeCompare(b.character);
+                });
+
+            setLedgerData(normalised);
+        } catch {
             setError('Failed to load ledger data. Please check your connection and try again.');
             setLedgerData([]); // Ensure we have empty data on error
         } finally {
@@ -488,13 +456,27 @@ const GoldTransactions: React.FC = () => {
         }
     };
 
+    const renderDateFilter = (label: string, value: Date, onChange: (date: Date) => void) => (
+        <DatePicker
+            label={label}
+            value={value}
+            onChange={(date: Date | null) => {
+                // The picker reports null while the field is cleared or incomplete
+                if (date) onChange(date);
+            }}
+            slotProps={{
+                textField: { fullWidth: true }
+            }}
+        />
+    );
+
     return (
         <Container maxWidth={false} component="main">
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
             <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
-                    <Tabs value={activeTab} onChange={handleTabChange} aria-label="gold management tabs">
+                    <Tabs value={activeTab} onChange={(_, value: number) => setActiveTab(value)} aria-label="gold management tabs">
                         <Tab label="Overview" {...a11yProps(0)} />
                         <Tab label="Add Transaction" {...a11yProps(1)} />
                         <Tab label="Transaction History" {...a11yProps(2)} />
@@ -509,58 +491,21 @@ const GoldTransactions: React.FC = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Currency Summary</Typography>
                             <Grid container spacing={3}>
-                                <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                    <Paper sx={{
-                                        p: 2,
-                                        textAlign: 'center',
-                                        bgcolor: 'background.default',
-                                        borderLeft: '5px solid #E5E4E2'
-                                    }}>
-                                        <Typography variant="subtitle2" sx={{
-                                            color: "text.secondary"
-                                        }}>Platinum</Typography>
-                                        <Typography variant="h4" sx={{color: '#E5E4E2'}}>{overviewTotals.platinum}</Typography>
-                                    </Paper>
-                                </Grid>
-                                <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                    <Paper sx={{
-                                        p: 2,
-                                        textAlign: 'center',
-                                        bgcolor: 'background.default',
-                                        borderLeft: '5px solid #FFD700'
-                                    }}>
-                                        <Typography variant="subtitle2" sx={{
-                                            color: "text.secondary"
-                                        }}>Gold</Typography>
-                                        <Typography variant="h4" sx={{color: '#FFD700'}}>{overviewTotals.gold}</Typography>
-                                    </Paper>
-                                </Grid>
-                                <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                    <Paper sx={{
-                                        p: 2,
-                                        textAlign: 'center',
-                                        bgcolor: 'background.default',
-                                        borderLeft: '5px solid #C0C0C0'
-                                    }}>
-                                        <Typography variant="subtitle2" sx={{
-                                            color: "text.secondary"
-                                        }}>Silver</Typography>
-                                        <Typography variant="h4" sx={{color: '#C0C0C0'}}>{overviewTotals.silver}</Typography>
-                                    </Paper>
-                                </Grid>
-                                <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                    <Paper sx={{
-                                        p: 2,
-                                        textAlign: 'center',
-                                        bgcolor: 'background.default',
-                                        borderLeft: '5px solid #B87333'
-                                    }}>
-                                        <Typography variant="subtitle2" sx={{
-                                            color: "text.secondary"
-                                        }}>Copper</Typography>
-                                        <Typography variant="h4" sx={{color: '#B87333'}}>{overviewTotals.copper}</Typography>
-                                    </Paper>
-                                </Grid>
+                                {CURRENCIES.map(({key, label, color}) => (
+                                    <Grid key={key} size={{xs: 12, sm: 6, md: 3}}>
+                                        <Paper sx={{
+                                            p: 2,
+                                            textAlign: 'center',
+                                            bgcolor: 'background.default',
+                                            borderLeft: `5px solid ${color}`
+                                        }}>
+                                            <Typography variant="subtitle2" sx={{
+                                                color: "text.secondary"
+                                            }}>{label}</Typography>
+                                            <Typography variant="h4" sx={{color}}>{overviewTotals[key]}</Typography>
+                                        </Paper>
+                                    </Grid>
+                                ))}
                             </Grid>
                             <Paper sx={{p: 3, mt: 3, textAlign: 'center', bgcolor: 'background.default'}}>
                                 <Typography variant="subtitle1" sx={{
@@ -577,55 +522,17 @@ const GoldTransactions: React.FC = () => {
                             <Typography variant="h6" gutterBottom>Quick Actions</Typography>
                             <Grid container spacing={2}>
                                 <Grid size={{xs: 12, sm: 4}}>
-                                    <Button
-                                        variant="outlined"
-                                        color="primary"
-                                        onClick={() => setActiveTab(1)}
-                                        fullWidth
-                                        sx={{
-                                            borderColor: 'rgba(144, 202, 249, 0.5)',
-                                            color: 'text.secondary',
-                                            '&:hover': {
-                                                backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                                borderColor: 'rgba(144, 202, 249, 0.7)'
-                                            }
-                                        }}
-                                    >
+                                    <Button variant="outlined" color="primary" onClick={() => setActiveTab(1)} fullWidth>
                                         Add New Transaction
                                     </Button>
                                 </Grid>
                                 <Grid size={{xs: 12, sm: 4}}>
-                                    <Button
-                                        variant="outlined"
-                                        color="secondary"
-                                        onClick={() => setActiveTab(3)}
-                                        fullWidth
-                                        sx={{
-                                            borderColor: 'rgba(244, 143, 177, 0.5)',
-                                            color: 'text.secondary',
-                                            '&:hover': {
-                                                backgroundColor: 'rgba(244, 143, 177, 0.08)',
-                                                borderColor: 'rgba(244, 143, 177, 0.7)'
-                                            }
-                                        }}
-                                    >
+                                    <Button variant="outlined" color="secondary" onClick={() => setActiveTab(3)} fullWidth>
                                         Manage Gold
                                     </Button>
                                 </Grid>
                                 <Grid size={{xs: 12, sm: 4}}>
-                                    <Button
-                                        variant="outlined"
-                                        onClick={() => setActiveTab(2)}
-                                        fullWidth
-                                        sx={{
-                                            borderColor: 'rgba(255, 255, 255, 0.23)',
-                                            color: 'text.secondary',
-                                            '&:hover': {
-                                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                                borderColor: 'rgba(255, 255, 255, 0.5)'
-                                            }
-                                        }}
-                                    >
+                                    <Button variant="outlined" onClick={() => setActiveTab(2)} fullWidth>
                                         View History
                                     </Button>
                                 </Grid>
@@ -639,7 +546,7 @@ const GoldTransactions: React.FC = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Add New Gold Transaction</Typography>
-                            <form onSubmit={handleSubmitEntry}>
+                            <form onSubmit={handleSubmitEntry} noValidate>
                                 <Grid container spacing={3}>
                                     <Grid size={{xs: 12, md: 4}}>
                                         <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -661,15 +568,9 @@ const GoldTransactions: React.FC = () => {
                                                 onChange={(e) => handleEntryChange('transactionType', e.target.value)}
                                                 label="Transaction Type"
                                             >
-                                                <MenuItem value="Deposit">Deposit</MenuItem>
-                                                <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-                                                <MenuItem value="Sale">Sale</MenuItem>
-                                                <MenuItem value="Purchase">Purchase</MenuItem>
-                                                <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-                                                <MenuItem value="Party Payment">Party Payment</MenuItem>
-                                                <MenuItem value="Party Payback">Party Payback</MenuItem>
-                                                <MenuItem value="Balance">Balance</MenuItem>
-                                                <MenuItem value="Other">Other</MenuItem>
+                                                {TRANSACTION_TYPES.map((type) => (
+                                                    <MenuItem key={type} value={type}>{type}</MenuItem>
+                                                ))}
                                             </Select>
                                         </FormControl>
                                     </Grid>
@@ -711,46 +612,18 @@ const GoldTransactions: React.FC = () => {
                                         <Typography variant="subtitle1" gutterBottom>Amount</Typography>
                                     </Grid>
 
-                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                        <TextField
-                                            label="Platinum"
-                                            type="number"
-                                            fullWidth
-                                            slotProps={{ htmlInput: {min: 0} }}
-                                            value={newEntry.platinum}
-                                            onChange={(e) => handleEntryChange('platinum', e.target.value)}
-                                        />
-                                    </Grid>
-                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                        <TextField
-                                            label="Gold"
-                                            type="number"
-                                            fullWidth
-                                            slotProps={{ htmlInput: {min: 0} }}
-                                            value={newEntry.gold}
-                                            onChange={(e) => handleEntryChange('gold', e.target.value)}
-                                        />
-                                    </Grid>
-                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                        <TextField
-                                            label="Silver"
-                                            type="number"
-                                            fullWidth
-                                            slotProps={{ htmlInput: {min: 0} }}
-                                            value={newEntry.silver}
-                                            onChange={(e) => handleEntryChange('silver', e.target.value)}
-                                        />
-                                    </Grid>
-                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                                        <TextField
-                                            label="Copper"
-                                            type="number"
-                                            fullWidth
-                                            slotProps={{ htmlInput: {min: 0} }}
-                                            value={newEntry.copper}
-                                            onChange={(e) => handleEntryChange('copper', e.target.value)}
-                                        />
-                                    </Grid>
+                                    {CURRENCIES.map(({key, label}) => (
+                                        <Grid key={key} size={{xs: 12, sm: 6, md: 3}}>
+                                            <TextField
+                                                label={label}
+                                                type="number"
+                                                fullWidth
+                                                slotProps={{ htmlInput: {min: 0, step: 1} }}
+                                                value={newEntry[key]}
+                                                onChange={(e) => handleEntryChange(key, e.target.value)}
+                                            />
+                                        </Grid>
+                                    ))}
                                     <Grid size={12}>
                                         <TextField
                                             label="Notes"
@@ -762,20 +635,7 @@ const GoldTransactions: React.FC = () => {
                                         />
                                     </Grid>
                                     <Grid size={12}>
-                                        <Button
-                                            type="submit"
-                                            variant="outlined"
-                                            color="primary"
-                                            size="large"
-                                            sx={{
-                                                borderColor: 'rgba(144, 202, 249, 0.5)',
-                                                color: 'text.secondary',
-                                                '&:hover': {
-                                                    backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                                    borderColor: 'rgba(144, 202, 249, 0.7)'
-                                                }
-                                            }}
-                                        >
+                                        <Button type="submit" variant="outlined" color="primary" size="large">
                                             Add Transaction
                                         </Button>
                                     </Grid>
@@ -793,126 +653,29 @@ const GoldTransactions: React.FC = () => {
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
                                 <Grid container spacing={2}>
                                     <Grid size={{xs: 12, sm: 4}}>
-                                        <DatePicker
-                                            label="Start Date"
-                                            value={startDate}
-                                            onChange={(date) => setStartDate(date)}
-                                            slotProps={{
-                                                textField: { fullWidth: true }
-                                            }}
-                                        />
+                                        {renderDateFilter('Start Date', startDate, setStartDate)}
                                     </Grid>
                                     <Grid size={{xs: 12, sm: 4}}>
-                                        <DatePicker
-                                            label="End Date"
-                                            value={endDate}
-                                            onChange={(date) => setEndDate(date)}
-                                            slotProps={{
-                                                textField: { fullWidth: true }
-                                            }}
-                                        />
+                                        {renderDateFilter('End Date', endDate, setEndDate)}
                                     </Grid>
                                     <Grid size={{xs: 12, sm: 4}}>
-                                        <Button
-                                            variant="outlined"
-                                            color="primary"
-                                            onClick={fetchGoldEntries}
-                                            fullWidth
-                                            sx={{
-                                                borderColor: 'rgba(144, 202, 249, 0.5)',
-                                                color: 'text.secondary',
-                                                '&:hover': {
-                                                    backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                                    borderColor: 'rgba(144, 202, 249, 0.7)'
-                                                }
-                                            }}
-                                        >
+                                        <Button variant="outlined" color="primary" onClick={fetchGoldEntries} fullWidth>
                                             Apply Filter
                                         </Button>
                                     </Grid>
                                 </Grid>
                             </LocalizationProvider>
                             <Box sx={{mt: 2}}>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => handleQuickFilter('all')}
-                                    sx={{
-                                        mr: 1,
-                                        mb: 1,
-                                        borderColor: 'rgba(255, 255, 255, 0.23)',
-                                        color: 'text.secondary',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                            borderColor: 'rgba(255, 255, 255, 0.5)'
-                                        }
-                                    }}
-                                >
-                                    All Time
-                                </Button>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => handleQuickFilter(1)}
-                                    sx={{
-                                        mr: 1,
-                                        mb: 1,
-                                        borderColor: 'rgba(255, 255, 255, 0.23)',
-                                        color: 'text.secondary',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                            borderColor: 'rgba(255, 255, 255, 0.5)'
-                                        }
-                                    }}
-                                >
-                                    Last Month
-                                </Button>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => handleQuickFilter(3)}
-                                    sx={{
-                                        mr: 1,
-                                        mb: 1,
-                                        borderColor: 'rgba(255, 255, 255, 0.23)',
-                                        color: 'text.secondary',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                            borderColor: 'rgba(255, 255, 255, 0.5)'
-                                        }
-                                    }}
-                                >
-                                    Last 3 Months
-                                </Button>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => handleQuickFilter(6)}
-                                    sx={{
-                                        mr: 1,
-                                        mb: 1,
-                                        borderColor: 'rgba(255, 255, 255, 0.23)',
-                                        color: 'text.secondary',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                            borderColor: 'rgba(255, 255, 255, 0.5)'
-                                        }
-                                    }}
-                                >
-                                    Last 6 Months
-                                </Button>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => handleQuickFilter(12)}
-                                    sx={{
-                                        mr: 1,
-                                        mb: 1,
-                                        borderColor: 'rgba(255, 255, 255, 0.23)',
-                                        color: 'text.secondary',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                            borderColor: 'rgba(255, 255, 255, 0.5)'
-                                        }
-                                    }}
-                                >
-                                    Last Year
-                                </Button>
+                                {QUICK_FILTERS.map(({label, months}) => (
+                                    <Button
+                                        key={label}
+                                        variant="outlined"
+                                        onClick={() => handleQuickFilter(months)}
+                                        sx={{mr: 1, mb: 1}}
+                                    >
+                                        {label}
+                                    </Button>
+                                ))}
                             </Box>
                         </CardContent>
                     </Card>
@@ -920,6 +683,12 @@ const GoldTransactions: React.FC = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Transaction History</Typography>
+                            {historyTruncated && (
+                                <Alert severity="info" sx={{mb: 2}}>
+                                    Only the newest {HISTORY_PAGE_SIZE * HISTORY_MAX_PAGES} transactions are shown.
+                                    Narrow the date range to see older ones.
+                                </Alert>
+                            )}
                             <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
                                 <Table size="small">
                                     <TableHead>
@@ -970,20 +739,7 @@ const GoldTransactions: React.FC = () => {
                                         <Typography variant="body2" sx={{mb: 2}}>
                                             Distribute all available gold equally among active characters.
                                         </Typography>
-                                        <Button
-                                            variant="outlined"
-                                            color="primary"
-                                            onClick={handleDistributeAll}
-                                            fullWidth
-                                            sx={{
-                                                borderColor: 'rgba(144, 202, 249, 0.5)',
-                                                color: 'text.secondary',
-                                                '&:hover': {
-                                                    backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                                    borderColor: 'rgba(144, 202, 249, 0.7)'
-                                                }
-                                            }}
-                                        >
+                                        <Button variant="outlined" color="primary" onClick={handleDistributeAll} fullWidth>
                                             Distribute All
                                         </Button>
                                     </Paper>
@@ -995,46 +751,20 @@ const GoldTransactions: React.FC = () => {
                                         <Typography variant="body2" sx={{mb: 2}}>
                                             Distribute gold with one share reserved for party loot.
                                         </Typography>
-                                        <Button
-                                            variant="outlined"
-                                            color="primary"
-                                            onClick={handleDistributePlusPartyLoot}
-                                            fullWidth
-                                            sx={{
-                                                borderColor: 'rgba(144, 202, 249, 0.5)',
-                                                color: 'text.secondary',
-                                                '&:hover': {
-                                                    backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                                    borderColor: 'rgba(144, 202, 249, 0.7)'
-                                                }
-                                            }}
-                                        >
+                                        <Button variant="outlined" color="primary" onClick={handleDistributePlusPartyLoot} fullWidth>
                                             Distribute + Party Loot
                                         </Button>
                                     </Paper>
                                 </Grid>
 
-                                {userRole === 'DM' && (
+                                {isDM && (
                                     <Grid size={{xs: 12, md: 4}}>
                                         <Paper sx={{p: 3, textAlign: 'center', height: '100%'}}>
                                             <Typography variant="subtitle1" gutterBottom>Balance Currency</Typography>
                                             <Typography variant="body2" sx={{mb: 2}}>
                                                 Convert smaller denominations to larger ones.
                                             </Typography>
-                                            <Button
-                                                variant="outlined"
-                                                color="primary"
-                                                onClick={handleBalance}
-                                                fullWidth
-                                                sx={{
-                                                    borderColor: 'rgba(144, 202, 249, 0.5)',
-                                                    color: 'text.secondary',
-                                                    '&:hover': {
-                                                        backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                                        borderColor: 'rgba(144, 202, 249, 0.7)'
-                                                    }
-                                                }}
-                                            >
+                                            <Button variant="outlined" color="primary" onClick={handleBalance} fullWidth>
                                                 Balance Currencies
                                             </Button>
                                         </Paper>
@@ -1080,16 +810,16 @@ const GoldTransactions: React.FC = () => {
                                             ) : (
                                                 processedLedgerData.map((row) => (
                                                     <TableRow
-                                                        key={row.character || Math.random()}
+                                                        key={row.character}
                                                         sx={{
                                                             bgcolor: row.active ? 'rgba(144, 202, 249, 0.1)' : 'inherit',
                                                             fontWeight: row.active ? 'bold' : 'normal'
                                                         }}
                                                     >
-                                                        <TableCell 
-                                                            component="th" 
+                                                        <TableCell
+                                                            component="th"
                                                             scope="row"
-                                                            title={row.characterName} // Show full name on hover
+                                                            title={row.character} // Show full name on hover
                                                             sx={{ maxWidth: '200px' }}
                                                         >
                                                             {row.displayName} {row.active && '(Active)'}
@@ -1107,7 +837,7 @@ const GoldTransactions: React.FC = () => {
                                                             align="right"
                                                             sx={{
                                                                 color: !row.isValidBalance ? 'text.disabled' :
-                                                                       row.isOverpaid ? 'error.main' : 
+                                                                       row.isOverpaid ? 'error.main' :
                                                                        row.isUnderpaid ? 'warning.main' : 'inherit',
                                                                 fontWeight: (row.isOverpaid || row.isUnderpaid) ? 'bold' : 'normal'
                                                             }}
@@ -1116,9 +846,8 @@ const GoldTransactions: React.FC = () => {
                                                         </TableCell>
                                                         <TableCell align="center">
                                                             {!row.isValidBalance ? 'Invalid Data' :
-                                                             row.isOverpaid ? 'Overpaid' : 
-                                                             row.isUnderpaid ? 'Underpaid' : 
-                                                             row.isBalanced ? 'Balanced' : 'Balanced'}
+                                                             row.isOverpaid ? 'Overpaid' :
+                                                             row.isUnderpaid ? 'Underpaid' : 'Balanced'}
                                                         </TableCell>
                                                     </TableRow>
                                                 ))
@@ -1134,24 +863,7 @@ const GoldTransactions: React.FC = () => {
                                     display: "flex",
                                     justifyContent: "center"
                                 }}>
-                                <Button
-                                    variant="outlined"
-                                    color="primary"
-                                    onClick={fetchLedgerData}
-                                    disabled={ledgerLoading}
-                                    sx={{
-                                        borderColor: 'rgba(144, 202, 249, 0.5)',
-                                        color: 'text.secondary',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(144, 202, 249, 0.08)',
-                                            borderColor: 'rgba(144, 202, 249, 0.7)'
-                                        },
-                                        '&.Mui-disabled': {
-                                            borderColor: 'rgba(255, 255, 255, 0.12)',
-                                            color: 'rgba(255, 255, 255, 0.3)'
-                                        }
-                                    }}
-                                >
+                                <Button variant="outlined" color="primary" onClick={fetchLedgerData} disabled={ledgerLoading}>
                                     Refresh Ledger Data
                                 </Button>
                             </Box>

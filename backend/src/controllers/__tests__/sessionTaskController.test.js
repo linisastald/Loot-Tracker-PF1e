@@ -1,6 +1,6 @@
 /**
  * Unit tests for sessionTaskController (DM-editable session task definitions).
- * Covers listing, payload validation, snack-master exclusivity, not-found
+ * Covers listing, payload validation for every task option, not-found
  * handling, reorder validation, and the reset-to-defaults action.
  */
 
@@ -14,7 +14,10 @@ jest.mock('../../utils/logger', () => ({
 
 const SessionTask = require('../../models/SessionTask');
 const controller = require('../sessionTaskController');
-const { DEFAULT_SESSION_TASKS } = require('../../constants/sessionTaskDefaults');
+const {
+  DEFAULT_SESSION_TASKS,
+  TASK_OPTION_DEFAULTS,
+} = require('../../constants/sessionTaskDefaults');
 
 function createMockRes() {
   return {
@@ -45,15 +48,23 @@ const task = (over = {}) => ({
   id: 10,
   phase: 'during',
   name: 'Loot Master',
+  ...TASK_OPTION_DEFAULTS,
   quantity: 2,
-  min_characters: null,
-  is_snack_master: false,
   sort_order: 2,
+  ...over,
+});
+
+/** What the controller hands the model for a minimal { phase, name } body. */
+const normalised = (over = {}) => ({
+  phase: 'post',
+  name: 'Snack Run',
+  ...TASK_OPTION_DEFAULTS,
   ...over,
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
+  SessionTask.characterExists.mockResolvedValue(true);
 });
 
 describe('getAll', () => {
@@ -68,10 +79,20 @@ describe('getAll', () => {
     expect(res.success).toHaveBeenCalled();
     expect(res.success.mock.calls[0][0]).toEqual([task()]);
   });
+
+  it('rejects when no campaign is resolved', async () => {
+    const req = createMockReq({ campaignId: undefined });
+    const res = createMockRes();
+
+    await controller.getAll(req, res);
+
+    expect(SessionTask.getAll).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Select a campaign'));
+  });
 });
 
 describe('create', () => {
-  it('creates a task with normalised fields and returns 201', async () => {
+  it('creates a task with normalised fields and every option defaulted', async () => {
     SessionTask.create.mockResolvedValue(task({ id: 11, name: 'Snack Run', quantity: 1 }));
     const req = createMockReq({
       body: { phase: 'post', name: '  Snack Run  ', quantity: '1', min_characters: '' },
@@ -80,27 +101,126 @@ describe('create', () => {
 
     await controller.create(req, res);
 
-    expect(SessionTask.create).toHaveBeenCalledWith(1, {
-      phase: 'post',
-      name: 'Snack Run',
-      quantity: 1,
-      min_characters: null,
-      is_snack_master: false,
-    });
-    expect(SessionTask.clearSnackMasterExcept).not.toHaveBeenCalled();
+    expect(SessionTask.create).toHaveBeenCalledWith(1, normalised());
+    expect(SessionTask.characterExists).not.toHaveBeenCalled();
     expect(res.created).toHaveBeenCalled();
   });
 
-  it('clears the snack-master flag from other tasks when the new task is flagged', async () => {
-    SessionTask.create.mockResolvedValue(task({ id: 12, is_snack_master: true }));
+  it('accepts every option, as booleans or "true" strings', async () => {
+    SessionTask.create.mockResolvedValue(task({ id: 13, name: 'Recap' }));
     const req = createMockReq({
-      body: { phase: 'post', name: 'Snacks', is_snack_master: true },
+      body: {
+        phase: 'pre',
+        name: 'Recap',
+        requires_previous_attendance: 'true',
+        exclude_late: true,
+        exclude_early: 'true',
+        dm_eligible: false,
+        announce_label: '  Recap by  ',
+        sticky: false,
+        avoid_repeat: true,
+        priority: '1',
+        max_characters: '8',
+        min_characters: 3,
+        is_active: 'false',
+        description: '  Summarise last session in two minutes  ',
+        fixed_character_id: '77',
+      },
     });
     const res = createMockRes();
 
     await controller.create(req, res);
 
-    expect(SessionTask.clearSnackMasterExcept).toHaveBeenCalledWith(1, 12);
+    expect(SessionTask.characterExists).toHaveBeenCalledWith(77);
+    expect(SessionTask.create).toHaveBeenCalledWith(1, normalised({
+      phase: 'pre',
+      name: 'Recap',
+      requires_previous_attendance: true,
+      exclude_late: true,
+      exclude_early: true,
+      announce_label: 'Recap by',
+      avoid_repeat: true,
+      priority: 1,
+      max_characters: 8,
+      min_characters: 3,
+      is_active: false,
+      description: 'Summarise last session in two minutes',
+      fixed_character_id: 77,
+    }));
+    expect(res.created).toHaveBeenCalled();
+  });
+
+  it('no longer derives the legacy is_snack_master flag from the announce label', async () => {
+    SessionTask.create.mockResolvedValue(task({ id: 12 }));
+    const req = createMockReq({
+      body: { phase: 'post', name: 'Snacks', announce_label: 'Snack Master' },
+    });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    const input = SessionTask.create.mock.calls[0][1];
+    expect(input.announce_label).toBe('Snack Master');
+    expect(input).not.toHaveProperty('is_snack_master');
+  });
+
+  it('rejects a fixed character that is not in the campaign', async () => {
+    SessionTask.characterExists.mockResolvedValue(false);
+    const req = createMockReq({
+      body: { phase: 'during', name: 'Loot Master', fixed_character_id: 999 },
+    });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    expect(SessionTask.create).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('fixed_character_id'));
+  });
+
+  it('rejects a task that is both sticky and avoid-repeat', async () => {
+    const req = createMockReq({
+      body: { phase: 'during', name: 'X', sticky: true, avoid_repeat: true },
+    });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    expect(SessionTask.create).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('sticky and avoid-repeat'));
+  });
+
+  it('rejects max_characters below min_characters', async () => {
+    const req = createMockReq({
+      body: { phase: 'during', name: 'X', min_characters: 6, max_characters: 4 },
+    });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    expect(SessionTask.create).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('max_characters must be at least'));
+  });
+
+  it('rejects an out-of-range priority', async () => {
+    const req = createMockReq({ body: { phase: 'during', name: 'X', priority: 3 } });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    expect(SessionTask.create).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('priority'));
+  });
+
+  it('rejects an over-long announce label', async () => {
+    const req = createMockReq({
+      body: { phase: 'during', name: 'X', announce_label: 'x'.repeat(101) },
+    });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    expect(SessionTask.create).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('announce_label'));
   });
 
   it('rejects an unknown phase', async () => {
@@ -110,7 +230,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('phase must be one of'));
   });
 
   it('rejects a blank name', async () => {
@@ -120,7 +240,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('name is required'));
   });
 
   it('rejects an out-of-range quantity', async () => {
@@ -130,17 +250,52 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('quantity'));
   });
 
-  it('rejects a non-integer min_characters', async () => {
-    const req = createMockReq({ body: { phase: 'pre', name: 'X', min_characters: 'six' } });
+  it('rejects an out-of-range min_characters', async () => {
+    const req = createMockReq({ body: { phase: 'pre', name: 'X', min_characters: 99 } });
     const res = createMockRes();
 
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('min_characters'));
+  });
+});
+
+describe('duplicate names in a phase (round 4)', () => {
+  it('refuses creating a task whose name already exists in the phase and campaign', async () => {
+    SessionTask.nameExists.mockResolvedValue(true);
+    const res = createMockRes();
+
+    await controller.create(createMockReq({ body: { phase: 'post', name: '  snack RUN ' } }), res);
+
+    expect(SessionTask.nameExists).toHaveBeenCalledWith(1, 'post', 'snack RUN', null);
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('already exists'));
+    expect(SessionTask.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses renaming a task onto another task name, excluding the row itself', async () => {
+    SessionTask.nameExists.mockResolvedValue(true);
+    const res = createMockRes();
+
+    await controller.update(createMockReq({ params: { id: '10' }, body: { phase: 'during', name: 'Recap' } }), res);
+
+    expect(SessionTask.nameExists).toHaveBeenCalledWith(1, 'during', 'Recap', 10);
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('already exists'));
+    expect(SessionTask.update).not.toHaveBeenCalled();
+  });
+
+  it('lets a task keep its own name (the model excludes its own id)', async () => {
+    SessionTask.nameExists.mockResolvedValue(false);
+    SessionTask.update.mockResolvedValue(task());
+    const res = createMockRes();
+
+    await controller.update(createMockReq({ params: { id: '10' }, body: { phase: 'during', name: 'Loot Master' } }), res);
+
+    expect(SessionTask.update).toHaveBeenCalled();
+    expect(res.success).toHaveBeenCalled();
   });
 });
 
@@ -155,13 +310,11 @@ describe('update', () => {
 
     await controller.update(req, res);
 
-    expect(SessionTask.update).toHaveBeenCalledWith(1, 10, {
+    expect(SessionTask.update).toHaveBeenCalledWith(1, 10, normalised({
       phase: 'during',
       name: 'Renamed',
       quantity: 2,
-      min_characters: null,
-      is_snack_master: false,
-    });
+    }));
     expect(res.success).toHaveBeenCalled();
   });
 
@@ -182,7 +335,7 @@ describe('update', () => {
     await controller.update(req, res);
 
     expect(SessionTask.update).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Invalid task id'));
   });
 });
 
@@ -196,6 +349,16 @@ describe('remove', () => {
 
     expect(SessionTask.remove).toHaveBeenCalledWith(1, 10);
     expect(res.success).toHaveBeenCalled();
+  });
+
+  it('rejects an invalid id', async () => {
+    const req = createMockReq({ params: { id: '0' } });
+    const res = createMockRes();
+
+    await controller.remove(req, res);
+
+    expect(SessionTask.remove).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Invalid task id'));
   });
 
   it('returns 404 when nothing was deleted', async () => {
@@ -229,7 +392,27 @@ describe('reorder', () => {
     await controller.reorder(req, res);
 
     expect(SessionTask.reorder).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('duplicates'));
+  });
+
+  it('rejects an unknown phase', async () => {
+    const req = createMockReq({ body: { phase: 'midnight', ids: [1] } });
+    const res = createMockRes();
+
+    await controller.reorder(req, res);
+
+    expect(SessionTask.reorder).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('phase must be one of'));
+  });
+
+  it('rejects non-positive ids', async () => {
+    const req = createMockReq({ body: { phase: 'pre', ids: [1, 0] } });
+    const res = createMockRes();
+
+    await controller.reorder(req, res);
+
+    expect(SessionTask.reorder).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('positive integers'));
   });
 
   it('rejects an empty id list', async () => {
@@ -239,7 +422,7 @@ describe('reorder', () => {
     await controller.reorder(req, res);
 
     expect(SessionTask.reorder).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('non-empty array'));
   });
 });
 
@@ -263,6 +446,6 @@ describe('resetDefaults', () => {
     await controller.resetDefaults(req, res);
 
     expect(SessionTask.resetDefaults).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Select a campaign'));
   });
 });

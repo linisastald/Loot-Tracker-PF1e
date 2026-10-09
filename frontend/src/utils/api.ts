@@ -1,8 +1,10 @@
 // frontend/src/utils/api.ts
+// The one axios instance every request goes through. Resolved calls return the
+// response BODY ({ success, message, data }); rejected calls keep the axios
+// error shape (callers read err.response?.data?.message / getErrorMessage).
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { ApiResponse } from '@/types';
 
-const API_URL = process.env.REACT_APP_API_URL || '/api';
+const API_URL = '/api';
 
 interface CsrfTokenResponse {
   success: boolean;
@@ -11,9 +13,31 @@ interface CsrfTokenResponse {
   };
 }
 
+interface ErrorBody {
+  message?: string;
+  error?: string;
+}
+
 interface AuthConfig extends InternalAxiosRequestConfig {
   _retryCount?: number;
 }
+
+// Auth endpoints that must work without a CSRF token (no session yet, or the
+// session probe itself).
+const CSRF_EXEMPT_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/check-dm',
+  '/auth/check-registration-status',
+  '/auth/refresh',
+  '/auth/status',
+];
+
+// Pages that are reachable without a session; a 401 from a request made there
+// must not bounce the user to /login again (or overwrite where they came from).
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password'];
+
+const isAuthUrl = (url?: string): boolean => !!url && url.includes('/auth/');
 
 const api: AxiosInstance = axios.create({
     baseURL: API_URL,
@@ -21,25 +45,26 @@ const api: AxiosInstance = axios.create({
     timeout: 10000,
 });
 
-// Function to fetch CSRF token
-const fetchCsrfToken = async (): Promise<string | null> => {
-    try {
-        const response = await axios.get<CsrfTokenResponse>(`${API_URL}/csrf-token`, {
-            withCredentials: true
-        });
+// One token request at a time: the backend rotates the CSRF secret on every
+// fetch, so concurrent fetches would invalidate each other's tokens.
+let csrfFetchInFlight: Promise<string | null> | null = null;
 
-        if (response.data?.data?.csrfToken) {
-            const token = response.data.data.csrfToken;
-            localStorage.setItem('csrfToken', token);
-            return token;
-        } else {
-            console.error('Invalid CSRF token response format');
-            return null;
-        }
-    } catch (error) {
-        console.error('Error fetching CSRF token:', error);
-        return null;
+const fetchCsrfToken = (): Promise<string | null> => {
+    if (!csrfFetchInFlight) {
+        csrfFetchInFlight = axios
+            .get<CsrfTokenResponse>(`${API_URL}/csrf-token`, { withCredentials: true })
+            .then((response) => {
+                const token = response.data?.data?.csrfToken;
+                if (!token) return null;
+                localStorage.setItem('csrfToken', token);
+                return token;
+            })
+            .catch(() => null)
+            .finally(() => {
+                csrfFetchInFlight = null;
+            });
     }
+    return csrfFetchInFlight;
 };
 
 // Request interceptor
@@ -50,30 +75,21 @@ api.interceptors.request.use(
         // /auth/* requests: auth endpoints are campaign-independent, and a
         // stale selection 403ing /auth/status would race App.tsx's logout
         // handler and force-log-out the user instead of recovering.
-        const isAuthRoute = !!config.url && config.url.includes('/auth/');
         const activeCampaignId = localStorage.getItem('activeCampaignId');
-        if (!isAuthRoute && activeCampaignId && /^\d+$/.test(activeCampaignId) && config.headers) {
+        if (!isAuthUrl(config.url) && activeCampaignId && /^\d+$/.test(activeCampaignId) && config.headers) {
             config.headers['X-Campaign-Id'] = activeCampaignId;
         }
+        // Superadmin "act as DM" override (see CampaignContext.setDmOverride);
+        // the server ignores it for anyone who is not a superadmin.
+        if (!isAuthUrl(config.url) && config.headers && localStorage.getItem('superadminDmOverride') === '1') {
+            config.headers['X-Superadmin-DM'] = '1';
+        }
 
-        // Skip CSRF for auth routes
-        if (config.url && (
-            config.url.includes('/auth/login') ||
-            config.url.includes('/auth/register') ||
-            config.url.includes('/auth/check-dm') ||
-            config.url.includes('/auth/check-registration-status') ||
-            config.url.includes('/auth/refresh') ||
-            config.url.includes('/auth/status'))) {
+        if (config.url && CSRF_EXEMPT_PATHS.some((path) => config.url!.includes(path))) {
             return config;
         }
 
-        let csrfToken = localStorage.getItem('csrfToken');
-
-        // If no token exists, fetch a new one
-        if (!csrfToken) {
-            csrfToken = await fetchCsrfToken();
-        }
-
+        const csrfToken = localStorage.getItem('csrfToken') || await fetchCsrfToken();
         if (csrfToken && config.headers) {
             config.headers['X-CSRF-Token'] = csrfToken;
         }
@@ -85,78 +101,60 @@ api.interceptors.request.use(
 
 // Response interceptor
 api.interceptors.response.use(
-    (response) => {
-        return response.data;
-    },
+    (response) => response.data,
     async (error: AxiosError) => {
-        console.error('API Error:', {
-            message: error.message,
-            status: error.response?.status
-        });
+        const authConfig = error.config as AuthConfig | undefined;
+        const status = error.response?.status;
+        const body = (error.response?.data ?? {}) as ErrorBody;
 
-        const authConfig = error.config as AuthConfig;
-
-        // Handle authentication errors (401 Unauthorized - expired/invalid JWT)
-        if (error.response?.status === 401) {
-            // Skip redirect for auth-related endpoints to prevent loops
-            const isAuthEndpoint = authConfig?.url?.includes('/auth/');
-
-            if (!isAuthEndpoint) {
-                console.warn('Authentication expired or invalid. Redirecting to login...');
-                // Let the login page explain the redirect and return the user here after
+        // 401 on a normal endpoint: the session expired. Remember where the user
+        // was so Login can explain the redirect and send them back afterwards.
+        // /auth/* 401s (bad login, status probe, refresh) are handled by their
+        // callers, and on a public page there is nowhere better to go.
+        if (status === 401 && !isAuthUrl(authConfig?.url)) {
+            if (!PUBLIC_PATHS.includes(window.location.pathname)) {
                 sessionStorage.setItem('loginRedirectReason', 'expired');
                 sessionStorage.setItem('loginReturnTo', window.location.pathname + window.location.search);
-                // Clear tokens
                 localStorage.removeItem('csrfToken');
-                // Redirect to login page
                 window.location.href = '/login';
-                return Promise.reject(error);
             }
+            return Promise.reject(error);
         }
 
         // Stale campaign selection recovery (403 - membership revoked, campaign
         // deleted, etc.). Clear the stored selection and reload so the backend
         // falls back to a valid default campaign. Only fires when the request
-        // actually carried the X-Campaign-Id header — after the reload the key
+        // actually carried the X-Campaign-Id header - after the reload the key
         // is gone, the header is no longer sent, so this cannot loop.
-        if (error.response?.status === 403 &&
-            (error.response?.data as any)?.message === 'Not a member of this campaign' &&
+        if (status === 403 &&
+            body.message === 'Not a member of this campaign' &&
             authConfig?.headers?.['X-Campaign-Id']) {
             localStorage.removeItem('activeCampaignId');
             window.location.reload();
             return Promise.reject(error);
         }
 
-        // Handle CSRF token errors (403 Forbidden - prevent infinite retry)
-        if (error.response?.status === 403 &&
-            ((error.response?.data as any)?.error === 'invalid csrf token' ||
-            (error.response?.data as any)?.message === 'invalid csrf token') &&
-            !authConfig?._retryCount) {
-
-            // Mark this request as retried to prevent infinite loops
-            if (authConfig) {
-                authConfig._retryCount = 1;
-            }
+        // Invalid CSRF token (403): fetch a fresh token and replay the request
+        // once. _retryCount stops it looping; if the token cannot be refreshed
+        // the original error goes back to the caller (a failed token fetch is
+        // not proof the session is gone, so no redirect).
+        if (status === 403 &&
+            (body.error === 'invalid csrf token' || body.message === 'invalid csrf token') &&
+            authConfig && !authConfig._retryCount) {
+            authConfig._retryCount = 1;
             localStorage.removeItem('csrfToken');
             const newToken = await fetchCsrfToken();
 
-            if (newToken && authConfig && authConfig.headers) {
-                // Retry the request with new token
+            if (newToken && authConfig.headers) {
                 authConfig.headers['X-CSRF-Token'] = newToken;
-                return axios(authConfig);
-            } else {
-                // If CSRF token refresh fails, might indicate session expired
-                console.warn('Failed to refresh CSRF token. Session may have expired. Redirecting to login...');
-                window.location.href = '/login';
-                return Promise.reject(error);
+                // Through `api` (not raw axios) so the retried call resolves to the
+                // unwrapped body like every other call.
+                return api(authConfig);
             }
         }
 
         return Promise.reject(error);
     }
 );
-
-// Initialize CSRF token fetch
-fetchCsrfToken();
 
 export default api;

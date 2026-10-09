@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -8,6 +8,11 @@ vi.mock('../../../utils/api', () => ({
     get: vi.fn(),
     post: vi.fn(),
   },
+}));
+
+let mockIsDM = false;
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
 }));
 
 import api from '../../../utils/api';
@@ -22,7 +27,6 @@ const renderPage = () =>
 
 const PREVIEW = {
   coins: { platinum: 5, gold: 200, silver: 0, copper: 0 },
-  coinsGp: 250,
   items: [
     { name: '+1 Longsword', unidentifiedName: 'Masterwork Longsword', type: 'weapon', size: 'Medium', value: 2315, quantity: 1, itemId: 2, modIds: [417], unidentified: true, spellcraftDc: 18, masterwork: false },
     { name: 'Trinket', type: 'gear', size: 'Medium', value: 100, quantity: 2, itemId: 1, modIds: null, unidentified: false, spellcraftDc: null, masterwork: false },
@@ -35,7 +39,7 @@ const PREVIEW = {
 describe('LootGenerator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+    mockIsDM = true;
     (api.get as any).mockResolvedValue({ data: { track: 'medium', modifier: 1 } });
     (api.post as any).mockImplementation((url: string) => {
       if (url === '/loot-generator/generate') return Promise.resolve({ data: PREVIEW });
@@ -45,10 +49,10 @@ describe('LootGenerator', () => {
     });
   });
 
-  afterEach(() => localStorage.clear());
+  afterEach(() => { mockIsDM = false; });
 
   it('shows a DM-only warning for non-DMs', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 2, username: 'p', role: 'Player' }));
+    mockIsDM = false;
     renderPage();
     expect(screen.getByText(/available to DMs only/i)).toBeInTheDocument();
   });
@@ -77,6 +81,17 @@ describe('LootGenerator', () => {
     expect(screen.getByRole('button', { name: /Send to Pending Loot/i })).toBeInTheDocument();
   });
 
+    it('recalculates the Total chip after an item is removed', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
+    await waitFor(() => expect(screen.getByText(/Total ≈ 2,765 gp/)).toBeInTheDocument());
+
+    // remove the +1 Longsword (2315 gp)
+    fireEvent.click(screen.getAllByLabelText('remove item')[0]);
+
+    expect(screen.getByText(/Total ≈ 450 gp/)).toBeInTheDocument();
+  });
+
   it('commits the preview to pending loot', async () => {
     renderPage();
 
@@ -91,6 +106,50 @@ describe('LootGenerator', () => {
         coins: expect.any(Object),
       }));
       expect(screen.getByText(/Committed 2 item stack/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('NPC gear value source', () => {
+    const chooseNpcGear = async () => {
+      fireEvent.mouseDown(screen.getByRole('combobox', { name: 'treasure type' }));
+      fireEvent.click(await screen.findByRole('option', { name: 'NPC Gear' }));
+    };
+    const generatePayload = () => {
+      const call = (api.post as any).mock.calls.find((c: unknown[]) => c[0] === '/loot-generator/generate');
+      return call[1];
+    };
+
+    it('is hidden until an enemy uses the NPC Gear treasure type', () => {
+      renderPage();
+      expect(screen.queryByLabelText('NPC gear values')).not.toBeInTheDocument();
+    });
+
+    it('appears once NPC Gear is chosen, defaulting to the NPC table, with a line of help', async () => {
+      renderPage();
+      await chooseNpcGear();
+      const select = screen.getByRole('combobox', { name: 'NPC gear values' });
+      expect(select).toHaveTextContent('NPC gear table (default)');
+      expect(screen.getByText(/Table 14-9/)).toBeInTheDocument();
+      expect(screen.getByText(/PC wealth by level/i, { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('sends npcGearSource "npc" by default', async () => {
+      renderPage();
+      await chooseNpcGear();
+      fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/loot-generator/generate', expect.any(Object)));
+      expect(generatePayload().npcGearSource).toBe('npc');
+    });
+
+    it('sends npcGearSource "pc" when PC wealth by level is chosen', async () => {
+      renderPage();
+      await chooseNpcGear();
+      fireEvent.mouseDown(screen.getByRole('combobox', { name: 'NPC gear values' }));
+      const list = await screen.findByRole('listbox');
+      fireEvent.click(within(list).getByRole('option', { name: 'PC wealth by level' }));
+      fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/loot-generator/generate', expect.any(Object)));
+      expect(generatePayload().npcGearSource).toBe('pc');
     });
   });
 });

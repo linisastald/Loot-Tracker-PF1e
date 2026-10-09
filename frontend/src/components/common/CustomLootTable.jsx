@@ -24,12 +24,20 @@ import {
   Tooltip,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { styled } from '@mui/system';
+import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useActiveCharacterId } from '../../contexts/CampaignContext';
+import { ITEM_TYPES, ITEM_SIZES } from '../../utils/itemOptions';
 import LootItemCard from './LootItemCard';
+import {
+  FormatAverageAppraisal,
+  FormatBelievedValue,
+  formatLootDate,
+  getBelievedValue,
+} from './lootFormatters';
 
 // Styled components
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
@@ -89,110 +97,42 @@ const useFilterMenu = (initialFilters) => {
   };
 };
 
-/**
- * Formats an ISO timestamp string to a date-only display format.
- * Handles UTC timestamps without timezone conversion.
- * @param {string} dateString - ISO timestamp (e.g., "2025-11-09T00:00:00.000Z")
- * @returns {string} Formatted date (e.g., "Nov 9, 2025") or empty string if invalid
- */
-const formatDateOnly = (dateString) => {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return ''; // Validate date is valid
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC'
+// Filter predicates. Each menu is a { label: checked } map; when every box is
+// checked nothing is filtered out.
+const allChecked = (filters) => Object.values(filters).every(Boolean);
+
+const matchesType = (item, typeFilters) => {
+  if (allChecked(typeFilters)) return true;
+  const itemType = (item.type || '').toLowerCase();
+  // 'other' catches every type that has no filter of its own
+  const definedTypes = Object.keys(typeFilters).map(label => label.toLowerCase()).filter(label => label !== 'other');
+  return Object.entries(typeFilters).some(([label, checked]) => {
+    if (!checked) return false;
+    const filterType = label.toLowerCase();
+    return itemType === filterType || (filterType === 'other' && !definedTypes.includes(itemType));
   });
 };
 
-// Utility function for formatting appraisal details
-const formatAppraisalDetails = (item) => {
-  const appraisals = item.appraisals || [];
-  if (!appraisals.length) return 'No appraisals available';
-
-  return appraisals.map(appraisal => {
-    const characterName = appraisal.character_name || 'Unknown';
-    const value = parseFloat(appraisal.believedvalue);
-    return `${characterName}: ${isNaN(value) ? '?' : value.toFixed(2)}`;
-  }).join('\n');
+const matchesSize = (item, sizeFilters) => {
+  if (allChecked(sizeFilters)) return true;
+  if (!item.size) return Boolean(sizeFilters.Unknown);
+  // "medium" -> "Medium"
+  const normalizedSize = item.size.trim()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+  return Boolean(sizeFilters[normalizedSize]);
 };
 
-// Component for formatting average appraisal
-const FormatAverageAppraisal = ({ item }) => {
-  if (item.average_appraisal === undefined || item.average_appraisal === null) return null;
-
-  const value = parseFloat(item.average_appraisal);
-  const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
-
-  return (
-    <Tooltip title={formatAppraisalDetails(item)} arrow>
-      <span>{formattedValue}</span>
-    </Tooltip>
-  );
-};
-
-// Component for formatting believed value for active character
-const FormatBelievedValue = ({ item }) => {
-  const [activeCharacterId, setActiveCharacterId] = React.useState(null);
-
-  // Get active character ID on component mount
-  React.useEffect(() => {
-    let cancelled = false;
-    const fetchActiveCharacter = async () => {
-      try {
-        const response = await api.get('/user/me');
-        if (!cancelled && response.data && response.data.activeCharacterId) {
-          setActiveCharacterId(response.data.activeCharacterId);
-        }
-      } catch (error) {
-        // Error fetching active character - using default behavior
-      }
-    };
-    fetchActiveCharacter();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Try multiple possible locations for the believed value
-  let rawValue = null;
-
-  // Check if directly on the item
-  if (item.believedvalue !== undefined && item.believedvalue !== null) {
-    rawValue = item.believedvalue;
-  }
-  // Check if we need to find the active character's appraisal
-  else if (item.appraisals && Array.isArray(item.appraisals) && item.appraisals.length > 0 && activeCharacterId) {
-    // Find appraisal for the active character specifically
-    const activeCharacterAppraisal = item.appraisals.find(a => 
-      a.character_id === activeCharacterId || a.characterId === activeCharacterId
-    );
-    if (activeCharacterAppraisal) {
-      rawValue = activeCharacterAppraisal.believedvalue;
-    }
-    // If no appraisal for active character, don't show any value (don't fall back to random character)
-  }
-
-  // Return empty if no valid value found
-  if (rawValue === null || rawValue === undefined) {
-    return null;
-  }
-
-  // Format the value
-  const value = parseFloat(rawValue);
-  if (isNaN(value)) {
-    return null;
-  }
-
-  const formattedValue = value.toFixed(2).replace(/\.0+$/, '');
-  return <span>{formattedValue}</span>;
-};
+// character_name is available on both summary and individual rows
+const matchesWhoHas = (item, whoHasFilters) =>
+  Object.values(whoHasFilters).every(checked => !checked) ||
+  Boolean(item.character_name && whoHasFilters[item.character_name]);
 
 const CustomLootTable = ({
   loot,
   individualLoot,
   selectedItems,
-  setSelectedItems,
   openItems,
   setOpenItems,
   handleSelectItem,
@@ -234,14 +174,7 @@ const CustomLootTable = ({
     handleMenuOpen: handleTypeMenuOpen,
     handleMenuClose: handleTypeMenuClose,
     handleFilterChange: handleTypeFilterChange,
-  } = useFilterMenu({
-    Weapon: true,
-    Armor: true,
-    Magic: true,
-    Gear: true,
-    'Trade Good': true,
-    Other: true,
-  });
+  } = useFilterMenu(Object.fromEntries(ITEM_TYPES.map(({ label }) => [label, true])));
 
   // Size filter setup with custom hook
   const {
@@ -251,21 +184,22 @@ const CustomLootTable = ({
     handleMenuClose: handleSizeMenuClose,
     handleFilterChange: handleSizeFilterChange,
   } = useFilterMenu({
-    Fine: true,
-    Diminutive: true,
-    Tiny: true,
-    Small: true,
-    Medium: true,
-    Large: true,
-    Huge: true,
-    Gargantuan: true,
-    Colossal: true,
+    ...Object.fromEntries(ITEM_SIZES.map((size) => [size, true])),
     Unknown: true,
   });
 
-  // Who has filter states
-  const [whoHasFilters, setWhoHasFilters] = useState([]);
-  const [anchorElWhoHas, setAnchorElWhoHas] = useState(null);
+  // Who has filter ({ character name: checked }), filled once the characters load
+  const {
+    filters: whoHasFilters,
+    setFilters: setWhoHasFilters,
+    anchorEl: anchorElWhoHas,
+    handleMenuOpen: handleWhoHasMenuOpen,
+    handleMenuClose: handleWhoHasMenuClose,
+    handleFilterChange: handleWhoHasFilterChange,
+  } = useFilterMenu({});
+
+  // Believed values are looked up for the active character of the selected campaign
+  const activeCharacterId = useActiveCharacterId() ?? null;
 
   // Cell styles
   const mainCellStyle = { padding: '16px' };
@@ -276,17 +210,14 @@ const CustomLootTable = ({
     const fetchWhoHasFilters = async () => {
       try {
         const response = await api.get(`/user/active-characters`);
-        setWhoHasFilters(response.data.map(character => ({
-          name: character.name,
-          checked: false,
-        })));
+        setWhoHasFilters(Object.fromEntries(response.data.map(character => [character.name, false])));
       } catch (error) {
         // Error fetching characters - filters remain empty
       }
     };
 
     fetchWhoHasFilters();
-  }, []);
+  }, [setWhoHasFilters]);
 
   // Helper functions
   const handleToggleOpen = useCallback((itemId) => {
@@ -306,17 +237,30 @@ const CustomLootTable = ({
       item.unidentified === summary.unidentified &&
       item.masterwork === summary.masterwork &&
       item.type === summary.type &&
-      item.size === summary.size
+      item.size === summary.size &&
+      // loot_view groups summaries by status too; null-safe
+      (item.statuspage ?? null) === (summary.statuspage ?? null)
     );
   }, [individualLoot]);
 
-  const handleWhoHasFilterChange = useCallback((name) => {
-    setWhoHasFilters(prev =>
-      prev.map(filter =>
-        filter.name === name ? { ...filter, checked: !filter.checked } : filter
-      )
-    );
-  }, []);
+  const selectedSet = useMemo(() => new Set(selectedItems), [selectedItems]);
+
+  // Selection state of one summary row's individual items
+  const getGroupSelection = useCallback((items) => {
+    const selectedCount = items.filter(item => selectedSet.has(item.id)).length;
+    return {
+      allSelected: items.length > 0 && selectedCount === items.length,
+      someSelected: selectedCount > 0,
+    };
+  }, [selectedSet]);
+
+  // Select every item of a group, or clear the group when it is already fully selected
+  const handleSelectGroup = useCallback((items) => {
+    const { allSelected } = getGroupSelection(items);
+    items
+      .filter(item => allSelected || !selectedSet.has(item.id))
+      .forEach(item => handleSelectItem(item.id));
+  }, [getGroupSelection, selectedSet, handleSelectItem]);
 
   // Sort handler
   const handleSort = useCallback((key) => {
@@ -350,71 +294,14 @@ const CustomLootTable = ({
   // Apply filters to data
   const filteredLoot = useMemo(() => {
     if (!loot || !Array.isArray(loot)) return [];
-    return loot.filter((item) => {
-      if (item.row_type !== 'summary') return false;
-
-      // Apply all active filters
-      return (
-        // Unidentified filter
-        (// Pending sale filter
-        (!showOnlyUnidentified || item.unidentified === true) &&
-
-        // Type filter - if all filters are checked, show all items
-        // Otherwise, apply specific filtering
-        (Object.values(typeFilters).every(checked => checked) || 
-          Object.entries(typeFilters).some(([type, isChecked]) => {
-            if (!isChecked) return false;
-            
-            const itemType = (item.type || '').toLowerCase();
-            const filterType = type.toLowerCase();
-            
-            // Direct match or 'other' for anything not explicitly defined
-            if (itemType === filterType) return true;
-            
-            // 'other' catches everything that doesn't match a defined filter
-            if (filterType === 'other') {
-              const definedTypes = ['weapon', 'armor', 'magic', 'gear', 'trade good'];
-              return !definedTypes.includes(itemType);
-            }
-            
-            return false;
-          })
-        ) &&
-
-        // Size filter - handle case differences and various formats
-        (Object.values(sizeFilters).every(checked => checked) ||
-          (() => {
-            // Handle null/undefined/empty sizes
-            if (!item.size || item.size === '') {
-              return sizeFilters['Unknown'] || false;
-            }
-
-            // Normalize size to proper case (e.g., "medium" -> "Medium")
-            const normalizedSize = item.size.trim()
-              .split(' ')
-              .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-              .join(' ');
-
-            // Check if the normalized size matches any filter
-            return sizeFilters[normalizedSize] || false;
-          })()
-        ) &&
-
-        // Who has filter - use character_name field only (works for both summary and individual rows)
-        (whoHasFilters.every(filter => !filter.checked) ||
-          whoHasFilters.some(filter => {
-            if (!filter.checked) return false;
-
-            // Check character_name field (available in both summary and individual rows)
-            if (item.character_name) {
-              return item.character_name === filter.name;
-            }
-
-            return false;
-          })
-        ) && (showPendingSales || item.statuspage !== 'Pending Sale'))
-      );
-    });
+    return loot.filter((item) =>
+      item.row_type === 'summary' &&
+      (!showOnlyUnidentified || item.unidentified === true) &&
+      matchesType(item, typeFilters) &&
+      matchesSize(item, sizeFilters) &&
+      matchesWhoHas(item, whoHasFilters) &&
+      (showPendingSales || item.statuspage !== 'Pending Sale')
+    );
   }, [
     loot,
     showOnlyUnidentified,
@@ -428,37 +315,39 @@ const CustomLootTable = ({
   const sortedLoot = useMemo(() => {
     if (!sortConfig.key) return filteredLoot;
 
-    return [...filteredLoot].sort((a, b) => {
-      // Handle null/undefined values
-      if (a[sortConfig.key] === undefined && b[sortConfig.key] === undefined) return 0;
-      if (a[sortConfig.key] === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (b[sortConfig.key] === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+    // The believed value is the active character's own appraisal
+    const valueOf = (item) =>
+      sortConfig.key === 'believedvalue' ? getBelievedValue(item, activeCharacterId) : item[sortConfig.key];
+    const direction = sortConfig.direction === 'asc' ? 1 : -1;
 
-      const direction = sortConfig.direction === 'asc' ? 1 : -1;
+    return [...filteredLoot].sort((a, b) => {
+      const aValue = valueOf(a);
+      const bValue = valueOf(b);
+
+      // Missing values sort first ascending, last descending
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return -direction;
+      if (bValue == null) return direction;
 
       // Different sort logic based on field type
       switch (sortConfig.key) {
         case 'session_date':
         case 'lastupdate':
-          return (new Date(a[sortConfig.key]) - new Date(b[sortConfig.key])) * direction;
+          return (new Date(aValue) - new Date(bValue)) * direction;
 
         case 'quantity':
         case 'believedvalue':
         case 'average_appraisal':
-          return (Number(a[sortConfig.key] || 0) - Number(b[sortConfig.key] || 0)) * direction;
+          return (Number(aValue || 0) - Number(bValue || 0)) * direction;
 
         case 'unidentified':
-        case 'status':
-        case 'statuspage':
-          return ((a[sortConfig.key] === b[sortConfig.key])
-            ? 0
-            : (a[sortConfig.key] ? 1 : -1)) * direction;
+          return (Number(Boolean(aValue)) - Number(Boolean(bValue))) * direction;
 
         default:
-          return String(a[sortConfig.key] || '').localeCompare(String(b[sortConfig.key] || '')) * direction;
+          return String(aValue || '').localeCompare(String(bValue || '')) * direction;
       }
     });
-  }, [filteredLoot, sortConfig]);
+  }, [filteredLoot, sortConfig, activeCharacterId]);
 
   // Render table header cells based on column configuration
   const renderHeaderCells = useCallback(() => {
@@ -517,14 +406,11 @@ const CustomLootTable = ({
             individualItems={items}
             isOpen={isOpen}
             onToggleOpen={() => handleToggleOpen(itemKey)}
-            onSelectAll={() => items.forEach(item => handleSelectItem(item.id))}
+            onSelectAll={() => handleSelectGroup(items)}
             onSelectItem={handleSelectItem}
             selectedItems={selectedItems}
+            selection={getGroupSelection(items)}
             showColumns={showColumns}
-            formatDateOnly={formatDateOnly}
-            formatAppraisalDetails={formatAppraisalDetails}
-            FormatBelievedValue={FormatBelievedValue}
-            FormatAverageAppraisal={FormatAverageAppraisal}
           />
         );
       })}
@@ -545,6 +431,7 @@ const CustomLootTable = ({
             const itemKey = getItemKey(summaryItem);
             const individualItems = getIndividualItems(summaryItem);
             const isOpen = openItems[itemKey];
+            const { allSelected, someSelected } = getGroupSelection(individualItems);
 
             return (
               <React.Fragment key={itemKey}>
@@ -552,12 +439,9 @@ const CustomLootTable = ({
                   {showColumns.select && (
                     <TableCell style={mainCellStyle}>
                       <Checkbox
-                        checked={individualItems.length > 0 && individualItems.every(item => selectedItems.includes(item.id))}
-                        indeterminate={
-                          individualItems.some(item => selectedItems.includes(item.id)) &&
-                          !individualItems.every(item => selectedItems.includes(item.id))
-                        }
-                        onChange={() => individualItems.forEach(item => handleSelectItem(item.id))}
+                        checked={allSelected}
+                        indeterminate={someSelected && !allSelected}
+                        onChange={() => handleSelectGroup(individualItems)}
                       />
                     </TableCell>
                   )}
@@ -605,7 +489,7 @@ const CustomLootTable = ({
 
                   {showColumns.sessionDate && (
                     <TableCell style={mainCellStyle}>
-                      {formatDateOnly(summaryItem.session_date)}
+                      {formatLootDate(summaryItem.session_date)}
                     </TableCell>
                   )}
 
@@ -655,7 +539,7 @@ const CustomLootTable = ({
                                 </TableCell>
                                 {showColumns.sessionDate && (
                                   <TableCell style={subCellStyle}>
-                                    {formatDateOnly(subItem.session_date)}
+                                    {formatLootDate(subItem.session_date)}
                                   </TableCell>
                                 )}
                                 {showColumns.lastUpdate && (
@@ -730,21 +614,14 @@ const CustomLootTable = ({
 
           {showFilters.whoHas && (
             <Grid size="auto">
-              <Button size={isMobile ? 'small' : 'medium'} onClick={(e) => setAnchorElWhoHas(e.currentTarget)}>Who Has Filters</Button>
-              <Menu
+              <Button size={isMobile ? 'small' : 'medium'} onClick={handleWhoHasMenuOpen}>Who Has Filters</Button>
+              <FilterMenu
                 anchorEl={anchorElWhoHas}
                 open={Boolean(anchorElWhoHas)}
-                onClose={() => setAnchorElWhoHas(null)}
-              >
-                {whoHasFilters.map(filter => (
-                  <MenuItem key={filter.name}>
-                    <FormControlLabel
-                      control={<Checkbox checked={filter.checked} onChange={() => handleWhoHasFilterChange(filter.name)} />}
-                      label={filter.name}
-                    />
-                  </MenuItem>
-                ))}
-              </Menu>
+                onClose={handleWhoHasMenuClose}
+                filters={whoHasFilters}
+                onChange={handleWhoHasFilterChange}
+              />
             </Grid>
           )}
         </Grid>

@@ -1,9 +1,11 @@
-// frontend/src/components/pages/ItemManagement/AddItemMod.js
+// frontend/src/components/pages/ItemManagement/AddItemMod.jsx
 // Phase 5a: the item/mod catalog is shared by every campaign, so writes are
 // superadmin-only (the backend 403s otherwise). The save buttons are disabled
 // for plain DMs; search/read stays available to them.
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import {getErrorMessage} from '../../../utils/apiErrors';
+import {ITEM_TYPES} from '../../../utils/itemOptions';
 import lootService from '../../../services/lootService';
 import {useCampaign} from '../../../contexts/CampaignContext';
 import {
@@ -27,38 +29,44 @@ import {
 
 const SUPERADMIN_ONLY_TOOLTIP = 'Shared catalog — system administrator only';
 
+const EMPTY_ITEM = {id: '', name: '', type: '', subtype: '', value: '', weight: '', casterlevel: ''};
+const EMPTY_MOD = {id: '', name: '', plus: '', type: '', valuecalc: '', target: '', subtarget: '', casterlevel: ''};
+
+// Subtargets per mod target. Each value appears once per list, so a stored
+// 'light' is unambiguous: weapons and armor each get their own list.
+const SUBTARGET_OPTIONS = {
+    weapon: [
+        ['one handed', 'One Handed Weapon'],
+        ['two handed', 'Two Handed Weapon'],
+        ['ammunition', 'Ammunition'],
+        ['light', 'Light Weapon']
+    ],
+    armor: [
+        ['light', 'Light Armor'],
+        ['medium', 'Medium Armor'],
+        ['heavy', 'Heavy Armor'],
+        ['shield', 'Shield']
+    ]
+};
+
+// Build form state from a record: every field of the empty form, taking the
+// record's value when present (null/undefined become '').
+const pickForm = (empty, value) => Object.fromEntries(
+    Object.keys(empty).map(key => [key, value[key] ?? ''])
+);
+
+const isNegative = (text) => text !== '' && Number(text) < 0;
+
 const AddItemMod = () => {
     const {isSuperadmin} = useCampaign();
     const [activeTab, setActiveTab] = useState(0);
-    const [items, setItems] = useState([]);
-    const [itemsLoading, setItemsLoading] = useState(false);
     const [mods, setMods] = useState([]);
-    const [modsLoading, setModsLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
     // Item form state
-    const [itemForm, setItemForm] = useState({
-        id: '',
-        name: '',
-        type: '',
-        subtype: '',
-        value: '',
-        weight: '',
-        casterlevel: ''
-    });
-
-    // Mod form state
-    const [modForm, setModForm] = useState({
-        id: '',
-        name: '',
-        plus: '',
-        type: '',
-        valuecalc: '',
-        target: '',
-        subtarget: '',
-        casterlevel: ''
-    });
+    const [itemForm, setItemForm] = useState(EMPTY_ITEM);
+    const [modForm, setModForm] = useState(EMPTY_MOD);
 
     // Item and mod lookup state
     const [itemLookup, setItemLookup] = useState('');
@@ -67,28 +75,11 @@ const AddItemMod = () => {
     const [modOptions, setModOptions] = useState([]);
 
     useEffect(() => {
-        fetchItems();
         fetchMods();
     }, []);
 
-    const fetchItems = async () => {
-        try {
-            setItemsLoading(true);
-            const response = await lootService.getAllLoot();
-            // API returns { summary: [], individual: [], count: number }
-            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
-            setItems(allItems);
-            setItemsLoading(false);
-        } catch (error) {
-            console.error('Error fetching items:', error);
-            setError('Failed to load items');
-            setItemsLoading(false);
-        }
-    };
-
     const fetchMods = async () => {
         try {
-            setModsLoading(true);
             const response = await lootService.getMods();
 
             if (response.data && Array.isArray(response.data.mods)) {
@@ -96,15 +87,10 @@ const AddItemMod = () => {
             } else if (Array.isArray(response.data)) {
                 setMods(response.data);
             } else {
-                console.error('Unexpected mods response format:', response.data);
                 setMods([]);
             }
-
-            setModsLoading(false);
         } catch (error) {
-            console.error('Error fetching mods:', error);
             setError('Failed to load mods');
-            setModsLoading(false);
         }
     };
 
@@ -114,37 +100,23 @@ const AddItemMod = () => {
             return;
         }
 
-        setItemsLoading(true);
         try {
             const response = await lootService.suggestItems({query: searchText});
             // API returns { suggestions: [...], count: number }
-            const allItems = response.data.suggestions || [];
-            setItemOptions(allItems);
+            setItemOptions(response.data.suggestions || []);
         } catch (error) {
-            console.error('Error searching items:', error);
-        } finally {
-            setItemsLoading(false);
+            // A failed suggestion lookup leaves the previous options in place
         }
     };
 
-    const handleModSearch = async (searchText) => {
+    // Filter mods locally since there's no dedicated mod search endpoint
+    const handleModSearch = (searchText) => {
         if (!searchText || searchText.length < 2) {
             setModOptions([]);
             return;
         }
-
-        setModsLoading(true);
-        try {
-            // Filter mods locally since there's no dedicated mod search endpoint
-            const filteredMods = mods.filter(mod =>
-                mod.name.toLowerCase().includes(searchText.toLowerCase())
-            );
-            setModOptions(filteredMods);
-        } catch (error) {
-            console.error('Error searching mods:', error);
-        } finally {
-            setModsLoading(false);
-        }
+        const needle = searchText.toLowerCase();
+        setModOptions(mods.filter(mod => mod.name.toLowerCase().includes(needle)));
     };
 
     const handleTabChange = (event, newValue) => {
@@ -153,44 +125,27 @@ const AddItemMod = () => {
 
     const handleItemFormChange = (e) => {
         const {name, value} = e.target;
-        setItemForm(prev => ({
-            ...prev,
-            [name]: value
-        }));
+        setItemForm(prev => ({...prev, [name]: value}));
     };
 
+    // Changing the target clears a subtarget that does not belong to it
     const handleModFormChange = (e) => {
         const {name, value} = e.target;
         setModForm(prev => ({
             ...prev,
-            [name]: value
+            [name]: value,
+            ...(name === 'target' && !(SUBTARGET_OPTIONS[value] || []).some(([v]) => v === prev.subtarget)
+                ? {subtarget: ''} : {})
         }));
     };
 
     const resetItemForm = () => {
-        setItemForm({
-            id: '',
-            name: '',
-            type: '',
-            subtype: '',
-            value: '',
-            weight: '',
-            casterlevel: ''
-        });
+        setItemForm(EMPTY_ITEM);
         setItemLookup('');
     };
 
     const resetModForm = () => {
-        setModForm({
-            id: '',
-            name: '',
-            plus: '',
-            type: '',
-            valuecalc: '',
-            target: '',
-            subtarget: '',
-            casterlevel: ''
-        });
+        setModForm(EMPTY_MOD);
         setModLookup('');
     };
 
@@ -199,6 +154,8 @@ const AddItemMod = () => {
         if (!itemForm.name.trim()) return 'Item name is required';
         if (!itemForm.type.trim()) return 'Item type is required';
         if (!itemForm.value && itemForm.value !== 0) return 'Item value is required';
+        if (isNegative(String(itemForm.value))) return 'Item value cannot be negative';
+        if (isNegative(String(itemForm.weight))) return 'Item weight cannot be negative';
 
         return null; // No validation errors
     };
@@ -232,25 +189,20 @@ const AddItemMod = () => {
                 casterlevel: itemForm.casterlevel ? parseInt(itemForm.casterlevel, 10) : null
             };
 
-            let response;
             if (itemForm.id) {
                 // Update existing item
-                response = await api.put(`/admin/items/${itemForm.id}`, itemData);
+                await api.put(`/admin/items/${itemForm.id}`, itemData);
                 setSuccess(`Item "${itemForm.name}" updated successfully!`);
             } else {
                 // Create new item
-                response = await api.post('/admin/items', itemData);
+                await api.post('/admin/items', itemData);
                 setSuccess(`Item "${itemForm.name}" created successfully!`);
             }
 
             // Reset form
             resetItemForm();
-
-            // Refresh items list
-            fetchItems();
         } catch (error) {
-            console.error('Error saving item:', error);
-            setError(error.response?.data?.message || 'Failed to save item');
+            setError(getErrorMessage(error, 'Failed to save item'));
         }
     };
 
@@ -273,14 +225,13 @@ const AddItemMod = () => {
                 casterlevel: modForm.casterlevel ? parseInt(modForm.casterlevel, 10) : null
             };
 
-            let response;
             if (modForm.id) {
                 // Update existing mod
-                response = await api.put(`/admin/mods/${modForm.id}`, modData);
+                await api.put(`/admin/mods/${modForm.id}`, modData);
                 setSuccess(`Mod "${modForm.name}" updated successfully!`);
             } else {
                 // Create new mod
-                response = await api.post('/admin/mods', modData);
+                await api.post('/admin/mods', modData);
                 setSuccess(`Mod "${modForm.name}" created successfully!`);
             }
 
@@ -290,50 +241,34 @@ const AddItemMod = () => {
             // Refresh mods list
             fetchMods();
         } catch (error) {
-            console.error('Error saving mod:', error);
-            setError(error.response?.data?.message || 'Failed to save mod');
+            setError(getErrorMessage(error, 'Failed to save mod'));
         }
     };
 
-    const handleItemSelect = (event, value) => {
+    const handleItemSelect = async (event, value) => {
         if (!value) {
             resetItemForm();
             return;
         }
 
         try {
-            // Create a safe object with default values
-            const safeItem = {
-                id: '',
-                name: '',
-                type: '',
-                subtype: '',
-                value: '',
-                weight: '',
-                casterlevel: ''
-            };
-
-            // Only update properties that exist and are not null/undefined
-            if (value.id !== undefined && value.id !== null) safeItem.id = value.id;
-            if (value.name !== undefined && value.name !== null) safeItem.name = value.name;
-            if (value.type !== undefined && value.type !== null) safeItem.type = value.type;
-            if (value.subtype !== undefined && value.subtype !== null) safeItem.subtype = value.subtype;
-
-            // Handle numeric values with extra care
-            if (value.value !== undefined && value.value !== null) {
-                safeItem.value = String(value.value);
+            // The suggest endpoint only returns id/name/type/subtype/value. Load the
+            // full catalog row first, otherwise weight and casterlevel stay blank and
+            // an update would overwrite both columns with null (F-1334).
+            let fullItem = value;
+            if (value.id !== undefined && value.id !== null) {
+                const response = await lootService.getItemsByIds([value.id]);
+                const rows = response?.data?.items || [];
+                const row = rows.find(item => item.id === value.id);
+                if (!row) {
+                    throw new Error('Item not found');
+                }
+                fullItem = {...value, ...row};
             }
-            if (value.weight !== undefined && value.weight !== null) {
-                safeItem.weight = String(value.weight);
-            }
-            if (value.casterlevel !== undefined && value.casterlevel !== null) {
-                safeItem.casterlevel = String(value.casterlevel);
-            }
-
-            setItemForm(safeItem);
+            setItemForm(pickForm(EMPTY_ITEM, fullItem));
         } catch (error) {
-            console.error('Error in handleItemSelect:', error);
             resetItemForm();
+            setError('Failed to load item details; the item was not loaded for editing.');
         }
     };
 
@@ -342,36 +277,15 @@ const AddItemMod = () => {
             resetModForm();
             return;
         }
-
-        try {
-            // Create a safe object with default values
-            const safeMod = {
-                id: '',
-                name: '',
-                plus: '',
-                type: '',
-                valuecalc: '',
-                target: '',
-                subtarget: '',
-                casterlevel: ''
-            };
-
-            // Only update properties that exist and are not null/undefined
-            if (value.id !== undefined && value.id !== null) safeMod.id = value.id;
-            if (value.name !== undefined && value.name !== null) safeMod.name = value.name;
-            if (value.plus !== undefined && value.plus !== null) safeMod.plus = value.plus;
-            if (value.type !== undefined && value.type !== null) safeMod.type = value.type;
-            if (value.valuecalc !== undefined && value.valuecalc !== null) safeMod.valuecalc = value.valuecalc;
-            if (value.target !== undefined && value.target !== null) safeMod.target = value.target;
-            if (value.subtarget !== undefined && value.subtarget !== null) safeMod.subtarget = value.subtarget;
-            if (value.casterlevel !== undefined && value.casterlevel !== null) safeMod.casterlevel = String(value.casterlevel);
-
-            setModForm(safeMod);
-        } catch (error) {
-            console.error('Error in handleModSelect:', error);
-            resetModForm();
-        }
+        setModForm(pickForm(EMPTY_MOD, value));
     };
+
+    // Options for the current target; a stored value that is not on the list
+    // (legacy data) is kept so the Select can still display it.
+    const subtargetOptions = [...(SUBTARGET_OPTIONS[modForm.target] || [])];
+    if (modForm.subtarget && !subtargetOptions.some(([value]) => value === modForm.subtarget)) {
+        subtargetOptions.push([modForm.subtarget, modForm.subtarget]);
+    }
 
     return (
         <>
@@ -448,12 +362,9 @@ const AddItemMod = () => {
                                             label="Type"
                                         >
                                             <MenuItem value="">Select Type</MenuItem>
-                                            <MenuItem value="weapon">Weapon</MenuItem>
-                                            <MenuItem value="armor">Armor</MenuItem>
-                                            <MenuItem value="magic">Magic</MenuItem>
-                                            <MenuItem value="gear">Gear</MenuItem>
-                                            <MenuItem value="trade good">Trade Good</MenuItem>
-                                            <MenuItem value="other">Other</MenuItem>
+                                            {ITEM_TYPES.map(({value, label}) => (
+                                                <MenuItem key={value} value={value}>{label}</MenuItem>
+                                            ))}
                                         </Select>
                                     </FormControl>
                                 </Grid>
@@ -638,7 +549,7 @@ const AddItemMod = () => {
                                     </FormControl>
                                 </Grid>
                                 <Grid size={{xs: 12, md: 4}}>
-                                    <FormControl fullWidth margin="normal" required>
+                                    <FormControl fullWidth margin="normal">
                                         <InputLabel>Subtarget</InputLabel>
                                         <Select
                                             name="subtarget"
@@ -646,15 +557,10 @@ const AddItemMod = () => {
                                             onChange={handleModFormChange}
                                             label="Subtarget"
                                         >
-                                            <MenuItem value="">Select Target</MenuItem>
-                                            <MenuItem value="one handed">One Handed Weapon</MenuItem>
-                                            <MenuItem value="two handed">Two Handed Weapon</MenuItem>
-                                            <MenuItem value="ammunition">Ammunition</MenuItem>
-                                            <MenuItem value="light">Light Weapon</MenuItem>
-                                            <MenuItem value="light">Light Armor</MenuItem>
-                                            <MenuItem value="medium">Medium Armor</MenuItem>
-                                            <MenuItem value="heavy">Heavy Armor</MenuItem>
-                                            <MenuItem value="shield">Shield</MenuItem>
+                                            <MenuItem value="">Select Subtarget</MenuItem>
+                                            {subtargetOptions.map(([value, label]) => (
+                                                <MenuItem key={value} value={value}>{label}</MenuItem>
+                                            ))}
                                         </Select>
                                     </FormControl>
                                 </Grid>

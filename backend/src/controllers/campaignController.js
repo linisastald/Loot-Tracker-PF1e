@@ -30,6 +30,8 @@ const BOOLEAN_SETTINGS = [
   'auto_appraisal_enabled',
   'auto_task_generation',
   'discord_integration_enabled',
+  'default_quantity_enabled',
+  'auto_split_stacks_enabled',
 ];
 
 /** Treasure progression tracks accepted by the loot generator. */
@@ -51,6 +53,27 @@ const validateBooleanValue = (name, value) => {
   }
   throw controllerFactory.createValidationError(`${name} must be '0' or '1'`);
 };
+
+/**
+ * Build a validator for a bounded integer setting. Accepts integers and
+ * integer strings (surrounding whitespace allowed); rejects '5.5', '5abc', ''.
+ * @param {string} name - Setting name (for the error message)
+ * @param {number} min - Inclusive lower bound
+ * @param {number} max - Inclusive upper bound
+ * @return {function(*): {value: string, valueType: string}}
+ */
+const intRange = (name, min, max) => (value) => {
+  const parsed = parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max || String(parsed) !== String(value).trim()) {
+    throw controllerFactory.createValidationError(
+      `${name} must be an integer between ${min} and ${max}`
+    );
+  }
+  return { value: String(parsed), valueType: 'integer' };
+};
+
+/** Plain decimal number: digits with an optional fraction ('1.5', '2'); no exponent or trailing text. */
+const DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
 
 /**
  * Per-name validators for the scalar (non-theme) campaign settings. Each takes
@@ -81,15 +104,7 @@ const SCALAR_SETTING_VALIDATORS = {
     return { value: trimmed, valueType: 'string' };
   },
 
-  weather_forecast_days: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_FORECAST_DAYS || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        `weather_forecast_days must be an integer between 0 and ${MAX_FORECAST_DAYS}`
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
+  weather_forecast_days: intRange('weather_forecast_days', 0, MAX_FORECAST_DAYS),
 
   treasure_track: (value) => {
     if (!TREASURE_TRACKS.includes(value)) {
@@ -99,39 +114,18 @@ const SCALAR_SETTING_VALIDATORS = {
   },
 
   treasure_modifier: (value) => {
-    const mod = parseFloat(value);
+    const isNumber = typeof value === 'number' && Number.isFinite(value);
+    const isDecimalString = typeof value === 'string' && DECIMAL_PATTERN.test(value.trim());
+    const mod = isNumber ? value : (isDecimalString ? parseFloat(value) : NaN);
     if (!(mod > 0) || mod > 100) {
       throw controllerFactory.createValidationError('treasure_modifier must be a positive number (at most 100)');
     }
     return { value: String(mod), valueType: 'string' };
   },
 
-  average_party_level: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 30 || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        'average_party_level must be an integer between 1 and 30'
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
-
-  infamy_system_enabled: (value) => validateBooleanValue('infamy_system_enabled', value),
-  harrow_system_enabled: (value) => validateBooleanValue('harrow_system_enabled', value),
-
-  harrow_current_chapter: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 6 || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        'harrow_current_chapter must be an integer between 1 and 6'
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
-
-  auto_appraisal_enabled: (value) => validateBooleanValue('auto_appraisal_enabled', value),
-  auto_task_generation: (value) => validateBooleanValue('auto_task_generation', value),
-  discord_integration_enabled: (value) => validateBooleanValue('discord_integration_enabled', value),
+  average_party_level: intRange('average_party_level', 1, MAX_PARTY_LEVEL),
+  harrow_current_chapter: intRange('harrow_current_chapter', 1, 6),
+  default_browser_quantity: intRange('default_browser_quantity', 1, 9999),
 
   discord_channel_id: (value) => {
     const id = value === null || value === undefined ? '' : String(value).trim();
@@ -152,11 +146,15 @@ const SCALAR_SETTING_VALIDATORS = {
   },
 };
 
+for (const name of BOOLEAN_SETTINGS) {
+  SCALAR_SETTING_VALIDATORS[name] = (value) => validateBooleanValue(name, value);
+}
+
 /** Keys a theme override may contain — all optional. */
 const THEME_KEYS = ['mode', 'primary', 'secondary', 'background_default', 'background_paper'];
 
 /** Theme keys holding a #rrggbb color value. */
-const THEME_COLOR_KEYS = ['primary', 'secondary', 'background_default', 'background_paper'];
+const THEME_COLOR_KEYS = THEME_KEYS.filter((key) => key !== 'mode');
 
 /** Valid theme modes. */
 const THEME_MODES = ['dark', 'light'];
@@ -252,14 +250,34 @@ const deriveSlug = (value) => {
 };
 
 /**
+ * Validate and trim a campaign name (required, at most 255 characters).
+ * @param {*} name - Raw name from the request body
+ * @return {string} The trimmed name
+ * @throws {Error} ValidationError when missing or too long
+ */
+const validateCampaignName = (name) => {
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw controllerFactory.createValidationError('Campaign name is required');
+  }
+  const trimmedName = name.trim();
+  if (trimmedName.length > 255) {
+    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
+  }
+  return trimmedName;
+};
+
+/**
  * Get the campaigns visible to the requesting user (campaign picker).
  * Superadmins see every campaign (annotated role 'DM'); everyone else
  * sees their user_campaign memberships with their per-campaign role.
  */
 const getMyCampaigns = async (req, res) => {
   if (req.isSuperadmin) {
-    const campaigns = await Campaign.getAll();
-    const annotated = campaigns.map((campaign) => ({ ...campaign, role: 'DM' }));
+    // Every campaign, with the superadmin's real membership role where they
+    // have one (a Player membership is honoured) and 'DM' elsewhere.
+    const [campaigns, memberships] = await Promise.all([Campaign.getAll(), Campaign.getForUser(req.user.id)]);
+    const roleByCampaign = new Map(memberships.map((m) => [m.id, m.role]));
+    const annotated = campaigns.map((campaign) => ({ ...campaign, role: roleByCampaign.get(campaign.id) || 'DM' }));
     return controllerFactory.sendSuccessResponse(res, annotated, 'Campaigns retrieved successfully');
   }
 
@@ -279,11 +297,19 @@ const getMyCampaigns = async (req, res) => {
 const getCurrentCampaign = async (req, res) => {
   const campaign = req.campaignId ? await Campaign.getById(req.campaignId) : null;
   const settings = req.campaignId ? await Campaign.getSettingsMap(req.campaignId) : {};
+  // The requester's active character in THIS campaign (GET /auth/status carries
+  // no campaign header, so it cannot answer this for a multi-campaign user)
+  const activeCharacterId = req.campaignId && req.user
+    ? ((await Campaign.getActiveCharacterId(req.user.id, req.campaignId)) ?? null)
+    : null;
 
   controllerFactory.sendSuccessResponse(res, {
     campaignId: req.campaignId ?? null,
     role: req.campaignRole ?? null,
     isSuperadmin: !!req.isSuperadmin,
+    // True when this request's DM role comes from the superadmin override header
+    dmOverride: !!req.superadminDmOverride,
+    activeCharacterId,
     campaign: campaign
       ? {
           id: campaign.id,
@@ -323,44 +349,39 @@ const updateCurrentCampaignSetting = async (req, res) => {
     );
   }
 
+  let storedValue;
+  let cleared = false;
+
   if (name === 'theme') {
     const theme = validateThemeValue(value);
 
     if (theme === null) {
       await Campaign.deleteSetting(req.campaignId, name);
-      logger.info(`Campaign setting '${name}' cleared for campaign ${req.campaignId} by user ${req.user.id}`);
-      return controllerFactory.sendSuccessResponse(
-        res,
-        { name, value: null },
-        'Campaign setting cleared successfully'
-      );
+      storedValue = null;
+      cleared = true;
+    } else {
+      await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
+      storedValue = theme;
     }
+  } else {
+    const validated = SCALAR_SETTING_VALIDATORS[name](value);
+    await Campaign.upsertSetting(req.campaignId, name, validated.value, validated.valueType);
+    storedValue = validated.value;
 
-    await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
-    logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
-    return controllerFactory.sendSuccessResponse(
-      res,
-      { name, value: theme },
-      'Campaign setting updated successfully'
-    );
+    // A timezone change must invalidate this campaign's cached timezone and
+    // restart the scheduler (its cron clock follows the default campaign)
+    if (name === 'campaign_timezone') {
+      timezoneUtils.clearTimezoneCache(req.campaignId);
+      const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
+      await sessionSchedulerService.restart();
+    }
   }
 
-  const validated = SCALAR_SETTING_VALIDATORS[name](value);
-  await Campaign.upsertSetting(req.campaignId, name, validated.value, validated.valueType);
-
-  // A timezone change must invalidate this campaign's cached timezone and
-  // restart the scheduler (its cron clock follows the default campaign)
-  if (name === 'campaign_timezone') {
-    timezoneUtils.clearTimezoneCache(req.campaignId);
-    const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
-    await sessionSchedulerService.restart();
-  }
-
-  logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
+  logger.info(`Campaign setting '${name}' ${cleared ? 'cleared' : 'updated'} for campaign ${req.campaignId} by user ${req.user.id}`);
   controllerFactory.sendSuccessResponse(
     res,
-    { name, value: validated.value },
-    'Campaign setting updated successfully'
+    { name, value: storedValue },
+    `Campaign setting ${cleared ? 'cleared' : 'updated'} successfully`
   );
 };
 
@@ -385,26 +406,47 @@ const getCurrentPartyLevel = async (req, res) => {
 };
 
 /**
- * Level up the current campaign: raise the shared character level by one and,
- * when Discord is enabled and configured, announce the new level to the
- * campaign's channel (tagging the campaign role when set). DM-only.
- *
- * The stored 'average_party_level' setting holds the CHARACTER LEVEL every PC
- * shares; the Average Party Level (APL) is derived from that level and the
- * active party size (see utils/partyLevel).
- *
- * A Discord failure never fails the request — the level is already persisted;
- * the response reports whether the announcement was sent.
- *
- * Response data: { character_level, apl, character_count, average_party_level, discordSent }
- * (average_party_level mirrors character_level for backward compatibility.)
+ * Per-campaign promise chains that serialize the level-up read-modify-write.
+ * The server is a single Node process, so an in-process queue is enough.
+ * @type {Map<number, Promise<*>>}
  */
-const levelUpCampaign = async (req, res) => {
+const levelUpQueues = new Map();
+
+/**
+ * Run `task` after every earlier task queued for the same campaign finished.
+ * @param {number} campaignId
+ * @param {function(): Promise<*>} task
+ * @return {Promise<*>} The task's result (or rejection)
+ */
+const withCampaignLock = (campaignId, task) => {
+  const previous = levelUpQueues.get(campaignId) || Promise.resolve();
+  const run = previous.then(task, task);
+  const tail = run.catch(() => {});
+  levelUpQueues.set(campaignId, tail);
+  tail.then(() => {
+    if (levelUpQueues.get(campaignId) === tail) levelUpQueues.delete(campaignId);
+  });
+  return run;
+};
+
+/**
+ * Persist level + 1 for the request's campaign.
+ * @param {Object} req - Express request (campaignId, user, body.expectedLevel)
+ * @return {Promise<{newLevel: number, apl: number, characterCount: number}>}
+ */
+const raiseCharacterLevel = async (req) => {
   const currentValue = await campaignSettings.getCampaignSetting('average_party_level', {
     campaignId: req.campaignId,
     defaultValue: '5'
   });
   const currentLevel = parseInt(currentValue, 10) || 5;
+
+  const { expectedLevel } = req.body || {};
+  if (expectedLevel !== undefined && expectedLevel !== null && Number(expectedLevel) !== currentLevel) {
+    throw controllerFactory.createValidationError(
+      `The party level has changed (now ${currentLevel}); refresh and try again`
+    );
+  }
 
   if (currentLevel >= MAX_PARTY_LEVEL) {
     throw controllerFactory.createValidationError(
@@ -424,14 +466,22 @@ const levelUpCampaign = async (req, res) => {
     `Campaign ${req.campaignId} leveled up to character level ${newLevel} ` +
     `(APL ${apl}, ${characterCount} characters) by user ${req.user.id}`
   );
+  return { newLevel, apl, characterCount };
+};
 
-  // Announce to Discord when enabled and configured. Wrapped so a Discord
-  // outage (or missing bot token) cannot roll back or fail the level-up.
-  let discordSent = false;
+/**
+ * Announce a level-up to the campaign's Discord channel when the integration
+ * is enabled and configured (tagging the campaign role when set). Never
+ * throws: the level is already persisted.
+ * @param {number} campaignId
+ * @param {number} newLevel
+ * @return {Promise<boolean>} Whether a message was sent
+ */
+const announceLevelUp = async (campaignId, newLevel) => {
   try {
     const settings = await campaignSettings.getCampaignSettings(
       ['discord_integration_enabled', 'discord_channel_id', 'campaign_role_id'],
-      { campaignId: req.campaignId }
+      { campaignId }
     );
 
     if (settings.discord_integration_enabled === '1' && settings.discord_channel_id) {
@@ -440,21 +490,42 @@ const levelUpCampaign = async (req, res) => {
         channelId: settings.discord_channel_id,
         content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newLevel}**.`
       });
-      discordSent = !!(result && result.success);
+      return !!(result && result.success);
     }
   } catch (error) {
     logger.error('Level-up Discord announcement failed', { error: error.message });
   }
+  return false;
+};
+
+/**
+ * Level up the current campaign: raise the shared character level by one and,
+ * when Discord is enabled and configured, announce the new level to the
+ * campaign's channel (tagging the campaign role when set). DM-only.
+ *
+ * The stored 'average_party_level' setting holds the CHARACTER LEVEL every PC
+ * shares; the Average Party Level (APL) is derived from that level and the
+ * active party size (see utils/partyLevel).
+ *
+ * Concurrent level-ups for the same campaign run one at a time (the level is a
+ * read-modify-write), and an optional body.expectedLevel makes a stale or
+ * double-submitted request fail instead of skipping a level.
+ *
+ * A Discord failure never fails the request — the level is already persisted;
+ * the response reports whether the announcement was sent.
+ *
+ * Response data: { character_level, apl, character_count, discordSent }
+ */
+const levelUpCampaign = async (req, res) => {
+  const { newLevel, apl, characterCount } = await withCampaignLock(
+    req.campaignId,
+    () => raiseCharacterLevel(req)
+  );
+  const discordSent = await announceLevelUp(req.campaignId, newLevel);
 
   controllerFactory.sendSuccessResponse(
     res,
-    {
-      character_level: newLevel,
-      apl,
-      character_count: characterCount,
-      average_party_level: newLevel,
-      discordSent,
-    },
+    { character_level: newLevel, apl, character_count: characterCount, discordSent },
     `Party leveled up to level ${newLevel} (APL ${apl})`
   );
 };
@@ -468,16 +539,7 @@ const levelUpCampaign = async (req, res) => {
  * Supersedes the deprecated global 'campaign_name' setting row.
  */
 const renameCurrentCampaign = async (req, res) => {
-  const { name } = req.body;
-
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    throw controllerFactory.createValidationError('Campaign name is required');
-  }
-
-  const trimmedName = name.trim();
-  if (trimmedName.length > 255) {
-    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
-  }
+  const trimmedName = validateCampaignName(req.body.name);
 
   const campaign = await Campaign.updateName(req.campaignId, trimmedName);
   if (!campaign) {
@@ -556,15 +618,7 @@ const createCampaign = async (req, res) => {
   }
 
   const { name, slug, world } = req.body;
-
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    throw controllerFactory.createValidationError('Campaign name is required');
-  }
-
-  const trimmedName = name.trim();
-  if (trimmedName.length > 255) {
-    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
-  }
+  const trimmedName = validateCampaignName(name);
 
   // Slug is optional — derive from the name when absent. Both paths go
   // through the same normalization (lowercase, alphanumeric + hyphens).
@@ -586,13 +640,25 @@ const createCampaign = async (req, res) => {
     throw controllerFactory.createValidationError('Campaign world cannot exceed 100 characters');
   }
 
+  // Optional DM other than the creator (System Admin page). The account must
+  // exist and be live; the creator stays recorded in created_by either way.
+  let dmUserId;
+  if (req.body.dmUserId !== undefined && req.body.dmUserId !== null && req.body.dmUserId !== '') {
+    dmUserId = parseId(req.body.dmUserId, 'dmUserId');
+    const account = await Campaign.findUserAccount(dmUserId);
+    if (!account || account.role === 'deleted') {
+      throw controllerFactory.createNotFoundError('DM user not found');
+    }
+  }
+
   let campaign;
   try {
     campaign = await Campaign.create({
       name: trimmedName,
       slug: finalSlug,
       world: finalWorld,
-      createdById: req.user.id
+      createdById: req.user.id,
+      ...(dmUserId !== undefined && dmUserId !== req.user.id ? { dmUserId } : {})
     });
   } catch (error) {
     // UNIQUE violation on campaigns.slug
@@ -608,7 +674,228 @@ const createCampaign = async (req, res) => {
   controllerFactory.sendCreatedResponse(res, campaign, 'Campaign created successfully');
 };
 
+// ---------------------------------------------------------------------------
+// Instance administration by campaign id (System Admin page). Every handler
+// below sits behind requireSuperadmin at the route layer; the campaign in the
+// path is independent of the request's current-campaign context.
+// ---------------------------------------------------------------------------
+
+const MEMBER_ROLES = ['DM', 'Player'];
+
+/**
+ * Parse a positive integer id from a path parameter or body field.
+ * @param {*} value
+ * @param {string} label - Name used in the validation message
+ * @return {number}
+ * @throws {Error} ValidationError when not a positive integer
+ */
+const parseId = (value, label) => {
+  const id = parseInt(value, 10);
+  if (!/^\d+$/.test(String(value)) || !Number.isSafeInteger(id) || id < 1) {
+    throw controllerFactory.createValidationError(`${label} must be a positive integer`);
+  }
+  return id;
+};
+
+/**
+ * Load a campaign by path id or throw not-found.
+ * @param {Object} req
+ * @return {Promise<Object>} The campaign row
+ */
+const loadCampaignFromPath = async (req) => {
+  const campaignId = parseId(req.params.id, 'Campaign id');
+  const campaign = await Campaign.getById(campaignId);
+  if (!campaign) {
+    throw controllerFactory.createNotFoundError('Campaign not found');
+  }
+  return campaign;
+};
+
+/**
+ * Validate a member role from the body.
+ * @param {*} role
+ * @return {string} 'DM' | 'Player'
+ */
+const validateMemberRole = (role) => {
+  if (!MEMBER_ROLES.includes(role)) {
+    throw controllerFactory.createValidationError(`role must be one of: ${MEMBER_ROLES.join(', ')}`);
+  }
+  return role;
+};
+
+/**
+ * Refuse to leave a campaign without a DM. `membership` is the row about to
+ * be demoted or removed.
+ */
+const assertNotLastDM = async (campaignId, membership) => {
+  if (membership.role !== 'DM') return;
+  const dms = await Campaign.countDMs(campaignId);
+  if (dms <= 1) {
+    throw controllerFactory.createValidationError(
+      'A campaign must keep at least one DM; assign another DM first'
+    );
+  }
+};
+
+/**
+ * Update a campaign's name, world and/or active flag. Superadmin only.
+ *
+ * Body: { name?, world?, is_active? } — at least one. Deactivating hides the
+ * campaign from its members (they can no longer select it); the data is kept
+ * and the campaign can be reactivated here. The last active campaign cannot
+ * be deactivated.
+ */
+const updateCampaign = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const { name, world, is_active: isActive } = req.body;
+  const fields = {};
+
+  if (name !== undefined) {
+    fields.name = validateCampaignName(name);
+  }
+  if (world !== undefined) {
+    const trimmedWorld = typeof world === 'string' ? world.trim() : '';
+    if (!trimmedWorld) {
+      throw controllerFactory.createValidationError('Campaign world cannot be empty');
+    }
+    if (trimmedWorld.length > 100) {
+      throw controllerFactory.createValidationError('Campaign world cannot exceed 100 characters');
+    }
+    fields.world = trimmedWorld;
+  }
+  if (isActive !== undefined) {
+    if (typeof isActive !== 'boolean') {
+      throw controllerFactory.createValidationError('is_active must be true or false');
+    }
+    if (!isActive && campaign.is_active !== false) {
+      const active = await Campaign.countActive();
+      if (active <= 1) {
+        throw controllerFactory.createValidationError('The last active campaign cannot be deactivated');
+      }
+    }
+    fields.is_active = isActive;
+  }
+  if (Object.keys(fields).length === 0) {
+    throw controllerFactory.createValidationError('Nothing to update: provide name, world or is_active');
+  }
+
+  const updated = await Campaign.update(campaign.id, fields);
+  logger.info(`Campaign ${campaign.id} updated by superadmin ${req.user.id}: ${Object.keys(fields).join(', ')}`);
+  controllerFactory.sendSuccessResponse(res, updated, 'Campaign updated successfully');
+};
+
+/**
+ * List a campaign's members by campaign id. Superadmin only.
+ * Response data: { campaign: { id, name }, members: [...] }
+ */
+const getCampaignMembers = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const members = await Campaign.getMembers(campaign.id);
+  controllerFactory.sendSuccessResponse(
+    res,
+    { campaign: { id: campaign.id, name: campaign.name }, members },
+    'Campaign members retrieved successfully'
+  );
+};
+
+/**
+ * Add a user to a campaign with a role (or change the role of an existing
+ * member). Superadmin only. Body: { userId, role }.
+ */
+const addCampaignMember = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const userId = parseId(req.body.userId, 'userId');
+  const role = validateMemberRole(req.body.role);
+
+  const account = await Campaign.findUserAccount(userId);
+  if (!account || account.role === 'deleted') {
+    throw controllerFactory.createNotFoundError('User not found');
+  }
+
+  const existing = await Campaign.getMembership(userId, campaign.id);
+  if (existing && existing.role === 'DM' && role !== 'DM') {
+    await assertNotLastDM(campaign.id, existing);
+  }
+
+  const membership = await Campaign.addOrUpdateMember(campaign.id, userId, role);
+  logger.info(`User ${userId} ${existing ? 'changed to' : 'added as'} ${role} in campaign ${campaign.id} by superadmin ${req.user.id}`);
+  controllerFactory.sendSuccessResponse(
+    res,
+    { ...membership, username: account.username },
+    existing ? 'Member role updated successfully' : 'Member added successfully'
+  );
+};
+
+/**
+ * Change an existing member's role. Superadmin only. Body: { role }.
+ */
+const updateCampaignMemberRole = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const userId = parseId(req.params.userId, 'userId');
+  const role = validateMemberRole(req.body.role);
+
+  const existing = await Campaign.getMembership(userId, campaign.id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('User is not a member of this campaign');
+  }
+  if (existing.role === role) {
+    return controllerFactory.sendSuccessResponse(res, { user_id: userId, campaign_id: campaign.id, role }, 'Member role unchanged');
+  }
+  if (existing.role === 'DM') {
+    await assertNotLastDM(campaign.id, existing);
+  }
+
+  const membership = await Campaign.updateMemberRole(campaign.id, userId, role);
+  logger.info(`User ${userId} changed to ${role} in campaign ${campaign.id} by superadmin ${req.user.id}`);
+  controllerFactory.sendSuccessResponse(res, membership, 'Member role updated successfully');
+};
+
+/**
+ * Remove a member from a campaign by campaign id. Superadmin only. The
+ * account is never touched. The last DM of a campaign cannot be removed.
+ */
+const removeCampaignMember = async (req, res) => {
+  const campaign = await loadCampaignFromPath(req);
+  const userId = parseId(req.params.userId, 'userId');
+
+  const existing = await Campaign.getMembership(userId, campaign.id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('User is not a member of this campaign');
+  }
+  await assertNotLastDM(campaign.id, existing);
+
+  await Campaign.removeMember(campaign.id, userId);
+  logger.info(`User ${userId} removed from campaign ${campaign.id} by superadmin ${req.user.id}`);
+  controllerFactory.sendSuccessMessage(res, 'Member removed from campaign successfully');
+};
+
 // Export wrapped controllers
+exports.updateCampaign = controllerFactory.createHandler(updateCampaign, {
+  errorMessage: 'Error updating campaign'
+});
+
+exports.getCampaignMembers = controllerFactory.createHandler(getCampaignMembers, {
+  errorMessage: 'Error fetching campaign members'
+});
+
+exports.addCampaignMember = controllerFactory.createHandler(addCampaignMember, {
+  errorMessage: 'Error adding campaign member',
+  validation: {
+    requiredFields: ['userId', 'role']
+  }
+});
+
+exports.updateCampaignMemberRole = controllerFactory.createHandler(updateCampaignMemberRole, {
+  errorMessage: 'Error updating member role',
+  validation: {
+    requiredFields: ['role']
+  }
+});
+
+exports.removeCampaignMember = controllerFactory.createHandler(removeCampaignMember, {
+  errorMessage: 'Error removing campaign member'
+});
+
 exports.getMyCampaigns = controllerFactory.createHandler(getMyCampaigns, {
   errorMessage: 'Error fetching campaigns'
 });

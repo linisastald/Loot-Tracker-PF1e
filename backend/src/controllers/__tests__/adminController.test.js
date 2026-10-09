@@ -294,6 +294,53 @@ describe('adminController', () => {
 
   // ─── createMod ──────────────────────────────────────────────────
 
+  describe('valuecalc validation (F-0643)', () => {
+    const base = { name: 'Evil', type: 'Material', target: 'weapon' };
+
+    it.each([
+      "+(global.x=1)", "+5;process.exit()", "plus", "+ 5", "+item.wgt*10", "+(1+1)",
+    ])('createMod rejects valuecalc %j', async (valuecalc) => {
+      const req = createMockReq({ body: { ...base, valuecalc } });
+      const res = createMockRes();
+
+      await adminController.createMod(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('valuecalc'));
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(["+500", "*1.5", "/2", "-5", "+(10*item.wgt)"])('createMod accepts valuecalc %j', async (valuecalc) => {
+      const req = createMockReq({ body: { ...base, valuecalc } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+      await adminController.createMod(req, res);
+
+      expect(res.validationError).not.toHaveBeenCalled();
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('updateMod rejects a malicious valuecalc', async () => {
+      const req = createMockReq({ params: { id: '1' }, body: { ...base, valuecalc: "+(global.x=1)" } });
+      const res = createMockRes();
+
+      await adminController.updateMod(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('valuecalc'));
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('createMod still allows no valuecalc', async () => {
+      const req = createMockReq({ body: { ...base } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+      await adminController.createMod(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('createMod', () => {
     it('should create a mod with all fields', async () => {
       const req = createMockReq({
@@ -301,7 +348,7 @@ describe('adminController', () => {
           name: 'Flaming',
           plus: 1,
           type: 'Enhancement',
-          valuecalc: 'plus',
+          valuecalc: '+500',
           target: 'Weapon',
           subtarget: 'Melee',
           casterlevel: 10,
@@ -314,7 +361,7 @@ describe('adminController', () => {
         name: 'Flaming',
         plus: 1,
         type: 'Enhancement',
-        valuecalc: 'plus',
+        valuecalc: '+500',
         target: 'Weapon',
         subtarget: 'Melee',
         casterlevel: 10,
@@ -326,7 +373,7 @@ describe('adminController', () => {
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
       const [query, params] = dbUtils.executeQuery.mock.calls[0];
       expect(query).toContain('INSERT INTO mod');
-      expect(params).toEqual(['Flaming', 1, 'Enhancement', 'plus', 'Weapon', 'Melee', 10]);
+      expect(params).toEqual(['Flaming', 1, 'Enhancement', '+500', 'Weapon', 'Melee', 10]);
       expect(res.success).toHaveBeenCalled();
     });
 
@@ -412,7 +459,7 @@ describe('adminController', () => {
           name: 'Flaming Burst',
           plus: 2,
           type: 'Enhancement',
-          valuecalc: 'plus',
+          valuecalc: '+500',
           target: 'Weapon',
           subtarget: 'Melee',
           casterlevel: 12,
@@ -429,7 +476,7 @@ describe('adminController', () => {
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
       const [query, params] = dbUtils.executeQuery.mock.calls[0];
       expect(query).toContain('UPDATE mod');
-      expect(params).toEqual(['Flaming Burst', 2, 'Enhancement', 'plus', 'Weapon', 'Melee', 12, '1']);
+      expect(params).toEqual(['Flaming Burst', 2, 'Enhancement', '+500', 'Weapon', 'Melee', 12, '1']);
       expect(res.success).toHaveBeenCalled();
       expect(res.success.mock.calls[0][1]).toBe('Mod updated successfully');
     });
@@ -473,6 +520,50 @@ describe('adminController', () => {
       await adminController.updateMod(req, res);
 
       expect(res.error).toHaveBeenCalledWith('Internal server error');
+    });
+  });
+
+  // ─── explicit zero values are data, not "missing" (F-0215) ───────
+
+  describe('zero values', () => {
+    it('createItem stores weight 0 and casterlevel 0 as 0, not NULL', async () => {
+      const req = createMockReq({ body: { name: 'Feather', type: 'Gear', value: 1, weight: 0, casterlevel: 0 } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+      await adminController.createItem(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Feather', 'Gear', null, 1, 0, 0]);
+    });
+
+    it('updateItem keeps an explicit weight of 0', async () => {
+      const req = createMockReq({ params: { id: '3' }, body: { name: 'Feather', type: 'Gear', value: 1, weight: 0 } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 3 }] });
+
+      await adminController.updateItem(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Feather', 'Gear', null, 1, 0, null, '3']);
+    });
+
+    it('createMod stores plus 0 and casterlevel 0 as 0', async () => {
+      const req = createMockReq({ body: { name: 'Masterwork', type: 'Weapon', target: 'weapon', plus: 0, casterlevel: 0 } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+      await adminController.createMod(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Masterwork', 0, 'Weapon', null, 'weapon', null, 0]);
+    });
+
+    it('updateMod keeps plus 0 and still nulls an empty valuecalc', async () => {
+      const req = createMockReq({ params: { id: '4' }, body: { name: 'Masterwork', type: 'Weapon', target: 'weapon', plus: 0, valuecalc: '' } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 4 }] });
+
+      await adminController.updateMod(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Masterwork', 0, 'Weapon', null, 'weapon', null, null, '4']);
     });
   });
 });

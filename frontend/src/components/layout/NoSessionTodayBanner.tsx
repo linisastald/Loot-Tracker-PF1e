@@ -12,7 +12,7 @@
 // Fails quiet: any fetch error renders nothing. Never gates any action.
 import React, { useEffect, useState } from 'react';
 import { Alert } from '@mui/material';
-import api from '../../utils/api';
+import { fetchSessionList } from '../../utils/sessionsApi';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCampaign } from '../../contexts/CampaignContext';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
@@ -21,6 +21,7 @@ import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 interface SessionLike {
   id?: number;
   start_time?: string | null;
+  status?: string | null;
 }
 
 /** localStorage key hiding the banner for one campaign+day. */
@@ -38,27 +39,23 @@ const NoSessionTodayBanner: React.FC = () => {
   // Bumps a re-render after dismissal (the source of truth is localStorage).
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
 
+  // Single-campaign users would just get nagged — only multi-campaign users
+  // benefit from a "you might be looking at the wrong campaign" hint, so don't
+  // spend a sessions fetch on anyone else.
+  const eligible = isAuthenticated && campaigns.length > 1;
+
   useEffect(() => {
-    // Single-campaign users never see the banner (guard below), so don't
-    // spend a sessions fetch on them — the common case costs nothing.
-    if (!isAuthenticated || campaigns.length <= 1) {
+    if (!eligible) {
       return undefined;
     }
     let isMounted = true;
 
     const fetchSessions = async (): Promise<void> => {
       try {
-        let data: unknown;
-        try {
-          // Same source as the sessions page, fallback included.
-          const response: any = await api.get('/sessions/enhanced');
-          data = response.data;
-        } catch {
-          const fallback: any = await api.get('/sessions');
-          data = fallback.data;
-        }
+        // Same source as the sessions page, with the upcoming-only fallback.
+        const list = await fetchSessionList({ fallbackToUpcoming: true });
         if (isMounted) {
-          setSessions(Array.isArray(data) ? (data as SessionLike[]) : []);
+          setSessions(list);
         }
       } catch {
         // Fail quiet — the banner simply never appears.
@@ -72,14 +69,9 @@ const NoSessionTodayBanner: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, campaigns.length]);
+  }, [eligible]);
 
-  if (!isAuthenticated || failed || sessions === null || timezoneLoading) {
-    return null;
-  }
-  // Single-campaign users would just get nagged — only multi-campaign users
-  // benefit from a "you might be looking at the wrong campaign" hint.
-  if (!currentCampaign || campaigns.length <= 1) {
+  if (!eligible || !currentCampaign || failed || sessions === null || timezoneLoading) {
     return null;
   }
 
@@ -89,9 +81,11 @@ const NoSessionTodayBanner: React.FC = () => {
     return null;
   }
 
+  // A cancelled session today does not count: nobody is playing.
   const hasSessionToday = sessions.some(
     (session) =>
       session?.start_time &&
+      session.status !== 'cancelled' &&
       formatInCampaignTimezone(session.start_time, timezone, 'yyyy-MM-dd') === todayKey
   );
   if (hasSessionToday) {

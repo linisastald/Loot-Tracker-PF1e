@@ -1,22 +1,21 @@
-import React, { createContext, useContext, useCallback, useState, useEffect } from 'react';
-import api from '../utils/api';
+import React, { createContext, useContext } from 'react';
 
-interface User {
+export interface AuthUser {
   id: number;
   username: string;
   email?: string;
+  /** Legacy global role from the JWT; per-campaign roles live in CampaignContext. */
   role: string;
   discord_id?: string;
-  activeCharacter?: any;
-  activeCharacterId?: number;
+  activeCharacter?: { name?: string };
+  activeCharacterId?: number | null;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   isAuthenticated: boolean;
-  isDM: boolean;
+  /** Re-read the signed-in user from the server (e.g. after the active character changed) */
   refreshUser: () => Promise<void>;
-  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -30,39 +29,23 @@ export const useAuth = (): AuthContextType => {
 };
 
 interface AuthProviderProps {
-  user: any;
+  user: AuthUser | null;
   isAuthenticated: boolean;
-  onUserUpdate: (user: any) => void;
+  onRefreshUser?: () => Promise<void>;
   children: React.ReactNode;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({
   user,
   isAuthenticated,
-  onUserUpdate,
+  onRefreshUser,
   children,
 }) => {
-  const refreshUser = useCallback(async () => {
-    try {
-      const response: any = await api.get('/auth/status');
-      // api interceptor unwraps response.data, so `response` is { success, data: { user } }
-      if (response?.success && response?.data?.user) {
-        onUserUpdate(response.data.user);
-      }
-    } catch (error) {
-      // Silently fail - user stays as-is
-    }
-  }, [onUserUpdate]);
-
   const value: AuthContextType = {
     user,
     isAuthenticated,
-    isDM: user?.role === 'DM',
-    refreshUser,
-    setUser: onUserUpdate,
+    refreshUser: onRefreshUser ?? (async () => {}),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
-export default AuthContext;

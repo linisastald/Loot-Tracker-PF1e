@@ -14,7 +14,6 @@ import versionService from '../versionService';
 describe('versionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   describe('getVersion', () => {
@@ -28,8 +27,7 @@ describe('versionService', () => {
         data: {
           version: '1.2.3',
           buildNumber: 42,
-          fullVersion: '1.2.3-42',
-          environment: 'production',
+          fullVersion: '1.2.3-dev.42',
         },
       };
       vi.mocked(api.get).mockResolvedValueOnce(mockResponse);
@@ -38,44 +36,17 @@ describe('versionService', () => {
       expect(result).toEqual(mockResponse);
     });
 
-    it('should return fallback version info on API error', async () => {
+    it('should resolve with an unknown marker, not a fake version, when the API fails', async () => {
       vi.mocked(api.get).mockRejectedValueOnce(new Error('API unreachable'));
 
       const result = await versionService.getVersion();
       expect(result).toEqual({
         data: {
-          version: '0.7.1',
+          version: 'unknown',
           buildNumber: 0,
-          fullVersion: '0.7.1',
-          environment: 'development',
+          fullVersion: 'unknown',
         },
       });
-    });
-
-    it('should log error to console on failure', async () => {
-      const error = new Error('Connection refused');
-      vi.mocked(api.get).mockRejectedValueOnce(error);
-
-      await versionService.getVersion();
-      expect(console.error).toHaveBeenCalledWith('Version API call failed:', error);
-    });
-
-    it('should not throw on API failure', async () => {
-      vi.mocked(api.get).mockRejectedValueOnce(new Error('500'));
-      await expect(versionService.getVersion()).resolves.toBeDefined();
-    });
-
-    it('should return fallback with correct default version string', async () => {
-      vi.mocked(api.get).mockRejectedValueOnce(new Error('fail'));
-      const result = await versionService.getVersion();
-      expect(result.data.version).toBe('0.7.1');
-      expect(result.data.fullVersion).toBe('0.7.1');
-    });
-
-    it('should return fallback with development environment on error', async () => {
-      vi.mocked(api.get).mockRejectedValueOnce(new Error('fail'));
-      const result = await versionService.getVersion();
-      expect(result.data.environment).toBe('development');
     });
   });
 });

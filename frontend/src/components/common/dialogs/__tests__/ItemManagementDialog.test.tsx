@@ -1,38 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-
-// Re-install ResizeObserver / IntersectionObserver shims after vi.resetAllMocks
-// in beforeEach. setupTests.ts installs them once via vi.fn(), but
-// resetAllMocks wipes that mock implementation; MUI's TextareaAutosize then
-// crashes with "resizeObserver.observe is not a function".
-class MockResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-class MockIntersectionObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-  takeRecords() {
-    return [];
-  }
-}
-(globalThis as any).ResizeObserver = MockResizeObserver;
-(globalThis as any).IntersectionObserver = MockIntersectionObserver;
-(window as any).ResizeObserver = MockResizeObserver;
-(window as any).IntersectionObserver = MockIntersectionObserver;
-
-// Mock the api utility (4 levels up from this __tests__ folder).
-vi.mock('../../../../utils/api', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-  },
-}));
 
 // Mock lootService — the dialog calls it directly for catalog lookups.
 vi.mock('../../../../services/lootService', () => ({
@@ -100,11 +68,6 @@ const setupDefaultMocks = () => {
 describe('ItemManagementDialog', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    // Reinstall observer shims after resetAllMocks wipes the setupTests stubs.
-    (globalThis as any).ResizeObserver = MockResizeObserver;
-    (globalThis as any).IntersectionObserver = MockIntersectionObserver;
-    (window as any).ResizeObserver = MockResizeObserver;
-    (window as any).IntersectionObserver = MockIntersectionObserver;
     setupDefaultMocks();
   });
 
@@ -349,6 +312,35 @@ describe('ItemManagementDialog', () => {
     });
   });
 
+  // A generated spellbook is linked to the catalog 'Spellbook' (15 gp, blank book) only
+  // to mark its subtype; its own value (book + spells) and no Spellcraft DC must survive
+  // opening and saving the dialog.
+  it('does not overwrite a linked spellbook value or invent a spellcraft DC', async () => {
+    (lootService.getItemsByIds as any).mockResolvedValueOnce({
+      data: {
+        items: [{ id: 6472, name: 'Spellbook', type: 'gear', subtype: 'spellbook', value: 15, weight: 3, casterlevel: null }],
+        count: 1,
+      },
+    });
+
+    render(
+      <ItemManagementDialog
+        open
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        item={{ id: 9, name: 'Spellbook (Wizard, CL 9)', type: 'magic', itemid: 6472, modids: [], value: 1200 }}
+      />
+    );
+
+    await waitFor(() => expect(lootService.getItemsByIds).toHaveBeenCalledWith([6472]));
+    await waitFor(() => expect((screen.getByLabelText('Item') as HTMLInputElement).value).toBe('Spellbook'));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(lootService.calculateValue).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Value') as HTMLInputElement).value).toBe('1200');
+    expect((screen.getByLabelText('Spellcraft DC') as HTMLInputElement).value).toBe('');
+  });
+
   it('does not auto-calculate value when no base item is linked', async () => {
     render(
       <ItemManagementDialog
@@ -367,5 +359,194 @@ describe('ItemManagementDialog', () => {
     const valueInput = screen.getByLabelText('Value') as HTMLInputElement;
     expect(valueInput.value).toBe('50');
     expect(lootService.calculateValue).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // F-1033: opening the dialog must not overwrite a saved spellcraft DC
+  // -------------------------------------------------------------------------
+  it('keeps a saved spellcraft DC while the item and mods are unchanged', async () => {
+    (lootService.getItemsByIds as any).mockResolvedValueOnce({
+      data: { items: [wandOfMM], count: 1 },
+    });
+
+    const handleSave = vi.fn();
+    render(
+      <ItemManagementDialog
+        open
+        onClose={vi.fn()}
+        onSave={handleSave}
+        item={{ id: 1, name: 'Wand', itemid: 42, modids: [], unidentified: true, spellcraft_dc: 31 }}
+      />
+    );
+
+    await waitFor(() => expect(lootService.getItemsByIds).toHaveBeenCalledWith([42]));
+    await waitFor(() => expect(lootService.calculateValue).toHaveBeenCalled());
+
+    const dcInput = screen.getByLabelText('Spellcraft DC') as HTMLInputElement;
+    expect(dcInput.value).toBe('31'); // not 20 (15 + CL 5)
+
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({ spellcraft_dc: 31 }));
+  });
+
+  // -------------------------------------------------------------------------
+  // F-1034 / F-1035 / F-1036: no full loot download on open
+  // -------------------------------------------------------------------------
+  it('does not download the whole loot list when it opens', async () => {
+    render(
+      <ItemManagementDialog open onClose={vi.fn()} onSave={vi.fn()} item={{ id: 9, name: 'Gem', itemid: null, modids: [] }} />
+    );
+    await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+    expect(lootService.getAllLoot).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // F-1039: status options are the backend's list
+  // -------------------------------------------------------------------------
+  it('offers exactly the statuses the backend accepts', async () => {
+    render(
+      <ItemManagementDialog open onClose={vi.fn()} onSave={vi.fn()} item={{ id: 9, name: 'Gem', itemid: null, modids: [], status: 'Kept Character' }} />
+    );
+    await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+
+    // the stored status is shown (it used to render blank)
+    const statusSelect = screen.getByLabelText('Status');
+    expect(statusSelect).toHaveTextContent('Kept Character');
+
+    fireEvent.mouseDown(statusSelect);
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(options).toEqual([
+      'None', 'Unprocessed', 'Kept Party', 'Kept Character', 'Pending Sale', 'Sold', 'Given Away', 'Trashed',
+    ]);
+    expect(options).not.toContain('Kept Self');
+  });
+
+  it('saves null for a cleared tri-state select and the chosen value otherwise', async () => {
+    const handleSave = vi.fn();
+    render(
+      <ItemManagementDialog
+        open
+        onClose={vi.fn()}
+        onSave={handleSave}
+        item={{ id: 9, name: 'Gem', itemid: null, modids: [], unidentified: true, masterwork: false, cursed: true }}
+      />
+    );
+    await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+
+    fireEvent.mouseDown(screen.getByLabelText('Cursed'));
+    fireEvent.click(screen.getByRole('option', { name: 'None' }));
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(handleSave).toHaveBeenCalledWith(
+      expect.objectContaining({ unidentified: true, masterwork: false, cursed: null })
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Round 4: 0 charges on a wand trashes it, after a confirmation
+  // -------------------------------------------------------------------------
+  describe('setting a wand to 0 charges', () => {
+    const CONFIRM_TEXT = 'You have set charges to 0, this will trash this item';
+    const renderWand = (handleSave: () => void, name = 'Wand of Light') => {
+      render(
+        <ItemManagementDialog
+          open
+          onClose={vi.fn()}
+          onSave={handleSave}
+          item={{ id: 9, name, itemid: null, modids: [], charges: 7, quantity: 1 }}
+        />
+      );
+    };
+
+    it('asks for confirmation and does not save until confirmed', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave);
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
+      expect(handleSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: /trash item/i }));
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({ charges: 0 }));
+    });
+
+    it('saves nothing when the confirmation is cancelled', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave);
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      await screen.findByText(CONFIRM_TEXT);
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i, hidden: false }));
+
+      expect(handleSave).not.toHaveBeenCalled();
+    });
+
+    it('does not ask for a positive charge count or a non-wand', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave);
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '3' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
+    });
+
+    it('does not ask for a non-wand item', async () => {
+      const handleSave = vi.fn();
+      renderWand(handleSave, 'Ring of Protection');
+      await waitFor(() => expect(lootService.getMods).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // F-1037: debounced, stale-safe item suggestions
+  // -------------------------------------------------------------------------
+  describe('item suggestions', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('debounces typing into one lookup and ignores out-of-date responses', async () => {
+      vi.useFakeTimers();
+      let resolveFirst: (v: unknown) => void = () => {};
+      (lootService.suggestItems as any)
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+        .mockResolvedValueOnce({ data: { suggestions: [{ id: 2, name: 'Longbow' }], count: 1 } });
+
+      render(
+        <ItemManagementDialog open onClose={vi.fn()} onSave={vi.fn()} item={{ id: 9, name: 'Gem', itemid: null, modids: [] }} />
+      );
+      const input = screen.getByLabelText('Item') as HTMLInputElement;
+
+      fireEvent.change(input, { target: { value: 'lo' } });
+      fireEvent.change(input, { target: { value: 'lon' } });
+      fireEvent.change(input, { target: { value: 'long' } });
+      expect(lootService.suggestItems).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(300);
+      expect(lootService.suggestItems).toHaveBeenCalledTimes(1);
+      expect(lootService.suggestItems).toHaveBeenCalledWith({ query: 'long' });
+
+      // a newer search starts before the first one answers
+      fireEvent.change(input, { target: { value: 'longb' } });
+      await vi.advanceTimersByTimeAsync(300);
+      expect(lootService.suggestItems).toHaveBeenCalledTimes(2);
+
+      // the late first response must not replace the newer options
+      resolveFirst({ data: { suggestions: [{ id: 1, name: 'Longsword' }], count: 1 } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(screen.queryByText('Longsword')).not.toBeInTheDocument();
+      expect(screen.getByText('Longbow')).toBeInTheDocument();
+    });
   });
 });

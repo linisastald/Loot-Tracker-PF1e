@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Alert,
   Button,
@@ -7,14 +6,29 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormHelperText,
   Grid,
   InputLabel,
   MenuItem,
   Select,
   TextField
 } from '@mui/material';
+import { ITEM_SIZES, ITEM_TYPES } from '../../../utils/itemOptions';
 
-const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, onUpdateSubmit, error = ''}) => {
+// MUI selects cannot hold null, so 'Not Magical' (unidentified = null) uses a sentinel
+const NOT_MAGICAL = 'none';
+
+// lockUnidentified: a non-DM editing an item that is still unidentified. The server
+// rejects un-ticking it there (identifying goes through Identify or a DM).
+const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, onUpdateSubmit, error = '', lockUnidentified = false}) => {
+    const handleUnidentifiedChange = (event) => {
+        const {value} = event.target;
+        onUpdateChange({target: {name: 'unidentified', value: value === NOT_MAGICAL ? null : value}});
+    };
+
+    // Loot Entry stores lowercase types; rows saved by the old dialog may hold 'Trade Good'
+    const typeValue = (updatedEntry.type || '').toLowerCase();
+
     return (
         <Dialog open={open} onClose={onClose}>
             <DialogTitle>Update Entry</DialogTitle>
@@ -45,25 +59,32 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                         />
                     </Grid>
                     <Grid size={{xs: 12, sm: 6}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Magical?</InputLabel>
+                        <FormControl fullWidth disabled={lockUnidentified}>
+                            <InputLabel id="update-magical-label">Magical?</InputLabel>
                             <Select
+                                labelId="update-magical-label"
+                                label="Magical?"
                                 name="unidentified"
-                                value={updatedEntry.unidentified === null ? '' : updatedEntry.unidentified}
-                                onChange={onUpdateChange}
+                                value={updatedEntry.unidentified ?? NOT_MAGICAL}
+                                onChange={handleUnidentifiedChange}
                             >
-                                <MenuItem value={null}>Not Magical</MenuItem>
+                                <MenuItem value={NOT_MAGICAL}>Not Magical</MenuItem>
                                 <MenuItem value={false}>Identified</MenuItem>
                                 <MenuItem value={true}>Unidentified</MenuItem>
                             </Select>
+                            {lockUnidentified && (
+                                <FormHelperText>Use Identify to identify this item.</FormHelperText>
+                            )}
                         </FormControl>
                     </Grid>
                     <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
-                            <InputLabel>Masterwork</InputLabel>
+                            <InputLabel id="update-masterwork-label">Masterwork</InputLabel>
                             <Select
+                                labelId="update-masterwork-label"
+                                label="Masterwork"
                                 name="masterwork"
-                                value={updatedEntry.masterwork === null ? '' : updatedEntry.masterwork}
+                                value={updatedEntry.masterwork ?? ''}
                                 onChange={onUpdateChange}
                             >
                                 <MenuItem value={true}>Yes</MenuItem>
@@ -73,38 +94,33 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                     </Grid>
                     <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
-                            <InputLabel>Type</InputLabel>
+                            <InputLabel id="update-type-label">Type</InputLabel>
                             <Select
+                                labelId="update-type-label"
+                                label="Type"
                                 name="type"
-                                value={updatedEntry.type || ''}
+                                value={typeValue}
                                 onChange={onUpdateChange}
                             >
-                                <MenuItem value="Weapon">Weapon</MenuItem>
-                                <MenuItem value="Armor">Armor</MenuItem>
-                                <MenuItem value="Magic">Magic</MenuItem>
-                                <MenuItem value="Gear">Gear</MenuItem>
-                                <MenuItem value="Trade Good">Trade Good</MenuItem>
-                                <MenuItem value="Other">Other</MenuItem>
+                                {ITEM_TYPES.map(({value, label}) => (
+                                    <MenuItem key={value} value={value}>{label}</MenuItem>
+                                ))}
                             </Select>
                         </FormControl>
                     </Grid>
                     <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
-                            <InputLabel>Size</InputLabel>
+                            <InputLabel id="update-size-label">Size</InputLabel>
                             <Select
+                                labelId="update-size-label"
+                                label="Size"
                                 name="size"
                                 value={updatedEntry.size || ''}
                                 onChange={onUpdateChange}
                             >
-                                <MenuItem value="Fine">Fine</MenuItem>
-                                <MenuItem value="Diminutive">Diminutive</MenuItem>
-                                <MenuItem value="Tiny">Tiny</MenuItem>
-                                <MenuItem value="Small">Small</MenuItem>
-                                <MenuItem value="Medium">Medium</MenuItem>
-                                <MenuItem value="Large">Large</MenuItem>
-                                <MenuItem value="Huge">Huge</MenuItem>
-                                <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                                <MenuItem value="Colossal">Colossal</MenuItem>
+                                {ITEM_SIZES.map((size) => (
+                                    <MenuItem key={size} value={size}>{size}</MenuItem>
+                                ))}
                             </Select>
                         </FormControl>
                     </Grid>

@@ -56,6 +56,7 @@ function createMockRes() {
     validationError: jest.fn(),
     notFound: jest.fn(),
     forbidden: jest.fn(),
+    unauthorized: jest.fn(),
     error: jest.fn(),
     cookie: jest.fn(),
     clearCookie: jest.fn(),
@@ -66,7 +67,7 @@ function createMockRes() {
 
 // Helper to create a mock request object
 function createMockReq(overrides = {}) {
-  return {
+  const req = {
     body: {},
     params: {},
     query: {},
@@ -74,6 +75,9 @@ function createMockReq(overrides = {}) {
     user: null,
     ...overrides,
   };
+  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
+  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
+  return req;
 }
 
 describe('authController', () => {
@@ -118,6 +122,11 @@ describe('authController', () => {
       await authController.loginUser(req, res);
 
       expect(bcrypt.compare).toHaveBeenCalled();
+      // A successful login resets the lockout counters and stamps last_active_at
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        'UPDATE users SET login_attempts = 0, locked_until = NULL, last_active_at = NOW() WHERE id = $1',
+        [1]
+      );
       expect(jwt.sign).toHaveBeenCalledWith(
         { id: 1, username: 'testplayer', role: 'Player' },
         process.env.JWT_SECRET,
@@ -141,7 +150,7 @@ describe('authController', () => {
       );
     });
 
-    it('should login successfully for DM without fetching active character', async () => {
+    it('should login successfully for a DM-role user (active character resolved the same way)', async () => {
       const dmUser = { ...validUser, id: 2, username: 'dungeonmaster', role: 'DM' };
       const req = createMockReq({
         body: { username: 'dungeonmaster', password: 'ValidPass123' },
@@ -150,7 +159,8 @@ describe('authController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [dmUser] })  // user lookup
-        .mockResolvedValueOnce({ rows: [] });        // reset login attempts
+        .mockResolvedValueOnce({ rows: [] })         // reset login attempts
+        .mockResolvedValueOnce({ rows: [] });        // no active character
 
       bcrypt.compare.mockResolvedValue(true);
       jwt.sign.mockReturnValue('dm-token');
@@ -222,24 +232,67 @@ describe('authController', () => {
       expect(res3.validationError).toHaveBeenCalled();
     });
 
-    it('should reject login when account is locked', async () => {
-      const lockedUser = {
+    describe('locked account (F-0228)', () => {
+      const lockedUser = () => ({
         ...validUser,
         locked_until: new Date(Date.now() + 300000).toISOString(), // locked 5 min from now
-      };
-      const req = createMockReq({
-        body: { username: 'testplayer', password: 'ValidPass123' },
       });
-      const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser] });
+      it('answers a correct password with the generic wrong-password error and no session', async () => {
+        const req = createMockReq({ body: { username: 'testplayer', password: 'ValidPass123' } });
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser()] });
+        bcrypt.compare.mockResolvedValue(true); // would be a match for the real hash
 
-      await authController.loginUser(req, res);
+        await authController.loginUser(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith(
-        expect.stringContaining('Account is locked')
-      );
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+        expect(res.validationError).toHaveBeenCalledWith('Invalid username or password');
+        expect(res.forbidden).not.toHaveBeenCalled();
+        expect(res.cookie).not.toHaveBeenCalled();
+        expect(res.success).not.toHaveBeenCalled();
+        // no attempt counter update and no reset of the lock
+        expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      });
+
+      it('answers a wrong password with the same generic error', async () => {
+        const req = createMockReq({ body: { username: 'testplayer', password: 'WrongPass' } });
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser()] });
+        bcrypt.compare.mockResolvedValue(false);
+
+        await authController.loginUser(req, res);
+
+        expect(res.validationError).toHaveBeenCalledWith('Invalid username or password');
+        expect(res.cookie).not.toHaveBeenCalled();
+      });
+
+      it('costs one bcrypt compare, like any failed login, and logs the lock server-side', async () => {
+        const req = createMockReq({ body: { username: 'testplayer', password: 'ValidPass123' } });
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser()] });
+
+        await authController.loginUser(req, res);
+
+        expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+        const logger = require('../../utils/logger');
+        expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('locked'));
+      });
+
+      it('lets the user in once the lock has expired', async () => {
+        const expired = { ...validUser, locked_until: new Date(Date.now() - 1000).toISOString() };
+        const req = createMockReq({ body: { username: 'testplayer', password: 'ValidPass123' } });
+        const res = createMockRes();
+        dbUtils.executeQuery
+          .mockResolvedValueOnce({ rows: [expired] })
+          .mockResolvedValue({ rows: [] });
+        bcrypt.compare.mockResolvedValue(true);
+        jwt.sign.mockReturnValue('tok');
+
+        await authController.loginUser(req, res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(res.cookie).toHaveBeenCalled();
+      });
     });
 
     it('should reject login for an invalid role', async () => {
@@ -269,7 +322,7 @@ describe('authController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [userWith2Attempts] })  // user lookup
-        .mockResolvedValueOnce({ rows: [] });                   // UPDATE login_attempts
+        .mockResolvedValueOnce({ rows: [{ login_attempts: 3 }] }); // atomic UPDATE ... RETURNING
 
       bcrypt.compare.mockResolvedValue(false);
 
@@ -278,8 +331,9 @@ describe('authController', () => {
       // handleFailedLogin should have called executeQuery to increment attempts
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
       const updateCall = dbUtils.executeQuery.mock.calls[1];
-      expect(updateCall[0]).toContain('UPDATE users SET login_attempts');
-      expect(updateCall[1][0]).toBe(3); // 2 + 1
+      expect(updateCall[0]).toContain('UPDATE users');
+      expect(updateCall[0]).toContain('COALESCE(login_attempts, 0) + 1');
+      expect(updateCall[1][0]).toBe(1); // user id; the increment happens in SQL
     });
 
     it('should lock account after max failed attempts', async () => {
@@ -291,7 +345,7 @@ describe('authController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [userAtMaxAttempts] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [{ login_attempts: 5 }] });
 
       bcrypt.compare.mockResolvedValue(false);
 
@@ -299,8 +353,8 @@ describe('authController', () => {
 
       const updateCall = dbUtils.executeQuery.mock.calls[1];
       expect(updateCall[0]).toContain('locked_until');
-      expect(updateCall[1][0]).toBe(5); // attempts = 5
-      expect(updateCall[1][1]).toBeInstanceOf(Date); // locked_until date
+      expect(updateCall[1][1]).toBe(5); // lock threshold (MAX_LOGIN_ATTEMPTS)
+      expect(updateCall[1][2]).toBeInstanceOf(Date); // locked_until date
     });
 
     it('should return activeCharacterId as null when Player has no active character', async () => {
@@ -356,9 +410,12 @@ describe('authController', () => {
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 1, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                      // advisory lock
+            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })   // an account already exists
+            .mockResolvedValueOnce({
+              rows: [{ id: 1, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            }),
           release: jest.fn(),
         };
         return await callback(txClient);
@@ -368,10 +425,11 @@ describe('authController', () => {
 
       expect(bcrypt.hash).toHaveBeenCalled();
 
-      // DECIDED: general registration grants no membership — only the user
-      // INSERT runs, no user_campaign insert
-      expect(txClient.query).toHaveBeenCalledTimes(1);
-      expect(txClient.query.mock.calls[0][0]).toContain('INSERT INTO users');
+      // DECIDED: general registration grants no membership — only the lock,
+      // the empty-table check and the user INSERT run, no user_campaign insert
+      expect(txClient.query).toHaveBeenCalledTimes(3);
+      expect(txClient.query.mock.calls[2][0]).toContain('INSERT INTO users');
+      expect(txClient.query.mock.calls[2][1][4]).toBe(false); // is_superadmin
 
       expect(res.cookie).toHaveBeenCalledWith(
         'authToken',
@@ -400,7 +458,7 @@ describe('authController', () => {
         txClient = {
           query: jest.fn()
             .mockResolvedValueOnce({ rows: [] })  // advisory lock (bootstrap serialization)
-            .mockResolvedValueOnce({ rows: [] })  // role clamp: no DM exists yet
+            .mockResolvedValueOnce({ rows: [] })  // role clamp: users table is empty
             .mockResolvedValueOnce({
               rows: [{ id: 7, username: 'newplayer', role: 'DM', email: 'new@example.com' }],
             })
@@ -420,12 +478,15 @@ describe('authController', () => {
       expect(lockCall[1]).toEqual([expect.any(Number)]);
 
       const dmCheckCall = txClient.query.mock.calls[1];
-      expect(dmCheckCall[0]).toContain("role = 'DM'");
+      expect(dmCheckCall[0]).toMatch(/FROM users\s+LIMIT 1/);
 
       // The bootstrap path stores 'DM' in users.role
       const userInsertCall = txClient.query.mock.calls[2];
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('DM');
+      // Opus review (M-1): the first account is also the superadmin, in the same INSERT
+      expect(userInsertCall[0]).toContain('is_superadmin');
+      expect(userInsertCall[1][4]).toBe(true);
 
       // SPECIAL CASE: bootstrap without invite grants campaign-1 DM
       // membership so a fresh single-campaign install bootstraps usable
@@ -442,7 +503,7 @@ describe('authController', () => {
       );
     });
 
-    it('should clamp a requested DM role to Player when a DM already exists (no membership granted)', async () => {
+    it('should clamp a requested DM role to Player when accounts already exist (no membership granted)', async () => {
       const req = createMockReq({ body: { ...validBody, role: 'DM' } });
       const res = createMockRes();
 
@@ -456,7 +517,7 @@ describe('authController', () => {
         txClient = {
           query: jest.fn()
             .mockResolvedValueOnce({ rows: [] })                     // advisory lock
-            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })  // role clamp: a DM exists
+            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })  // role clamp: accounts already exist
             .mockResolvedValueOnce({
               rows: [{ id: 8, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
             }),
@@ -472,6 +533,7 @@ describe('authController', () => {
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('Player');
 
+      expect(userInsertCall[1][4]).toBe(false); // never superadmin once accounts exist
       // No invite, not bootstrap: lock + DM check + user insert only
       expect(txClient.query).toHaveBeenCalledTimes(3);
 
@@ -483,7 +545,7 @@ describe('authController', () => {
       );
     });
 
-    it('should clamp an arbitrary body role to Player without checking for a DM', async () => {
+    it('should clamp an arbitrary body role to Player when accounts already exist', async () => {
       const req = createMockReq({ body: { ...validBody, role: 'Superadmin' } });
       const res = createMockRes();
 
@@ -495,9 +557,12 @@ describe('authController', () => {
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 9, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })
+            .mockResolvedValueOnce({
+              rows: [{ id: 9, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            }),
           release: jest.fn(),
         };
         return await callback(txClient);
@@ -505,16 +570,51 @@ describe('authController', () => {
 
       await authController.registerUser(req, res);
 
-      // Non-'DM' values never trigger the DM-exists lookup
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
 
-      // ... nor the advisory lock — the first tx query is the user INSERT
-      const userInsertCall = txClient.query.mock.calls[0];
+      const userInsertCall = txClient.query.mock.calls[2];
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('Player');
+      expect(userInsertCall[1][4]).toBe(false);
 
       // No invite, not bootstrap: no membership insert
-      expect(txClient.query).toHaveBeenCalledTimes(1);
+      expect(txClient.query).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([
+      ['Player', 'the default Player role'],
+      [undefined, 'no role at all'],
+      ['Superadmin', 'an invalid role'],
+    ])('makes the FIRST account on an empty install DM + superadmin + campaign-1 DM even when the form sent %s (%s)', async (sentRole) => {
+      const req = createMockReq({ body: { ...validBody, ...(sentRole ? { role: sentRole } : {}) } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: 'open' }] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      let txClient;
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        txClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })   // advisory lock
+            .mockResolvedValueOnce({ rows: [] })   // users table is empty
+            .mockResolvedValueOnce({ rows: [{ id: 1, username: 'newplayer', role: 'DM', email: 'new@example.com' }] })
+            .mockResolvedValueOnce({ rows: [] }),
+          release: jest.fn(),
+        };
+        return await callback(txClient);
+      });
+
+      await authController.registerUser(req, res);
+
+      const insert = txClient.query.mock.calls[2];
+      expect(insert[1][2]).toBe('DM');
+      expect(insert[1][4]).toBe(true);
+      const membership = txClient.query.mock.calls[3];
+      expect(membership[0]).toContain('INSERT INTO user_campaign');
+      expect(membership[0]).toContain("'DM'");
     });
 
     it('should reject registration with duplicate username', async () => {
@@ -616,6 +716,19 @@ describe('authController', () => {
       );
     });
 
+    it.each(['ABC123', 'ABC1234'])('rejects the short invite code %s before any lookup (F-0582)', async (inviteCode) => {
+      const req = createMockReq({ body: { ...validBody, inviteCode } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ value: 'invite-only' }] });
+
+      await authController.registerUser(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Invite codes are exactly 8 letters and numbers');
+      expect(Invite.findByCode).not.toHaveBeenCalled();
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
     it('should reject registration entirely in closed mode', async () => {
       const req = createMockReq({
         body: { ...validBody, inviteCode: 'WHATEVER1' },
@@ -675,6 +788,8 @@ describe('authController', () => {
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                  // advisory lock
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })        // an account already exists
             .mockResolvedValueOnce({
               rows: [{ id: 5, username: 'newuser', role: 'Player', email: 'new@test.com' }],
             })
@@ -700,12 +815,13 @@ describe('authController', () => {
       expect(allModeCalls.length).toBeGreaterThanOrEqual(2);
 
       // Membership is granted in the INVITE's campaign (2), role Player
-      const membershipCall = txClient.query.mock.calls[1];
+      const membershipCall = txClient.query.mock.calls[3];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
-      expect(membershipCall[1]).toEqual([5, 2, 'Player']);
+      expect(membershipCall[1]).toEqual([5, 2]);
+      expect(membershipCall[0]).toContain("'Player'");
 
       // Invite is marked used by id, guarded by is_used = FALSE (race safety)
-      const inviteCall = txClient.query.mock.calls[2];
+      const inviteCall = txClient.query.mock.calls[4];
       expect(inviteCall[0]).toContain('UPDATE invites');
       expect(inviteCall[0]).toContain('is_used = FALSE');
       expect(inviteCall[1]).toEqual([5, 42]);
@@ -716,6 +832,22 @@ describe('authController', () => {
         }),
         'User registered successfully'
       );
+    });
+
+    it('looks the invite up by the trimmed, upper-cased code it validated (lower-case input)', async () => {
+      const req = createMockReq({
+        body: { username: 'newuser', password: 'StrongPass1!', email: 'new@test.com', inviteCode: ' validc0d ' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: 'invite-only' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] }); // stop after the lookup: username taken
+      Invite.findByCode.mockResolvedValue({ id: 42, is_used: false, expires_at: null, campaign_id: 2 });
+
+      await authController.registerUser(req, res);
+
+      expect(Invite.findByCode).toHaveBeenCalledWith('VALIDC0D');
     });
 
     it('should redeem a provided invite even in open mode (invited user lands in their campaign)', async () => {
@@ -741,6 +873,8 @@ describe('authController', () => {
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                  // advisory lock
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })        // an account already exists
             .mockResolvedValueOnce({
               rows: [{ id: 11, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
             })
@@ -753,11 +887,12 @@ describe('authController', () => {
 
       await authController.registerUser(req, res);
 
-      const membershipCall = txClient.query.mock.calls[1];
+      const membershipCall = txClient.query.mock.calls[3];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
-      expect(membershipCall[1]).toEqual([11, 3, 'Player']);
+      expect(membershipCall[1]).toEqual([11, 3]);
+      expect(membershipCall[0]).toContain("'Player'");
 
-      const inviteCall = txClient.query.mock.calls[2];
+      const inviteCall = txClient.query.mock.calls[4];
       expect(inviteCall[0]).toContain('UPDATE invites');
       expect(inviteCall[1]).toEqual([11, 7]);
 
@@ -859,6 +994,8 @@ describe('authController', () => {
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         const txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                  // advisory lock
+            .mockResolvedValueOnce({ rows: [{ one: 1 }] })        // an account already exists
             .mockResolvedValueOnce({
               rows: [{ id: 14, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
             })
@@ -875,28 +1012,18 @@ describe('authController', () => {
       expect(res.created).not.toHaveBeenCalled();
     });
 
-    it('should default to open mode when the registration_mode row is missing', async () => {
+    it('should behave as invite-only when the registration_mode row is missing (no invite -> rejected)', async () => {
       const req = createMockReq({ body: { ...validBody } });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })   // no registration_mode row
-        .mockResolvedValueOnce({ rows: [] })   // username ok
-        .mockResolvedValueOnce({ rows: [] });  // email ok
-
-      dbUtils.executeTransaction.mockImplementation(async (callback) => {
-        const txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 15, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
-          release: jest.fn(),
-        };
-        return await callback(txClient);
-      });
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });   // no registration_mode row
 
       await authController.registerUser(req, res);
 
-      expect(res.created).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith(
+        'Invitation code is required for registration'
+      );
+      expect(res.created).not.toHaveBeenCalled();
     });
   });
 
@@ -907,14 +1034,15 @@ describe('authController', () => {
     it('should return authenticated user info for a Player with active character', async () => {
       const req = createMockReq({
         user: { id: 1, username: 'testplayer', role: 'Player' },
+        campaignId: 1,
       });
       const res = createMockRes();
 
       dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // active character
         .mockResolvedValueOnce({
           rows: [{ id: 1, username: 'testplayer', role: 'Player', email: 'test@example.com' }],
-        }); // user details
+        }) // user details
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] });  // active character
 
       await authController.getUserStatus(req, res);
 
@@ -932,15 +1060,45 @@ describe('authController', () => {
       );
     });
 
-    it('should return null activeCharacterId for DM users', async () => {
+    it('should include the linked discord_id (null when unlinked) and select it from users', async () => {
       const req = createMockReq({
-        user: { id: 2, username: 'dm_user', role: 'DM' },
+        user: { id: 1, username: 'testplayer', role: 'Player' },
+        campaignId: 1,
       });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ id: 2, username: 'dm_user', role: 'DM', email: 'dm@example.com' }],
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({
+          rows: [{ id: 1, email: 'test@example.com', discord_id: '123456789012345678' }],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await authController.getUserStatus(req, res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/discord_id/);
+      expect(res.success.mock.calls[0][0].user.discord_id).toBe('123456789012345678');
+
+      jest.clearAllMocks();
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1, email: 'test@example.com', discord_id: null }] })
+        .mockResolvedValueOnce({ rows: [] });
+      const res2 = createMockRes();
+      await authController.getUserStatus(req, res2);
+      expect(res2.success.mock.calls[0][0].user.discord_id).toBeNull();
+    });
+
+    it('should return null activeCharacterId for a DM without an active character', async () => {
+      const req = createMockReq({
+        user: { id: 2, username: 'dm_user', role: 'DM' },
+        campaignId: 1,
       });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({
+          rows: [{ id: 2, username: 'dm_user', role: 'DM', email: 'dm@example.com' }],
+        })
+        .mockResolvedValueOnce({ rows: [] });
 
       await authController.getUserStatus(req, res);
 
@@ -958,12 +1116,13 @@ describe('authController', () => {
     it('should handle user not found in database gracefully', async () => {
       const req = createMockReq({
         user: { id: 999, username: 'ghost', role: 'Player' },
+        campaignId: 1,
       });
       const res = createMockRes();
 
       dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })   // no active character
-        .mockResolvedValueOnce({ rows: [] });  // user not found
+        .mockResolvedValueOnce({ rows: [] })   // user not found
+        .mockResolvedValueOnce({ rows: [] });  // no active character
 
       await authController.getUserStatus(req, res);
 
@@ -1005,7 +1164,7 @@ describe('authController', () => {
   // checkForDm (checkDMStatus)
   // ---------------------------------------------------------------
   describe('checkForDm', () => {
-    it('should return dmExists true when a DM user exists', async () => {
+    it('should return dmExists true when an account exists', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1015,17 +1174,14 @@ describe('authController', () => {
 
       await authController.checkForDm(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        'SELECT * FROM users WHERE role = $1',
-        ['DM']
-      );
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/FROM users\s+LIMIT 1/);
       expect(res.success).toHaveBeenCalledWith(
         { dmExists: true },
         expect.any(String)
       );
     });
 
-    it('should return dmExists false when no DM user exists', async () => {
+    it('should return dmExists false when the users table is empty', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1044,11 +1200,7 @@ describe('authController', () => {
   // checkRegistrationStatus
   // ---------------------------------------------------------------
   describe('checkRegistrationStatus', () => {
-    it.each([
-      ['open', true],
-      ['invite-only', true],
-      ['closed', false],
-    ])('should return mode %s with registrationsOpen %s', async (mode, open) => {
+    it.each(['open', 'invite-only', 'closed'])('should return mode %s', async (mode) => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1057,12 +1209,12 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode, registrationsOpen: open },
+        { mode },
         expect.any(String)
       );
     });
 
-    it('should default to open when the registration_mode row does not exist', async () => {
+    it('should default to invite-only when the registration_mode row does not exist', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1071,12 +1223,12 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode: 'open', registrationsOpen: true },
+        { mode: 'invite-only' },
         expect.any(String)
       );
     });
 
-    it('should default to open for an unrecognized stored value', async () => {
+    it('should default to invite-only for an unrecognized stored value', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1085,30 +1237,7 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode: 'open', registrationsOpen: true },
-        expect.any(String)
-      );
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // checkInviteRequired
-  // ---------------------------------------------------------------
-  describe('checkInviteRequired', () => {
-    it.each([
-      ['open', false],
-      ['invite-only', true],
-      ['closed', false],
-    ])('should return isRequired for mode %s as %s', async (mode, isRequired) => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ value: mode }] });
-
-      await authController.checkInviteRequired(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        { isRequired, mode },
+        { mode: 'invite-only' },
         expect.any(String)
       );
     });
@@ -1141,13 +1270,31 @@ describe('authController', () => {
       expect(res.success).toHaveBeenCalledWith(null, 'Token refreshed successfully');
     });
 
+    it('stamps last_active_at on refresh and still succeeds when the stamp fails', async () => {
+      const req = createMockReq({ cookies: { authToken: 'old-valid-token' } });
+      const res = createMockRes();
+      jwt.verify.mockReturnValue({ id: 1, username: 'testplayer', role: 'Player' });
+      jwt.sign.mockReturnValue('new-refreshed-token');
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1, username: 'testplayer', role: 'Player', email: 't@example.com' }] })
+        .mockRejectedValueOnce(new Error('db down'));
+
+      await authController.refreshToken(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        'UPDATE users SET last_active_at = NOW() WHERE id = $1',
+        [1]
+      );
+      expect(res.success).toHaveBeenCalledWith(null, 'Token refreshed successfully');
+    });
+
     it('should reject when no token cookie exists', async () => {
       const req = createMockReq({ cookies: {} });
       const res = createMockRes();
 
       await authController.refreshToken(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith('Authentication required');
+      expect(res.unauthorized).toHaveBeenCalledWith('Authentication required');
     });
 
     it('should reject when token is expired', async () => {
@@ -1162,7 +1309,7 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Invalid or expired token');
+      expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
     });
 
     it('should reject when token is invalid', async () => {
@@ -1177,7 +1324,40 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Invalid or expired token');
+      expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
+    });
+
+    it('rejects a token issued before the password was changed (F-0244)', async () => {
+      const req = createMockReq({ cookies: { authToken: 'old-token' } });
+      const res = createMockRes();
+      const changedAt = new Date('2026-10-05T12:00:00.000Z');
+
+      jwt.verify.mockReturnValue({ id: 1, username: 'u', role: 'Player', iat: Math.floor(changedAt.getTime() / 1000) - 30 });
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 1, username: 'u', role: 'Player', email: 'e', password_changed_at: changedAt }],
+      });
+
+      await authController.refreshToken(req, res);
+
+      expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('password_changed_at');
+    });
+
+    it('refreshes a token issued after the password change', async () => {
+      const req = createMockReq({ cookies: { authToken: 'newer-token' } });
+      const res = createMockRes();
+      const changedAt = new Date('2026-10-05T12:00:00.000Z');
+
+      jwt.verify.mockReturnValue({ id: 1, username: 'u', role: 'Player', iat: Math.floor(changedAt.getTime() / 1000) + 1 });
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 1, username: 'u', role: 'Player', email: 'e', password_changed_at: changedAt }],
+      });
+      jwt.sign.mockReturnValue('refreshed');
+
+      await authController.refreshToken(req, res);
+
+      expect(res.cookie).toHaveBeenCalledWith('authToken', 'refreshed', expect.any(Object));
     });
 
     it('should reject when user no longer exists', async () => {
@@ -1191,7 +1371,7 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('User no longer exists or is inactive');
+      expect(res.unauthorized).toHaveBeenCalledWith('User no longer exists or is inactive');
     });
   });
 
@@ -1283,6 +1463,87 @@ describe('authController', () => {
       await authController.generateManualResetLink(req, res);
 
       expect(res.validationError).toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // forgotPassword / resetPassword (token-based flow)
+  // ---------------------------------------------------------------
+  describe('forgotPassword', () => {
+    const emailService = require('../../services/emailService');
+
+    it('creates a reset token and emails a user matching username and email', async () => {
+      const req = createMockReq({ body: { username: 'testuser', email: 'test@example.com' } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 1, username: 'testuser', email: 'test@example.com' }],
+      });
+      const mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      emailService.sendPasswordResetEmail.mockResolvedValue(true);
+
+      await authController.forgotPassword(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        'SELECT id, username, email FROM users WHERE username = $1 AND email = $2',
+        ['testuser', 'test@example.com']
+      );
+      expect(mockClient.query).toHaveBeenCalledTimes(2);
+      expect(emailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        'testuser',
+        expect.any(String)
+      );
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('responds identically and sends no email when no user matches', async () => {
+      const req = createMockReq({ body: { username: 'ghost', email: 'ghost@example.com' } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await authController.forgotPassword(req, res);
+
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      expect(emailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('hashes the new password, consumes the token and updates the user in one transaction', async () => {
+      const req = createMockReq({ body: { token: 'valid-reset-token', newPassword: 'newpassword123' } });
+      const res = createMockRes();
+      bcrypt.hash.mockResolvedValue('newhashedpassword');
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [{ user_id: 1 }] })
+          .mockResolvedValueOnce({ rows: [{ username: 'testuser' }] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await authController.resetPassword(req, res);
+
+      expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
+      expect(mockClient.query).toHaveBeenCalledWith(
+        'UPDATE users SET password = $1, password_changed_at = $2, login_attempts = 0, locked_until = NULL WHERE id = $3 RETURNING username',
+        ['newhashedpassword', expect.any(Date), 1]
+      );
+      const stamp = mockClient.query.mock.calls[1][1][1];
+      expect(stamp.getMilliseconds()).toBe(0); // app clock, whole seconds (L-1)
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('rejects an invalid or expired token', async () => {
+      const req = createMockReq({ body: { token: 'invalid-token', newPassword: 'newpassword123' } });
+      const res = createMockRes();
+      const mockClient = { query: jest.fn().mockResolvedValueOnce({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await authController.resetPassword(req, res);
+
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      expect(res.validationError).toHaveBeenCalledWith('Invalid or expired reset token');
     });
   });
 });

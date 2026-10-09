@@ -8,10 +8,7 @@
 
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
-const {
-    SESSION_STATUS,
-    DEFAULT_VALUES
-} = require('../constants/sessionConstants');
+const { DEFAULT_VALUES } = require('../constants/sessionConstants');
 
 // Import specialized services
 const attendanceService = require('./attendance/AttendanceService');
@@ -30,160 +27,59 @@ class SessionService {
      * @returns {Promise<Object>} - Created session
      */
     async createSession(sessionData) {
-        try {
-            return await dbUtils.executeTransaction(async (client) => {
-                const {
-                    title,
-                    start_time,
-                    end_time,
-                    description,
-                    minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
-                    maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
-                    auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
-                    reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
-                    confirmation_hours = 48, // Default: 2 days before
-                    created_by
-                } = sessionData;
+        return dbUtils.executeTransaction(async (client) => {
+            const {
+                title,
+                start_time,
+                end_time,
+                description,
+                minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
+                maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
+                auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
+                reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
+                confirmation_hours = DEFAULT_VALUES.CONFIRMATION_HOURS,
+                created_by
+            } = sessionData;
 
-                // Create the session with enhanced fields
-                const sessionResult = await client.query(`
-                    INSERT INTO game_sessions (
-                        title, start_time, end_time, description, minimum_players, maximum_players,
-                        auto_announce_hours, reminder_hours, confirmation_hours, created_by,
-                        status, created_at, updated_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
-                    RETURNING *
-                `, [
+            const sessionResult = await client.query(`
+                INSERT INTO game_sessions (
                     title, start_time, end_time, description, minimum_players, maximum_players,
-                    auto_announce_hours, reminder_hours, confirmation_hours, created_by
-                ]);
-
-                const session = sessionResult.rows[0];
-
-                // Schedule automatic announcement if configured
-                if (auto_announce_hours > 0) {
-                    const announceTime = new Date(start_time);
-                    announceTime.setHours(announceTime.getHours() - auto_announce_hours);
-
-                    if (announceTime > new Date()) {
-                        await client.query(`
-                            INSERT INTO session_automations (
-                                session_id, automation_type, scheduled_time, status, created_at
-                            ) VALUES ($1, 'announcement', $2, 'scheduled', NOW())
-                        `, [session.id, announceTime]);
-                    }
-                }
-
-                // Schedule reminder if configured
-                if (reminder_hours > 0) {
-                    const reminderTime = new Date(start_time);
-                    reminderTime.setHours(reminderTime.getHours() - reminder_hours);
-
-                    if (reminderTime > new Date()) {
-                        await client.query(`
-                            INSERT INTO session_automations (
-                                session_id, automation_type, scheduled_time, status, created_at
-                            ) VALUES ($1, 'reminder', $2, 'scheduled', NOW())
-                        `, [session.id, reminderTime]);
-                    }
-                }
-
-                // Schedule confirmation request if configured
-                if (confirmation_hours > 0) {
-                    const confirmationTime = new Date(start_time);
-                    confirmationTime.setHours(confirmationTime.getHours() - confirmation_hours);
-
-                    if (confirmationTime > new Date()) {
-                        await client.query(`
-                            INSERT INTO session_automations (
-                                session_id, automation_type, scheduled_time, status, created_at
-                            ) VALUES ($1, 'confirmation', $2, 'scheduled', NOW())
-                        `, [session.id, confirmationTime]);
-                    }
-                }
-
-                logger.info(`Created enhanced session: ${session.id} - ${title}`);
-                return session;
-            }, 'Failed to create session');
-        } catch (error) {
-            logger.error('Failed to create session:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Update an existing session
-     * @param {number} sessionId - Session ID
-     * @param {Object} updateData - Fields to update
-     * @returns {Promise<Object>} - Updated session
-     */
-    async updateSession(sessionId, updateData) {
-        const allowedFields = [
-            'title', 'start_time', 'end_time', 'description',
-            'minimum_players', 'maximum_players',
-            'auto_announce_hours', 'reminder_hours', 'confirmation_hours', 'status'
-        ];
-
-        const fields = Object.keys(updateData).filter(field => allowedFields.includes(field));
-        if (fields.length === 0) {
-            throw new Error('No valid fields provided for update');
-        }
-
-        const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ');
-        const values = [sessionId, ...fields.map(field => updateData[field])];
-
-        try {
-            const result = await dbUtils.executeQuery(`
-                UPDATE game_sessions
-                SET ${setClause}, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
+                    auto_announce_hours, reminder_hours, confirmation_hours, created_by,
+                    status, created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
                 RETURNING *
-            `, values, 'Error updating session');
+            `, [
+                title, start_time, end_time, description, minimum_players, maximum_players,
+                auto_announce_hours, reminder_hours, confirmation_hours, created_by
+            ]);
 
-            if (result.rows.length === 0) {
-                throw new Error('Session not found');
+            const session = sessionResult.rows[0];
+
+            // Schedule the announcement, reminder and confirmation request
+            // that are configured and still in the future.
+            const automations = [
+                ['announcement', auto_announce_hours],
+                ['reminder', reminder_hours],
+                ['confirmation', confirmation_hours]
+            ];
+            for (const [automationType, hoursBefore] of automations) {
+                if (!(hoursBefore > 0)) continue;
+
+                const scheduledTime = new Date(start_time);
+                scheduledTime.setHours(scheduledTime.getHours() - hoursBefore);
+                if (scheduledTime <= new Date()) continue;
+
+                await client.query(`
+                    INSERT INTO session_automations (
+                        session_id, automation_type, scheduled_time, status, created_at
+                    ) VALUES ($1, $2, $3, 'scheduled', NOW())
+                `, [session.id, automationType, scheduledTime]);
             }
 
-            const session = result.rows[0];
-
-            // Reschedule events if timing changed
-            if (fields.some(field => ['start_time', 'auto_announce_hours', 'reminder_hours', 'confirmation_hours'].includes(field))) {
-                await this.rescheduleSessionEvents(session);
-            }
-
-            logger.info('Session updated:', { sessionId: session.id });
+            logger.info(`Created enhanced session: ${session.id} - ${title}`);
             return session;
-        } catch (error) {
-            logger.error('Failed to update session:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Delete a session
-     * @param {number} sessionId - Session ID
-     * @returns {Promise<Object>} - Deleted session
-     */
-    async deleteSession(sessionId) {
-        try {
-            // Cancel any scheduled events
-            await this.cancelSessionEvents(sessionId);
-
-            const result = await dbUtils.executeQuery(`
-                DELETE FROM game_sessions WHERE id = $1 RETURNING *
-            `, [sessionId], 'Error deleting session');
-
-            if (result.rows.length === 0) {
-                throw new Error('Session not found');
-            }
-
-            logger.info('Session deleted:', { sessionId });
-            return result.rows[0];
-        } catch (error) {
-            logger.error('Failed to delete session:', error);
-            throw error;
-        }
+        }, 'Failed to create session');
     }
 
     /**
@@ -200,89 +96,56 @@ class SessionService {
         return result.rows[0] || null;
     }
 
-    /**
-     * Get enhanced session list with attendance counts
-     * @param {Object} filters - Query filters
-     * @returns {Promise<Array>} - Session list
-     */
-    async getEnhancedSessions(filters = {}) {
-        try {
-            const {
-                status,
-                upcoming_only = false,
-                include_attendance = true,
-                limit = 50,
-                offset = 0
-            } = filters;
-
-            let whereConditions = [];
-            let queryParams = [];
-            let paramIndex = 1;
-
-            if (status) {
-                whereConditions.push(`gs.status = $${paramIndex++}`);
-                queryParams.push(status);
-            }
-
-            if (upcoming_only) {
-                whereConditions.push(`gs.start_time > NOW()`);
-            }
-
-            const whereClause = whereConditions.length > 0
-                ? `WHERE ${whereConditions.join(' AND ')}`
-                : '';
-
-            const attendanceSelect = include_attendance ? `
-                COUNT(sa.id) FILTER (WHERE sa.response_type = 'yes') as confirmed_count,
-                COUNT(sa.id) FILTER (WHERE sa.response_type = 'no') as declined_count,
-                COUNT(sa.id) FILTER (WHERE sa.response_type = 'maybe') as maybe_count,
-                COUNT(sa.id) FILTER (WHERE sa.response_type = 'late') as late_count,
-                COUNT(sa.id) FILTER (WHERE sa.response_type = 'early') as early_count,
-                COUNT(sa.id) FILTER (WHERE sa.response_type = 'late_and_early') as late_and_early_count,
-                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_timestamp > gs.updated_at) as modified_count
-            ` : '';
-
-            const attendanceJoin = include_attendance
-                ? 'LEFT JOIN session_attendance sa ON sa.session_id = gs.id'
-                : '';
-
-            const groupBy = include_attendance
-                ? 'GROUP BY gs.id, u.username'
-                : '';
-
-            const query = `
-                SELECT
-                    gs.*,
-                    u.username as creator_username,
-                    ${attendanceSelect}
-                    CASE
-                        WHEN gs.start_time > NOW() THEN 'upcoming'
-                        WHEN gs.start_time <= NOW() AND gs.status != 'completed' THEN 'ongoing'
-                        ELSE 'past'
-                    END as time_status
-                FROM game_sessions gs
-                LEFT JOIN users u ON u.id = gs.created_by
-                ${attendanceJoin}
-                ${whereClause}
-                ${groupBy}
-                ORDER BY gs.start_time DESC
-                LIMIT $${paramIndex++} OFFSET $${paramIndex++}
-            `;
-
-            queryParams.push(limit, offset);
-
-            const result = await dbUtils.executeQuery(query, queryParams, 'Error fetching enhanced sessions');
-            return result.rows;
-
-        } catch (error) {
-            logger.error('Error getting enhanced sessions:', error);
-            throw error;
-        }
-    }
-
     // ========================================================================
     // SESSION STATE TRANSITIONS
     // ========================================================================
+
+    /**
+     * Post the role ping that announces a cancellation or reinstatement.
+     * Never throws: the status change already succeeded, so a Discord problem
+     * is only logged.
+     * @param {string} kind - Label used in log lines ('cancellation', 'reinstatement')
+     * @param {(roleId: string) => string} buildMessage - Builds the message text
+     * @param {Object} logContext - Extra fields for the log lines
+     */
+    async _sendRolePing(kind, buildMessage, logContext) {
+        try {
+            const settings = await sessionDiscordService.getDiscordSettings();
+            if (!settings.campaign_role_id || !settings.discord_channel_id) {
+                logger.warn(`Missing Discord settings for ${kind} notification`, {
+                    ...logContext,
+                    hasCampaignRole: !!settings.campaign_role_id,
+                    hasChannel: !!settings.discord_channel_id
+                });
+                return;
+            }
+
+            const discordService = require('./discordBrokerService');
+            const result = await discordService.sendMessage({
+                channelId: settings.discord_channel_id,
+                content: buildMessage(settings.campaign_role_id),
+                // Only the campaign role may ping, whatever the text contains
+                allowedMentions: { parse: [], roles: [settings.campaign_role_id] }
+            });
+            // sendMessage never throws: a rate limit or rejection comes back as a
+            // failure result, which must not be logged as a delivered ping
+            if (result && result.success === false) {
+                logger.warn(`Discord ${kind} notification was not delivered`, {
+                    ...logContext,
+                    error: result.error?.message,
+                    code: result.error?.code
+                });
+                return;
+            }
+            logger.info(`Discord ${kind} notification sent`, logContext);
+        } catch (discordError) {
+            logger.error(`Failed to send Discord ${kind} notification:`, {
+                error: discordError.message,
+                stack: discordError.stack,
+                ...logContext
+            });
+        }
+    }
 
     /**
      * Confirm a session
@@ -290,182 +153,116 @@ class SessionService {
      * @returns {Promise<Object>} - Updated session
      */
     async confirmSession(sessionId) {
-        try {
-            const result = await dbUtils.executeQuery(`
-                UPDATE game_sessions
-                SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
-                RETURNING *
-            `, [sessionId], 'Error confirming session');
+        const result = await dbUtils.executeQuery(`
+            UPDATE game_sessions
+            SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+              AND status = 'scheduled'
+            RETURNING *
+        `, [sessionId], 'Error confirming session');
 
-            if (result.rows.length > 0) {
-                logger.info('Session confirmed:', { sessionId });
-                // Update Discord message
-                await sessionDiscordService.updateSessionMessage(sessionId);
-            }
-
-            return result.rows[0];
-        } catch (error) {
-            logger.error('Failed to confirm session:', error);
-            throw error;
+        if (result.rows.length > 0) {
+            logger.info('Session confirmed:', { sessionId });
+            await sessionDiscordService.updateSessionMessage(sessionId);
         }
+
+        return result.rows[0];
     }
 
     /**
-     * Cancel a session
+     * Automatically cancel a session that is short of its minimum players (the
+     * scheduler is the only caller; a DM cancels through the controller).
+     *
+     * The decision was taken on an attendance count read a few queries earlier,
+     * so the UPDATE re-checks both conditions atomically: the session must still
+     * be 'scheduled' and its accepted attendees must still be below
+     * minimum_players. A session that just filled up (or that a DM just
+     * cancelled/confirmed) is left alone and no ping is sent.
      * @param {number} sessionId - Session ID
      * @param {string} reason - Cancellation reason
-     * @returns {Promise<Object>} - Updated session
+     * @returns {Promise<Object|null>} - Updated session, or null when it was not cancellable
      */
     async cancelSession(sessionId, reason) {
-        try {
-            const result = await dbUtils.executeQuery(`
-                UPDATE game_sessions
-                SET status = 'cancelled', cancelled = TRUE, cancel_reason = $2, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
-                RETURNING *
-            `, [sessionId, reason], 'Error cancelling session');
+        const result = await dbUtils.executeQuery(`
+            UPDATE game_sessions
+            SET status = 'cancelled', cancelled = TRUE, cancel_reason = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+              AND status = 'scheduled'
+              AND (
+                  SELECT COUNT(DISTINCT user_id)
+                  FROM session_attendance
+                  WHERE session_id = $1
+                    AND status = 'accepted'
+              ) < minimum_players
+            RETURNING *
+        `, [sessionId, reason], 'Error cancelling session');
 
-            if (result.rows.length > 0) {
-                const session = result.rows[0];
-                logger.info('Session cancelled:', { sessionId, reason });
-
-                // Update Discord embed to show cancelled status
-                await sessionDiscordService.updateSessionMessage(sessionId);
-
-                // Send cancellation notification ping
-                try {
-                    const settings = await sessionDiscordService.getDiscordSettings();
-                    if (settings.campaign_role_id && settings.discord_channel_id) {
-                        const discordService = require('./discordBrokerService');
-                        const cancelMessage = reason
-                            ? `<@&${settings.campaign_role_id}> Session "${session.title}" has been cancelled. Reason: ${reason}`
-                            : `<@&${settings.campaign_role_id}> Session "${session.title}" has been cancelled.`;
-
-                        logger.info('Sending Discord cancellation notification', {
-                            sessionId,
-                            reason
-                        });
-
-                        await discordService.sendMessage({
-                            channelId: settings.discord_channel_id,
-                            content: cancelMessage
-                        });
-
-                        logger.info('Discord cancellation notification sent successfully');
-                    } else {
-                        logger.warn('Missing Discord settings for cancellation notification', {
-                            hasCampaignRole: !!settings.campaign_role_id,
-                            hasChannel: !!settings.discord_channel_id
-                        });
-                    }
-                } catch (discordError) {
-                    logger.error('Failed to send Discord cancellation notification:', {
-                        error: discordError.message,
-                        stack: discordError.stack,
-                        sessionId,
-                        reason
-                    });
-                    // Don't throw - we still want to return the cancelled session
-                }
-            }
-
-            if (result.rows.length === 0) {
-                logger.warn('Attempted to cancel non-existent session', { sessionId });
-                return null;
-            }
-
-            return result.rows[0];
-        } catch (error) {
-            logger.error('Failed to cancel session:', error);
-            throw error;
+        if (result.rows.length === 0) {
+            logger.info('Session was not auto-cancelled: it is gone, no longer scheduled, or now has enough players', { sessionId });
+            return null;
         }
+
+        const session = result.rows[0];
+        logger.info('Session cancelled:', { sessionId, reason });
+
+        // Update Discord embed to show cancelled status, then ping the role
+        await sessionDiscordService.updateSessionMessage(sessionId);
+        await this._sendRolePing('cancellation', (roleId) => reason
+            ? `<@&${roleId}> Session "${session.title}" has been cancelled. Reason: ${reason}`
+            : `<@&${roleId}> Session "${session.title}" has been cancelled.`,
+        { sessionId, reason });
+
+        return session;
     }
 
     /**
      * Uncancel a session (restore from cancelled status)
      * @param {number} sessionId - Session ID
-     * @returns {Promise<Object>} - Updated session
+     * @returns {Promise<Object|null>} - Updated session, or null when not found
      */
     async uncancelSession(sessionId) {
-        try {
-            // First verify the session exists and is cancelled
-            const checkResult = await dbUtils.executeQuery(
-                'SELECT * FROM game_sessions WHERE id = $1',
-                [sessionId],
-                'Error checking session for uncancel'
-            );
-
-            if (checkResult.rows.length === 0) {
-                logger.warn('Attempted to uncancel non-existent session', { sessionId });
-                return null;
-            }
-
-            const existingSession = checkResult.rows[0];
-            if (existingSession.status !== 'cancelled') {
-                logger.warn('Attempted to uncancel session that is not cancelled', {
-                    sessionId,
-                    currentStatus: existingSession.status
-                });
-                throw new Error(`Session is not cancelled (current status: ${existingSession.status})`);
-            }
-
-            // Check if session is in the past
-            if (new Date(existingSession.start_time) < new Date()) {
-                logger.warn('Attempted to uncancel session that has already passed', { sessionId });
-                throw new Error('Cannot uncancel a session that has already passed');
-            }
-
-            // Restore session to scheduled status
-            const result = await dbUtils.executeQuery(`
-                UPDATE game_sessions
-                SET status = 'scheduled',
-                    cancelled = FALSE,
-                    cancel_reason = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
-                RETURNING *
-            `, [sessionId], 'Error uncancelling session');
-
-            if (result.rows.length > 0) {
-                const session = result.rows[0];
-                logger.info('Session uncancelled:', { sessionId, title: session.title });
-
-                // Update Discord embed to show scheduled status
-                await sessionDiscordService.updateSessionMessage(sessionId);
-
-                // Send notification that session has been reinstated
-                try {
-                    const settings = await sessionDiscordService.getDiscordSettings();
-                    if (settings.campaign_role_id && settings.discord_channel_id) {
-                        const discordService = require('./discordBrokerService');
-                        const reinstateMessage = `<@&${settings.campaign_role_id}> 🎉 Session "${session.title}" has been reinstated! Please update your attendance.`;
-
-                        logger.info('Sending Discord reinstatement notification', { sessionId });
-
-                        await discordService.sendMessage({
-                            channelId: settings.discord_channel_id,
-                            content: reinstateMessage
-                        });
-
-                        logger.info('Discord reinstatement notification sent successfully');
-                    }
-                } catch (discordError) {
-                    logger.error('Failed to send Discord reinstatement notification:', {
-                        error: discordError.message,
-                        sessionId
-                    });
-                    // Don't throw - we still want to return the uncancelled session
-                }
-
-                return session;
-            }
-
+        const existing = await this.getSession(sessionId);
+        if (!existing) {
+            logger.warn('Attempted to uncancel non-existent session', { sessionId });
             return null;
-        } catch (error) {
-            logger.error('Failed to uncancel session:', error);
-            throw error;
         }
+
+        if (existing.status !== 'cancelled') {
+            logger.warn('Attempted to uncancel session that is not cancelled', {
+                sessionId,
+                currentStatus: existing.status
+            });
+            throw new Error(`Session is not cancelled (current status: ${existing.status})`);
+        }
+
+        if (new Date(existing.start_time) < new Date()) {
+            logger.warn('Attempted to uncancel session that has already passed', { sessionId });
+            throw new Error('Cannot uncancel a session that has already passed');
+        }
+
+        const result = await dbUtils.executeQuery(`
+            UPDATE game_sessions
+            SET status = 'scheduled',
+                cancelled = FALSE,
+                cancel_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+        `, [sessionId], 'Error uncancelling session');
+
+        if (result.rows.length === 0) {
+            return null;
+        }
+
+        const session = result.rows[0];
+        logger.info('Session uncancelled:', { sessionId, title: session.title });
+
+        await sessionDiscordService.updateSessionMessage(sessionId);
+        await this._sendRolePing('reinstatement', (roleId) =>
+            `<@&${roleId}> 🎉 Session "${session.title}" has been reinstated! Please update your attendance.`,
+        { sessionId });
+
+        return session;
     }
 
     /**
@@ -474,64 +271,65 @@ class SessionService {
      * @returns {Promise<Object>} - Completed session
      */
     async completeSession(sessionId) {
-        try {
-            return await dbUtils.executeTransaction(async (client) => {
-                // Mark session as completed
-                const sessionResult = await client.query(`
-                    UPDATE game_sessions
-                    SET
-                        status = 'completed',
-                        completed_at = NOW(),
-                        updated_at = NOW()
-                    WHERE id = $1 AND status IN ('scheduled', 'confirmed')
-                    RETURNING *
-                `, [sessionId]);
+        return dbUtils.executeTransaction(async (client) => {
+            const sessionResult = await client.query(`
+                UPDATE game_sessions
+                SET
+                    status = 'completed',
+                    completed_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1 AND status IN ('scheduled', 'confirmed')
+                RETURNING *
+            `, [sessionId]);
 
-                if (sessionResult.rows.length === 0) {
-                    throw new Error('Session not found or already completed');
+            if (sessionResult.rows.length === 0) {
+                const existing = await client.query(
+                    'SELECT status FROM game_sessions WHERE id = $1',
+                    [sessionId]
+                );
+                if (existing.rows.length === 0) {
+                    throw new Error('Session not found');
                 }
+                throw new Error(`Session cannot be completed (current status: ${existing.rows[0].status})`);
+            }
 
-                const session = sessionResult.rows[0];
+            const session = sessionResult.rows[0];
 
-                // Generate post-session summary
-                const attendanceResult = await client.query(`
-                    SELECT
-                        COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
-                        COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
-                        COUNT(*) FILTER (WHERE response_type = 'maybe') as maybe_count,
-                        array_agg(u.username) FILTER (WHERE sa.response_type = 'yes') as attendee_names
-                    FROM session_attendance sa
-                    JOIN users u ON u.id = sa.user_id
-                    WHERE sa.session_id = $1
-                `, [sessionId]);
+            // Post-session summary. Counted by status (not response_type) so
+            // late/early/in-app RSVPs count as confirmed, as everywhere else.
+            const attendanceResult = await client.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE sa.status = 'accepted') as confirmed_count,
+                    COUNT(*) FILTER (WHERE sa.status = 'declined') as declined_count,
+                    COUNT(*) FILTER (WHERE sa.status = 'tentative') as maybe_count,
+                    array_agg(u.username) FILTER (WHERE sa.status = 'accepted') as attendee_names
+                FROM session_attendance sa
+                JOIN users u ON u.id = sa.user_id
+                WHERE sa.session_id = $1
+            `, [sessionId]);
 
-                const attendance = attendanceResult.rows[0];
+            const attendance = attendanceResult.rows[0];
 
-                // Create completion record
-                await client.query(`
-                    INSERT INTO session_completions (
-                        session_id, completed_at, final_attendance_count,
-                        completion_summary
-                    ) VALUES ($1, NOW(), $2, $3)
-                    ON CONFLICT (session_id) DO NOTHING
-                `, [
-                    sessionId,
-                    attendance.confirmed_count,
-                    JSON.stringify({
-                        confirmed: attendance.confirmed_count,
-                        declined: attendance.declined_count,
-                        maybe: attendance.maybe_count,
-                        attendees: attendance.attendee_names || []
-                    })
-                ]);
+            await client.query(`
+                INSERT INTO session_completions (
+                    session_id, completed_at, final_attendance_count,
+                    completion_summary
+                ) VALUES ($1, NOW(), $2, $3)
+                ON CONFLICT (session_id) DO NOTHING
+            `, [
+                sessionId,
+                attendance.confirmed_count,
+                JSON.stringify({
+                    confirmed: attendance.confirmed_count,
+                    declined: attendance.declined_count,
+                    maybe: attendance.maybe_count,
+                    attendees: attendance.attendee_names || []
+                })
+            ]);
 
-                logger.info(`Session completed successfully: ${sessionId}`);
-                return session;
-            }, 'Error completing session');
-        } catch (error) {
-            logger.error('Error completing session:', error);
-            throw error;
-        }
+            logger.info(`Session completed successfully: ${sessionId}`);
+            return session;
+        }, 'Error completing session');
     }
 
     // ========================================================================
@@ -564,60 +362,6 @@ class SessionService {
         }
     }
 
-    /**
-     * Reschedule events for a session
-     * @param {Object} session - Session data
-     */
-    async rescheduleSessionEvents(session) {
-        try {
-            // Cancel existing reminders
-            this.cancelSessionEvents(session.id);
-
-            // Reschedule with new timing
-            await this.scheduleSessionEvents(session);
-
-            logger.info('Session events rescheduled:', { sessionId: session.id });
-        } catch (error) {
-            logger.error('Failed to reschedule session events:', error);
-        }
-    }
-
-    /**
-     * Cancel scheduled events for a session
-     * @param {number} sessionId - Session ID
-     */
-    cancelSessionEvents(sessionId) {
-        try {
-            // Mark pending reminders as cancelled
-            // Note: intentionally not awaited (method is synchronous), matching previous fire-and-forget behavior
-            dbUtils.executeQuery(`
-                UPDATE session_reminders
-                SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
-                WHERE session_id = $1 AND sent = FALSE
-            `, [sessionId], 'Error cancelling session reminders');
-
-            logger.info('Session events cancelled:', { sessionId });
-        } catch (error) {
-            logger.error('Failed to cancel session events:', error);
-        }
-    }
-
-    /**
-     * Check if session should be auto-cancelled
-     * @param {number} sessionId - Session ID
-     */
-    async checkAutoCancel(sessionId) {
-        const result = await dbUtils.executeQuery(
-            'SELECT check_session_auto_cancel($1) as should_cancel',
-            [sessionId],
-            'Error checking session auto-cancel'
-        );
-
-        if (result.rows[0].should_cancel) {
-            await this.cancelSession(sessionId, 'Automatic cancellation due to insufficient players');
-        }
-    }
-
     // ========================================================================
     // DELEGATION METHODS (for backward compatibility)
     // ========================================================================
@@ -629,18 +373,6 @@ class SessionService {
 
     async getSessionAttendance(sessionId) {
         return attendanceService.getSessionAttendance(sessionId);
-    }
-
-    async getSessionAttendanceDetails(sessionId) {
-        return attendanceService.getSessionAttendanceDetails(sessionId);
-    }
-
-    async getConfirmedAttendanceCount(sessionId) {
-        return attendanceService.getConfirmedAttendanceCount(sessionId);
-    }
-
-    async getNonResponders(sessionId) {
-        return attendanceService.getNonResponders(sessionId);
     }
 
     // Discord methods - delegate to SessionDiscordService
@@ -656,49 +388,13 @@ class SessionService {
         return sessionDiscordService.updateSessionMessage(sessionId);
     }
 
-    async processDiscordReaction(messageId, userId, emoji, action) {
-        return sessionDiscordService.processDiscordReaction(messageId, userId, emoji, action);
-    }
-
     async getDiscordSettings() {
         return sessionDiscordService.getDiscordSettings();
-    }
-
-    async getReactionMap() {
-        return sessionDiscordService.getReactionMap();
     }
 
     // Recurring methods - delegate to RecurringSessionService
     async createRecurringSession(sessionData) {
         return recurringSessionService.createRecurringSession(sessionData);
-    }
-
-    async getRecurringSessionInstances(templateId, filters = {}) {
-        return recurringSessionService.getRecurringSessionInstances(templateId, filters);
-    }
-
-    async updateRecurringSession(templateId, updateData) {
-        return recurringSessionService.updateRecurringSession(templateId, updateData);
-    }
-
-    async deleteRecurringSession(templateId, deleteFutureInstances = true) {
-        return recurringSessionService.deleteRecurringSession(templateId, deleteFutureInstances);
-    }
-
-    async generateAdditionalInstances(templateId, count = 12) {
-        return recurringSessionService.generateAdditionalInstances(templateId, count);
-    }
-
-    // Utility methods
-    formatSessionDate(dateTime) {
-        return new Date(dateTime).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-        });
     }
 }
 

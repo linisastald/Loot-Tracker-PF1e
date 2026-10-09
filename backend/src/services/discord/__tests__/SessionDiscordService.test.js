@@ -1,10 +1,8 @@
 /**
- * Unit tests for SessionDiscordService.processDiscordReaction
- * (multi-campaign Phase 3c)
+ * Unit tests for SessionDiscordService (settings split, session embed).
  *
- * Inbound Discord reactions arrive over HTTP without verifyToken, so the
- * service must resolve the message to its session under the hardcoded
- * cross-campaign context ('all') and then act under the session's campaign.
+ * The legacy processDiscordReaction path (unauthenticated /api/discord/reactions)
+ * was removed in the S1 security fix; attendance now arrives only via buttons.
  */
 
 const mockExecuteQuery = jest.fn();
@@ -26,7 +24,7 @@ jest.mock('../../../utils/campaignContext', () => ({
 jest.mock('../../discordBrokerService', () => ({
   sendMessage: jest.fn(),
   updateMessage: jest.fn(),
-  addReaction: jest.fn(),
+  getBotToken: jest.fn(),
 }));
 
 // Lazy-loaded collaborators
@@ -51,7 +49,7 @@ let activeCampaign;
 
 const contextIds = () => campaignContext.runWithCampaign.mock.calls.map(call => call[0]);
 
-describe('SessionDiscordService.processDiscordReaction campaign context', () => {
+describe('SessionDiscordService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockExecuteQuery.mockReset();
@@ -84,129 +82,12 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
     jest.spyOn(sessionDiscordService, 'updateSessionMessage').mockResolvedValue();
   });
 
-  it('resolves the session under "all" and records attendance under the session campaign', async () => {
-    const seenContexts = [];
-    mockExecuteQuery.mockImplementation(async (query) => {
-      seenContexts.push({ query, context: activeCampaign });
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [{ id: 33, campaign_id: 4 }] };
-      }
-      if (query.includes('FROM session_config')) {
-        return { rows: [] }; // default reaction map
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 9 }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    attendanceService.getActiveCharacterInCampaign.mockResolvedValue(77);
-    attendanceService.recordAttendance.mockImplementation(async () => {
-      expect(activeCampaign).toBe('4');
-    });
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
-
-    // Cross-campaign resolution first, then the session's campaign
-    expect(contextIds()).toEqual(['all', '4']);
-
-    // The session lookup selects campaign_id explicitly and runs under 'all'
-    const sessionLookup = seenContexts.find(c => c.query.includes('FROM game_sessions'));
-    expect(sessionLookup.query).toContain('campaign_id');
-    expect(sessionLookup.context).toBe('all');
-
-    // session_config (RLS campaign-scoped) and the reaction tracking insert
-    // run under the session's campaign
-    const configRead = seenContexts.find(c => c.query.includes('FROM session_config'));
-    expect(configRead.context).toBe('4');
-    const trackingInsert = seenContexts.find(c => c.query.includes('discord_reaction_tracking'));
-    expect(trackingInsert.context).toBe('4');
-
-    // The membership gate is checked under the session's campaign
-    expect(attendanceService.getActiveCharacterInCampaign).toHaveBeenCalledWith(9, 4);
-    expect(attendanceService.recordAttendance).toHaveBeenCalledWith(
-      33, 9, 'yes', { discord_id: '222', character_id: 77 }
-    );
-    expect(sessionDiscordService.updateSessionMessage).toHaveBeenCalledWith(33);
-  });
-
-  it('ignores a reaction from a user with no active character in the session campaign', async () => {
-    mockExecuteQuery.mockImplementation(async (query) => {
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [{ id: 33, campaign_id: 4 }] };
-      }
-      if (query.includes('FROM session_config')) {
-        return { rows: [] };
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 9 }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    // User belongs to no character in campaign 4 -> not a member
-    attendanceService.getActiveCharacterInCampaign.mockResolvedValue(null);
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
-
-    expect(attendanceService.getActiveCharacterInCampaign).toHaveBeenCalledWith(9, 4);
-    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
-    // No reaction-tracking row written for a rejected response
-    const trackingInsert = mockExecuteQuery.mock.calls.find(
-      ([q]) => typeof q === 'string' && q.includes('discord_reaction_tracking')
-    );
-    expect(trackingInsert).toBeUndefined();
-  });
-
-  it('removes attendance under the session campaign on reaction removal', async () => {
-    const removalContexts = [];
-    mockExecuteQuery.mockImplementation(async (query) => {
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [{ id: 33, campaign_id: 2 }] };
-      }
-      if (query.includes('FROM session_config')) {
-        return { rows: [] };
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 9 }] };
-      }
-      if (query.includes('DELETE')) {
-        removalContexts.push(activeCampaign);
-      }
-      return { rows: [], rowCount: 0 };
-    });
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '❌', 'remove');
-
-    expect(contextIds()).toEqual(['all', '2']);
-    // Both DELETEs (session_attendance + discord_reaction_tracking) under campaign 2
-    expect(removalContexts).toEqual(['2', '2']);
-    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
-  });
-
-  it('does not establish a per-campaign context when no session matches', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
-
-    expect(contextIds()).toEqual(['all']);
-    expect(logger.warn).toHaveBeenCalledWith('Session not found for message:', { messageId: '111111111111111111' });
-    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
-  });
-
-  it('swallows errors without throwing (Discord must always get a 200)', async () => {
-    mockExecuteQuery.mockRejectedValueOnce(new Error('DB down'));
-
-    await expect(
-      sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add')
-    ).resolves.toBeUndefined();
-
-    expect(logger.error).toHaveBeenCalledWith('Failed to process Discord reaction:', expect.any(Error));
-  });
-
   // -----------------------------------------------------------------
   // getDiscordSettings (Phase 4c: per-campaign channel/role split)
   // -----------------------------------------------------------------
   describe('getDiscordSettings', () => {
-    it('reads the bot token globally and the channel/role ids from campaign_settings under the active campaign', async () => {
+    it('reads the bot token via the broker service and the channel/role ids from campaign_settings under the active campaign', async () => {
+      require('../../discordBrokerService').getBotToken.mockResolvedValue('global-token');
       const seenQueries = [];
       mockExecuteQuery.mockImplementation(async (query, params) => {
         seenQueries.push({ query, params, context: activeCampaign });
@@ -238,6 +119,7 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
     });
 
     it('falls back to the deprecated global rows when the campaign has no Discord settings', async () => {
+      require('../../discordBrokerService').getBotToken.mockResolvedValue('global-token');
       mockExecuteQuery.mockImplementation(async (query, params) => {
         if (query.includes('FROM campaign_settings')) {
           return { rows: [] };
@@ -330,6 +212,365 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
         'Failed to look up snack master name',
         { error: 'DB down' }
       );
+    });
+  });
+
+  // -----------------------------------------------------------------
+  // Send results: sendMessage/updateMessage return ServiceResult.failure
+  // instead of throwing, so success must be checked (F-0649).
+  // -----------------------------------------------------------------
+  describe('sendSessionReminder send result handling', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionService.getSession.mockResolvedValue({
+        id: 5, created_by: null, start_time: new Date('2026-11-01T19:00:00Z'), title: 'S'
+      });
+      attendanceService.getSessionAttendance.mockResolvedValue([]);
+      attendanceService.getNonResponders.mockResolvedValue([{ discord_id: '111' }]);
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'chan', campaign_role_id: null });
+      jest.spyOn(sessionDiscordService, 'recordReminder').mockResolvedValue();
+    });
+
+    it('does not record the reminder and throws when Discord rejects the send', async () => {
+      discordBroker.sendMessage.mockResolvedValue({ success: false, error: { message: 'Missing Access' } });
+
+      await expect(sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false }))
+        .rejects.toThrow(/Missing Access/);
+      expect(sessionDiscordService.recordReminder).not.toHaveBeenCalled();
+    });
+
+    it('records the reminder only after a confirmed send', async () => {
+      discordBroker.sendMessage.mockResolvedValue({ success: true, data: { id: 'm1' } });
+
+      await sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false });
+
+      expect(sessionDiscordService.recordReminder).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws before sending when no channel is configured', async () => {
+      sessionDiscordService.getDiscordSettings.mockResolvedValue({ discord_channel_id: null });
+
+      await expect(sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false }))
+        .rejects.toThrow(/channel not configured/);
+      expect(discordBroker.sendMessage).not.toHaveBeenCalled();
+      expect(sessionDiscordService.recordReminder).not.toHaveBeenCalled();
+    });
+  });
+
+  // The scheduler cancels early only when this is empty (F-0752).
+  describe('getAutoReminderRecipients', () => {
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionService.getSession.mockResolvedValue({ id: 5, created_by: 9 });
+      mockExecuteQuery.mockResolvedValue({ rows: [{ discord_id: 'dm' }] });
+    });
+
+    it('is the non-responders plus maybes, without the DM and without users lacking a Discord id', async () => {
+      attendanceService.getSessionAttendance.mockResolvedValue([
+        { user_id: 1, response_type: 'yes', discord_id: 'a' },
+        { user_id: 2, response_type: 'maybe', discord_id: 'b' },
+        { user_id: 3, response_type: 'no', discord_id: 'c' },
+      ]);
+      attendanceService.getNonResponders.mockResolvedValue([
+        { id: 4, discord_id: 'd' },
+        { id: 9, discord_id: 'dm' },
+        { id: 5, discord_id: null },
+      ]);
+
+      const recipients = await sessionDiscordService.getAutoReminderRecipients(5);
+
+      expect(recipients.map(u => u.discord_id)).toEqual(['d', 'b']);
+    });
+
+    it('is empty when everyone has answered yes/no and only the DM is outstanding', async () => {
+      attendanceService.getSessionAttendance.mockResolvedValue([
+        { user_id: 1, response_type: 'yes', discord_id: 'a' },
+        { user_id: 3, response_type: 'no', discord_id: 'c' },
+      ]);
+      attendanceService.getNonResponders.mockResolvedValue([{ id: 9, discord_id: 'dm' }]);
+
+      await expect(sessionDiscordService.getAutoReminderRecipients(5)).resolves.toEqual([]);
+    });
+  });
+
+  describe('sendSessionReminder targets and mentions (F-0645, F-0646, F-0647)', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+    const when = new Date('2026-11-01T19:00:00Z');
+    const stamp = `<t:${Math.floor(when.getTime() / 1000)}:F>`;
+
+    const arrange = ({ attendance = [], nonResponders = [], role = null }) => {
+      sessionService.getSession.mockResolvedValue({ id: 5, created_by: 9, start_time: when, title: 'S' });
+      mockExecuteQuery.mockResolvedValue({ rows: [{ discord_id: 'dm' }] });
+      attendanceService.getSessionAttendance.mockResolvedValue(attendance);
+      attendanceService.getNonResponders.mockResolvedValue(nonResponders);
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'chan', campaign_role_id: role });
+      jest.spyOn(sessionDiscordService, 'recordReminder').mockResolvedValue();
+      discordBroker.sendMessage.mockResolvedValue({ success: true, data: { id: 'm' } });
+    };
+
+    it('throws a NotFoundError for an unknown session instead of a TypeError', async () => {
+      sessionService.getSession.mockResolvedValue(null);
+
+      await expect(sessionDiscordService.sendSessionReminder(404, 'all', { isManual: true }))
+        .rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
+    it('auto reminder pings non-responders and maybes, never the DM or responders who said yes', async () => {
+      arrange({
+        attendance: [
+          { response_type: 'yes', discord_id: 'yes1' },
+          { response_type: 'maybe', discord_id: 'maybe1' },
+        ],
+        nonResponders: [{ discord_id: 'non1' }, { discord_id: 'dm' }],
+      });
+
+      await sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false });
+
+      const args = discordBroker.sendMessage.mock.calls[0][0];
+      expect(args.content).toBe(`<@non1> <@maybe1> Session reminder: Please respond if you plan to attend on ${stamp}`);
+      expect(args.allowedMentions).toEqual({ parse: [], users: ['non1', 'maybe1'] });
+    });
+
+    it('remind all without a role pings responders AND non-responders, once each', async () => {
+      arrange({
+        attendance: [
+          { response_type: 'yes', discord_id: 'yes1' },
+          { response_type: 'no', discord_id: 'no1' },
+        ],
+        nonResponders: [{ discord_id: 'non1' }, { discord_id: 'yes1' }],
+      });
+
+      await sessionDiscordService.sendSessionReminder(5, 'all', { isManual: true });
+
+      const args = discordBroker.sendMessage.mock.calls[0][0];
+      expect(args.allowedMentions.users).toEqual(['yes1', 'no1', 'non1']);
+      expect(sessionDiscordService.recordReminder).toHaveBeenCalledWith(5, 'all', expect.any(Array), { isManual: true });
+    });
+
+    it('remind all pings the campaign role (and only that role) even when nobody has responded', async () => {
+      arrange({ attendance: [], nonResponders: [], role: '222222222222222222' });
+
+      await sessionDiscordService.sendSessionReminder(5, 'all', { isManual: true });
+
+      const args = discordBroker.sendMessage.mock.calls[0][0];
+      expect(args.content).toBe(`<@&222222222222222222> Session reminder for everyone: ${stamp}`);
+      expect(args.allowedMentions).toEqual({ parse: [], roles: ['222222222222222222'] });
+    });
+
+    it('sends nothing and records nothing when no one can be pinged', async () => {
+      arrange({ attendance: [], nonResponders: [{ discord_id: 'dm' }] });
+
+      await sessionDiscordService.sendSessionReminder(5, 'non_responders', { isManual: true });
+
+      expect(discordBroker.sendMessage).not.toHaveBeenCalled();
+      expect(sessionDiscordService.recordReminder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('postSessionAnnouncement (F-0645)', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionDiscordService.updateSessionMessage.mockRestore();
+      sessionService.getSession.mockResolvedValue({
+        id: 1, discord_message_id: null, title: 'T', status: 'scheduled', minimum_players: 3,
+        start_time: '2026-11-01T19:00:00Z',
+      });
+      jest.spyOn(sessionDiscordService, 'createSessionEmbed').mockResolvedValue({ color: 1, fields: [] });
+    });
+
+    it('posts with the role ping limited to that role and stores message and channel ids', async () => {
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings').mockResolvedValue({
+        discord_channel_id: '111111111111111111', discord_bot_token: 't', campaign_role_id: '222222222222222222',
+      });
+      discordBroker.sendMessage.mockResolvedValue({ success: true, data: { id: '333333333333333333' } });
+      mockExecuteQuery.mockResolvedValue({ rowCount: 1, rows: [{ id: 1 }] });
+
+      const result = await sessionDiscordService.postSessionAnnouncement(1);
+
+      expect(result).toEqual({ id: '333333333333333333' });
+      const args = discordBroker.sendMessage.mock.calls[0][0];
+      expect(args.content).toBe('<@&222222222222222222> next session!');
+      expect(args.allowedMentions).toEqual({ parse: [], roles: ['222222222222222222'] });
+      expect(args.components[0].components.map(b => b.custom_id)).toEqual([
+        'session_attend_yes', 'session_attend_no', 'session_attend_maybe', 'session_attend_late', 'session_attend_early',
+      ]);
+      expect(mockExecuteQuery.mock.calls[0][1]).toEqual(['333333333333333333', '111111111111111111', 1]);
+    });
+
+    it('returns null without sending when Discord is not configured', async () => {
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings').mockResolvedValue({});
+
+      await expect(sessionDiscordService.postSessionAnnouncement(1)).resolves.toBeNull();
+      expect(discordBroker.sendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateSessionMessage channel (F-0652)', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionDiscordService.updateSessionMessage.mockRestore();
+      attendanceService.getSessionAttendance.mockResolvedValue([]);
+      jest.spyOn(sessionDiscordService, 'createSessionEmbed').mockResolvedValue({ color: 1, fields: [] });
+      discordBroker.updateMessage.mockResolvedValue({ success: true, data: {} });
+    });
+
+    it('edits the message in the channel it was posted to, not the current campaign setting', async () => {
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'new-channel', discord_bot_token: 't' });
+      sessionService.getSession.mockResolvedValue({
+        id: 1, discord_message_id: 'm', discord_channel_id: 'old-channel', status: 'scheduled',
+      });
+
+      await sessionDiscordService.updateSessionMessage(1);
+
+      expect(discordBroker.updateMessage.mock.calls[0][0].channelId).toBe('old-channel');
+    });
+
+    it('falls back to the campaign channel for sessions announced before the channel was stored', async () => {
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'campaign-channel', discord_bot_token: 't' });
+      sessionService.getSession.mockResolvedValue({
+        id: 1, discord_message_id: 'm', discord_channel_id: null, status: 'scheduled',
+      });
+
+      await sessionDiscordService.updateSessionMessage(1);
+
+      expect(discordBroker.updateMessage.mock.calls[0][0].channelId).toBe('campaign-channel');
+    });
+
+    it('removes the buttons from a cancelled session message', async () => {
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'c', discord_bot_token: 't' });
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: 'm', status: 'cancelled' });
+
+      await sessionDiscordService.updateSessionMessage(1);
+
+      expect(discordBroker.updateMessage.mock.calls[0][0].components).toEqual([]);
+    });
+  });
+
+  describe('createSessionEmbed attendance and status (F-0645, F-0658)', () => {
+    const { DISCORD_EMBED_COLORS } = require('../../../constants/discordConstants');
+    const session = {
+      id: 7, title: 'T', description: null, status: 'confirmed', minimum_players: 4,
+      start_time: '2026-11-01T19:00:00Z',
+    };
+
+    beforeEach(() => {
+      mockExecuteQuery.mockResolvedValue({ rows: [] });
+    });
+
+    it('groups responses, labels late/early and falls back to the username', async () => {
+      const embed = await sessionDiscordService.createSessionEmbed(session, [
+        { response_type: 'yes', character_name: 'Valeros', username: 'a' },
+        { response_type: 'late', character_name: null, username: 'bob' },
+        { response_type: 'early', character_name: 'Seoni', username: 'c' },
+        { response_type: 'late_and_early', character_name: 'Kyra', username: 'd' },
+        { response_type: 'maybe', character_name: 'Ezren', username: 'e' },
+        { response_type: 'no', character_name: null, username: 'f' },
+      ]);
+
+      const field = (prefix) => embed.fields.find(f => f.name.includes(prefix));
+      expect(field('Attending (4)').value).toBe('Valeros\nbob (late)\nSeoni (early)\nKyra (late/early)');
+      expect(field('Maybe (1)').value).toBe('Ezren');
+      expect(field('Not Attending (1)').value).toBe('f');
+      expect(embed.color).toBe(DISCORD_EMBED_COLORS.CONFIRMED);
+    });
+
+    it('uses the scheduled and cancelled colours', async () => {
+      const scheduled = await sessionDiscordService.createSessionEmbed({ ...session, status: 'scheduled' }, []);
+      const cancelled = await sessionDiscordService.createSessionEmbed(
+        { ...session, status: 'cancelled', cancel_reason: 'Illness' }, []);
+
+      expect(scheduled.color).toBe(DISCORD_EMBED_COLORS.SCHEDULED);
+      expect(cancelled.color).toBe(DISCORD_EMBED_COLORS.CANCELLED);
+      expect(cancelled.description).toContain('Illness');
+    });
+  });
+
+  describe('recordReminder (F-0663)', () => {
+    const cases = [
+      ['auto', false, 'auto', 'non_responders'],
+      ['non_responders', true, 'manual', 'non_responders'],
+      ['maybe_responders', true, 'manual', 'maybe_responders'],
+      ['all', true, 'manual', 'all'],
+      ['followup', true, 'manual', 'all'],
+    ];
+
+    it.each(cases)('maps %s (manual=%s) to reminder_type %s and audience %s', async (type, isManual, recordType, audience) => {
+      mockExecuteQuery.mockResolvedValue({ rows: [] });
+
+      await sessionDiscordService.recordReminder(5, type, [{}, {}], { isManual });
+
+      expect(mockExecuteQuery.mock.calls[0][1]).toEqual([5, recordType, isManual, audience]);
+    });
+  });
+
+  describe('getDiscordSettings token (W06 follow-up)', () => {
+    it('takes the bot token from the broker service, the single place that reads it', async () => {
+      const discordBroker = require('../../discordBrokerService');
+      discordBroker.getBotToken.mockResolvedValue('tok');
+      mockExecuteQuery.mockResolvedValue({ rows: [] });
+
+      const settings = await sessionDiscordService.getDiscordSettings();
+
+      expect(settings.discord_bot_token).toBe('tok');
+      expect(mockExecuteQuery.mock.calls.some(([q]) => String(q).includes('discord_bot_token'))).toBe(false);
+    });
+
+    it('leaves the token out when none is configured', async () => {
+      const discordBroker = require('../../discordBrokerService');
+      discordBroker.getBotToken.mockRejectedValue(new Error('Discord bot token not configured'));
+      mockExecuteQuery.mockResolvedValue({ rows: [] });
+
+      const settings = await sessionDiscordService.getDiscordSettings();
+
+      expect(settings.discord_bot_token).toBeUndefined();
+    });
+  });
+
+  describe('announcement/update result handling (F-0677)', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionDiscordService.updateSessionMessage.mockRestore();
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'chan', discord_bot_token: 't' });
+      jest.spyOn(sessionDiscordService, 'createSessionEmbed').mockResolvedValue({ color: 1, fields: [] });
+      attendanceService.getSessionAttendance.mockResolvedValue([]);
+    });
+
+    it('updateSessionMessage resolves false when updateMessage returns a failure result', async () => {
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: 'm', status: 'scheduled' });
+      discordBroker.updateMessage.mockResolvedValue({ success: false, error: { message: 'boom' } });
+
+      await expect(sessionDiscordService.updateSessionMessage(1)).resolves.toBe(false);
+    });
+
+    it('updateSessionMessage resolves true on success', async () => {
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: 'm', status: 'scheduled' });
+      discordBroker.updateMessage.mockResolvedValue({ success: true, data: {} });
+
+      await expect(sessionDiscordService.updateSessionMessage(1)).resolves.toBe(true);
+    });
+
+    it('postSessionAnnouncement resolves null when sendMessage fails', async () => {
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: null });
+      discordBroker.sendMessage.mockResolvedValue({ success: false, error: { message: 'boom' } });
+
+      await expect(sessionDiscordService.postSessionAnnouncement(1)).resolves.toBeNull();
+      expect(mockExecuteQuery).not.toHaveBeenCalled();
     });
   });
 });

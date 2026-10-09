@@ -6,10 +6,8 @@ jest.mock('../../utils/dbUtils', () => ({
   executeTransaction: jest.fn(),
   insert: jest.fn(),
   getById: jest.fn(),
-  getMany: jest.fn(),
   updateById: jest.fn(),
   deleteById: jest.fn(),
-  rowExists: jest.fn(),
 }));
 
 jest.mock('../../utils/logger', () => ({
@@ -95,7 +93,7 @@ describe('Gold model', () => {
       });
     });
 
-    it('should apply date range filter', async () => {
+    it('should apply date range filter, inclusive of the whole end day', async () => {
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [{ total: '0' }] });
@@ -103,9 +101,34 @@ describe('Gold model', () => {
       await Gold.findAll({ startDate: '2024-01-01', endDate: '2024-12-31' });
 
       const [query, values] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('WHERE session_date BETWEEN $1 AND $2');
-      expect(values[0]).toBe('2024-01-01');
-      expect(values[1]).toBe('2024-12-31');
+      expect(query).toContain('WHERE session_date >= $1 AND session_date < ($2::date + 1)');
+      expect(values.slice(0, 2)).toEqual(['2024-01-01', '2024-12-31']);
+      const [countQuery, countValues] = dbUtils.executeQuery.mock.calls[1];
+      expect(countQuery).toContain('WHERE session_date >= $1 AND session_date < ($2::date + 1)');
+      expect(countValues).toEqual(['2024-01-01', '2024-12-31']);
+    });
+
+    it('should filter on a single-sided date range', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ total: '0' }] });
+
+      await Gold.findAll({ startDate: '2024-01-01' });
+      let [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('WHERE session_date >= $1 ORDER BY');
+      expect(values).toEqual(['2024-01-01', 50, 0]);
+
+      dbUtils.executeQuery.mockClear();
+      await Gold.findAll({ endDate: '2024-02-01' });
+      [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('WHERE session_date < ($1::date + 1) ORDER BY');
+      expect(values).toEqual(['2024-02-01', 50, 0]);
+    });
+
+    it('should order by session_date then id so pages are stable', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ total: '0' }] });
+
+      await Gold.findAll();
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('ORDER BY session_date DESC, id DESC');
     });
 
     it('should calculate pagination correctly', async () => {
@@ -137,77 +160,60 @@ describe('Gold model', () => {
     });
   });
 
+  describe('create with a client', () => {
+    it('inserts through the client, including who, and returns the row', async () => {
+      const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 9 }] }) };
+
+      const row = await Gold.create({
+        sessionDate: '2024-01-15',
+        transactionType: 'Balance',
+        gold: 1,
+        silver: -10,
+        notes: 'Balanced',
+        who: 4,
+      }, client);
+
+      expect(row).toEqual({ id: 9 });
+      expect(dbUtils.insert).not.toHaveBeenCalled();
+      const [sql, values] = client.query.mock.calls[0];
+      expect(sql).toContain('INSERT INTO gold');
+      expect(values).toEqual(['2024-01-15', 'Balance', 0, 1, -10, 0, 'Balanced', null, 4]);
+    });
+  });
+
+  describe('lockLedger', () => {
+    it('takes a transaction-scoped advisory lock keyed by campaign', async () => {
+      const client = { query: jest.fn().mockResolvedValue({}) };
+
+      await Gold.lockLedger(client);
+
+      const [sql, params] = client.query.mock.calls[0];
+      expect(sql).toContain('pg_advisory_xact_lock');
+      expect(params).toHaveLength(2);
+      expect(params[0]).toBe(7301);
+    });
+  });
+
   describe('getBalance', () => {
-    it('should return summed balance', async () => {
+    it('should return the summed balance as numbers', async () => {
       dbUtils.executeQuery.mockResolvedValue({
         rows: [{ platinum: '10', gold: '250', silver: '45', copper: '80' }],
       });
 
       const balance = await Gold.getBalance();
 
-      expect(balance).toEqual({ platinum: '10', gold: '250', silver: '45', copper: '80' });
+      expect(balance).toEqual({ platinum: 10, gold: 250, silver: 45, copper: 80 });
       expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('COALESCE(SUM(platinum), 0)');
     });
-  });
 
-  describe('getSummaryByType', () => {
-    it('should return grouped summaries', async () => {
-      const mockRows = [
-        { transaction_type: 'Loot', platinum: '5', gold: '100', silver: '0', copper: '0', count: '3' },
-        { transaction_type: 'Sale', platinum: '0', gold: '50', silver: '5', copper: '0', count: '2' },
-      ];
-      dbUtils.executeQuery.mockResolvedValue({ rows: mockRows });
+    it('should read through the given client inside a transaction', async () => {
+      const client = { query: jest.fn().mockResolvedValue({ rows: [{ platinum: '0', gold: '-5', silver: '0', copper: '0' }] }) };
 
-      const result = await Gold.getSummaryByType();
+      const balance = await Gold.getBalance(client);
 
-      expect(result).toHaveLength(2);
-      expect(result[0].transaction_type).toBe('Loot');
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('GROUP BY transaction_type');
-    });
-  });
-
-  describe('distributeToCharacters', () => {
-    it('should insert distribution entries within a transaction', async () => {
-      const mockClient = { query: jest.fn() };
-      const distributions = [
-        { characterId: 1, platinum: 0, gold: 50, silver: 0, copper: 0, notes: 'Share', transactionType: 'Distribution' },
-        { characterId: 2, platinum: 0, gold: 50, silver: 0, copper: 0, notes: 'Share', transactionType: 'Distribution' },
-      ];
-
-      mockClient.query
-        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ id: 2 }] });
-
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      const result = await Gold.distributeToCharacters(distributions);
-
-      expect(mockClient.query).toHaveBeenCalledTimes(2);
-      expect(result).toHaveLength(2);
-
-      // Verify parameterized query
-      const [query, values] = mockClient.query.mock.calls[0];
-      expect(query).toContain('INSERT INTO gold');
-      expect(values[1]).toBe('Distribution');
-      expect(values[3]).toBe(50); // gold
-      expect(values[6]).toBe('Share');
-      expect(values[7]).toBe(1); // characterId
-    });
-
-    it('should default missing currency values to 0', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      await Gold.distributeToCharacters([
-        { characterId: 1, notes: 'Test', transactionType: 'Distribution' },
-      ]);
-
-      const values = mockClient.query.mock.calls[0][1];
-      expect(values[2]).toBe(0); // platinum
-      expect(values[3]).toBe(0); // gold
-      expect(values[4]).toBe(0); // silver
-      expect(values[5]).toBe(0); // copper
+      expect(balance.gold).toBe(-5);
+      expect(client.query).toHaveBeenCalledTimes(1);
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
   });
 });

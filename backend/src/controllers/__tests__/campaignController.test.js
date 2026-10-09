@@ -29,6 +29,7 @@ jest.mock('../../utils/partyLevel', () => ({
 const Campaign = require('../../models/Campaign');
 const sessionSchedulerService = require('../../services/scheduler/SessionSchedulerService');
 const campaignSettings = require('../../utils/campaignSettings');
+const timezoneUtils = require('../../utils/timezoneUtils');
 const discordService = require('../../services/discordBrokerService');
 const partyLevel = require('../../utils/partyLevel');
 const campaignController = require('../campaignController');
@@ -90,7 +91,7 @@ describe('campaignController', () => {
       );
       expect(discordService.sendMessage).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledWith(
-        { character_level: 6, apl: 6, character_count: 4, average_party_level: 6, discordSent: false },
+        { character_level: 6, apl: 6, character_count: 4, discordSent: false },
         'Party leveled up to level 6 (APL 6)'
       );
     });
@@ -116,7 +117,7 @@ describe('campaignController', () => {
       expect(arg.content).toContain('<@&987654321098765432>');
       expect(arg.content).toContain('level 5');
       expect(res.success).toHaveBeenCalledWith(
-        { character_level: 5, apl: 5, character_count: 4, average_party_level: 5, discordSent: true },
+        { character_level: 5, apl: 5, character_count: 4, discordSent: true },
         'Party leveled up to level 5 (APL 5)'
       );
     });
@@ -171,8 +172,62 @@ describe('campaignController', () => {
       await campaignController.levelUpCampaign(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { character_level: 8, apl: 8, character_count: 4, average_party_level: 8, discordSent: false },
+        { character_level: 8, apl: 8, character_count: 4, discordSent: false },
         'Party leveled up to level 8 (APL 8)'
+      );
+    });
+
+    it('serializes concurrent level-ups so none reads a stale level', async () => {
+      let stored = 5;
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockImplementation(async () => {
+        const read = String(stored);
+        await new Promise((resolve) => setImmediate(resolve));
+        return read;
+      });
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockImplementation(async (name, value) => {
+        await new Promise((resolve) => setImmediate(resolve));
+        stored = value;
+        return {};
+      });
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({});
+      const resA = createMockRes();
+      const resB = createMockRes();
+
+      await Promise.all([
+        campaignController.levelUpCampaign(createMockReq({ campaignRole: 'DM' }), resA),
+        campaignController.levelUpCampaign(createMockReq({ campaignRole: 'DM' }), resB),
+      ]);
+
+      const levels = [resA, resB].map((r) => r.success.mock.calls[0][0].character_level).sort();
+      expect(levels).toEqual([6, 7]);
+      expect(stored).toBe(7);
+    });
+
+    it('rejects a level-up whose expectedLevel no longer matches (double-click / stale page)', async () => {
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('6');
+      const setSpy = jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      const res = createMockRes();
+
+      await campaignController.levelUpCampaign(
+        createMockReq({ campaignRole: 'DM', body: { expectedLevel: 5 } }), res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('changed'));
+      expect(setSpy).not.toHaveBeenCalled();
+      expect(discordService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('levels up when expectedLevel matches the stored level', async () => {
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('5');
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({});
+      const res = createMockRes();
+
+      await campaignController.levelUpCampaign(
+        createMockReq({ campaignRole: 'DM', body: { expectedLevel: 5 } }), res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ character_level: 6 }),
+        expect.any(String)
       );
     });
 
@@ -190,7 +245,7 @@ describe('campaignController', () => {
 
       expect(partyLevel.computeApl).toHaveBeenCalledWith(6, 6);
       expect(res.success).toHaveBeenCalledWith(
-        { character_level: 6, apl: 7, character_count: 6, average_party_level: 6, discordSent: false },
+        { character_level: 6, apl: 7, character_count: 6, discordSent: false },
         'Party leveled up to level 6 (APL 7)'
       );
     });
@@ -241,24 +296,27 @@ describe('campaignController', () => {
       expect(res.success).toHaveBeenCalledWith(memberships, 'Campaigns retrieved successfully');
     });
 
-    it('should return all campaigns annotated role DM for a superadmin', async () => {
+    it('should return all campaigns for a superadmin, with their real membership role where they have one', async () => {
       const allCampaigns = [
         { id: 1, name: 'Rise of the Runelords', slug: 'rotr', world: 'Golarion', is_active: true },
         { id: 2, name: 'Skulls & Shackles', slug: 'sns', world: 'Golarion', is_active: false },
+        { id: 3, name: 'Curse', slug: 'curse', world: 'Golarion', is_active: true },
       ];
       const req = createMockReq({ isSuperadmin: true });
       const res = createMockRes();
 
       Campaign.getAll.mockResolvedValue(allCampaigns);
+      Campaign.getForUser.mockResolvedValue([{ id: 3, role: 'Player' }]);
 
       await campaignController.getMyCampaigns(req, res);
 
       expect(Campaign.getAll).toHaveBeenCalled();
-      expect(Campaign.getForUser).not.toHaveBeenCalled();
+      expect(Campaign.getForUser).toHaveBeenCalledWith(1);
       expect(res.success).toHaveBeenCalledWith(
         [
           expect.objectContaining({ id: 1, slug: 'rotr', role: 'DM' }),
           expect.objectContaining({ id: 2, slug: 'sns', role: 'DM' }),
+          expect.objectContaining({ id: 3, slug: 'curse', role: 'Player' }),
         ],
         'Campaigns retrieved successfully'
       );
@@ -296,16 +354,21 @@ describe('campaignController', () => {
         world: 'Golarion',
         is_active: true,
       });
+      Campaign.getActiveCharacterId.mockResolvedValue(31);
 
       await campaignController.getCurrentCampaign(req, res);
 
       expect(Campaign.getById).toHaveBeenCalledWith(2);
+      // M-6: the active character of the SELECTED campaign (the one this request resolved)
+      expect(Campaign.getActiveCharacterId).toHaveBeenCalledWith(req.user.id, 2);
       expect(Campaign.getSettingsMap).toHaveBeenCalledWith(2);
       expect(res.success).toHaveBeenCalledWith(
         {
           campaignId: 2,
           role: 'DM',
           isSuperadmin: false,
+          dmOverride: false,
+          activeCharacterId: 31,
           campaign: {
             id: 2,
             name: 'Skulls & Shackles',
@@ -341,6 +404,18 @@ describe('campaignController', () => {
       );
     });
 
+    it('serves a user in two campaigns the character of the campaign the request selected', async () => {
+      const charactersByCampaign = { 1: 11, 2: 22 };
+      Campaign.getActiveCharacterId.mockImplementation(async (userId, campaignId) => charactersByCampaign[campaignId] ?? null);
+      Campaign.getById.mockImplementation(async (id) => ({ id, name: 'C' + id, slug: 'c' + id, world: 'Golarion', is_active: true }));
+
+      for (const [campaignId, expected] of [[1, 11], [2, 22]]) {
+        const res = createMockRes();
+        await campaignController.getCurrentCampaign(createMockReq({ campaignId, campaignRole: 'Player' }), res);
+        expect(res.success.mock.calls[0][0].activeCharacterId).toBe(expected);
+      }
+    });
+
     it('should report isSuperadmin true for superadmins', async () => {
       const req = createMockReq({ campaignId: 1, campaignRole: 'DM', isSuperadmin: true });
       const res = createMockRes();
@@ -370,6 +445,8 @@ describe('campaignController', () => {
           campaignId: null,
           role: null,
           isSuperadmin: false,
+          dmOverride: false,
+          activeCharacterId: null,
           campaign: null,
           settings: {},
         },
@@ -650,6 +727,7 @@ describe('campaignController', () => {
         ['treasure_track', 'fast', 'fast', 'string'],
         ['treasure_modifier', '1.5', '1.5', 'string'],
         ['treasure_modifier', 2, '2', 'string'],
+        ['treasure_modifier', ' 0.5 ', '0.5', 'string'],
         ['average_party_level', '5', '5', 'integer'],
         ['average_party_level', 1, '1', 'integer'],
         ['average_party_level', 30, '30', 'integer'],
@@ -658,6 +736,9 @@ describe('campaignController', () => {
         ['infamy_system_enabled', false, '0', 'boolean'],
         ['auto_appraisal_enabled', true, '1', 'boolean'],
         ['auto_task_generation', '0', '0', 'boolean'],
+        ['default_quantity_enabled', '1', '1', 'boolean'],
+        ['auto_split_stacks_enabled', false, '0', 'boolean'],
+        ['default_browser_quantity', '5', '5', 'integer'],
         ['discord_integration_enabled', '1', '1', 'boolean'],
         ['discord_channel_id', '123456789012345678', '123456789012345678', 'string'],
         ['discord_channel_id', '', '', 'string'], // explicit unset
@@ -694,6 +775,11 @@ describe('campaignController', () => {
         ['treasure_modifier', -2, 'treasure_modifier must be a positive number'],
         ['treasure_modifier', 101, 'treasure_modifier must be a positive number'],
         ['treasure_modifier', 'lots', 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', '1.5abc', 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', '2e1', 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', '', 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', ' ', 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', Infinity, 'treasure_modifier must be a positive number'],
         ['average_party_level', 0, 'average_party_level must be an integer between 1 and 30'],
         ['average_party_level', 31, 'average_party_level must be an integer between 1 and 30'],
         ['average_party_level', 5.5, 'average_party_level must be an integer between 1 and 30'],
@@ -702,6 +788,9 @@ describe('campaignController', () => {
         ['infamy_system_enabled', 'yes', "infamy_system_enabled must be '0' or '1'"],
         ['auto_appraisal_enabled', 2, "auto_appraisal_enabled must be '0' or '1'"],
         ['auto_task_generation', 'on', "auto_task_generation must be '0' or '1'"],
+        ['default_quantity_enabled', 'yes', "default_quantity_enabled must be '0' or '1'"],
+        ['default_browser_quantity', 0, 'default_browser_quantity must be an integer between 1 and 9999'],
+        ['default_browser_quantity', 'many', 'default_browser_quantity must be an integer between 1 and 9999'],
         ['discord_integration_enabled', 'enabled', "discord_integration_enabled must be '0' or '1'"],
         ['discord_channel_id', 'abc', 'discord_channel_id must be a Discord snowflake'],
         ['discord_channel_id', '1234567890123456', 'discord_channel_id must be a Discord snowflake'], // 16 digits
@@ -723,10 +812,17 @@ describe('campaignController', () => {
         const req = createDmReq({ name: 'campaign_timezone', value: 'America/Denver' });
         const res = createMockRes();
 
-        await campaignController.updateCurrentCampaignSetting(req, res);
+        const clearSpy = jest.spyOn(timezoneUtils, 'clearTimezoneCache').mockImplementation(() => {});
 
-        expect(Campaign.upsertSetting).toHaveBeenCalledWith(2, 'campaign_timezone', 'America/Denver', 'string');
-        expect(sessionSchedulerService.restart).toHaveBeenCalled();
+        try {
+          await campaignController.updateCurrentCampaignSetting(req, res);
+
+          expect(Campaign.upsertSetting).toHaveBeenCalledWith(2, 'campaign_timezone', 'America/Denver', 'string');
+          expect(clearSpy).toHaveBeenCalledWith(2);
+          expect(sessionSchedulerService.restart).toHaveBeenCalled();
+        } finally {
+          clearSpy.mockRestore();
+        }
       });
 
       it('should not restart the scheduler for non-timezone settings', async () => {
@@ -739,34 +835,6 @@ describe('campaignController', () => {
       });
     });
 
-    // The DM gate lives at the route layer (checkRole('DM')); verify the
-    // middleware behavior with the per-campaign role the route relies on.
-    describe('route guard: checkRole(DM)', () => {
-      const checkRole = require('../../middleware/checkRole');
-
-      it('should 403 a per-campaign Player', () => {
-        const req = createMockReq({ campaignRole: 'Player' });
-        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-        const next = jest.fn();
-
-        checkRole('DM')(req, res, next);
-
-        expect(res.status).toHaveBeenCalledWith(403);
-        expect(res.json).toHaveBeenCalledWith({ message: 'Access denied: Insufficient permissions' });
-        expect(next).not.toHaveBeenCalled();
-      });
-
-      it('should pass a per-campaign DM through', () => {
-        const req = createMockReq({ campaignRole: 'DM' });
-        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-        const next = jest.fn();
-
-        checkRole('DM')(req, res, next);
-
-        expect(next).toHaveBeenCalled();
-        expect(res.status).not.toHaveBeenCalled();
-      });
-    });
   });
 
   // -------------------------------------------------------------------
@@ -875,19 +943,6 @@ describe('campaignController', () => {
       expect(res.notFound).toHaveBeenCalledWith('Campaign not found');
     });
 
-    // The DM gate lives at the route layer (checkRole('DM')) — verify a
-    // per-campaign Player is rejected by the middleware the route uses.
-    it('should be blocked for a per-campaign Player by checkRole(DM)', () => {
-      const checkRole = require('../../middleware/checkRole');
-      const req = createMockReq({ campaignRole: 'Player' });
-      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-      const next = jest.fn();
-
-      checkRole('DM')(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
-    });
   });
 
   // -------------------------------------------------------------------
@@ -935,18 +990,6 @@ describe('campaignController', () => {
       expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
 
-    // The DM gate lives at the route layer (checkRole('DM'))
-    it('should be blocked for a per-campaign Player by checkRole(DM)', () => {
-      const checkRole = require('../../middleware/checkRole');
-      const req = createMockReq({ campaignRole: 'Player' });
-      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-      const next = jest.fn();
-
-      checkRole('DM')(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
-    });
   });
 
   // -------------------------------------------------------------------

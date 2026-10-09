@@ -1,17 +1,10 @@
 /**
  * Unit tests for salesController
  * Tests all exported functions: getPendingSaleItems, confirmSale, sellSelected,
- * sellAllExcept, sellUpTo, cancelPendingSale, getSaleHistory, getSaleStatistics,
- * and calculateSaleValues.
+ * sellAllExcept, sellUpTo and calculateSaleValues. The sale-value calculator is real.
  */
 
 // Mock dependencies before requiring the controller
-jest.mock('../../utils/dbUtils', () => ({
-  executeQuery: jest.fn(),
-  executeTransaction: jest.fn(),
-  insert: jest.fn(),
-}));
-
 jest.mock('../../utils/logger', () => ({
   error: jest.fn(),
   warn: jest.fn(),
@@ -26,17 +19,9 @@ jest.mock('../../services/salesService', () => ({
   sellSelectedItems: jest.fn(),
   sellAllExceptItems: jest.fn(),
   sellUpToAmount: jest.fn(),
-  getSaleHistory: jest.fn(),
 }));
 
-jest.mock('../../utils/saleValueCalculator', () => ({
-  calculateItemSaleValue: jest.fn(),
-  calculateTotalSaleValue: jest.fn(),
-}));
-
-const dbUtils = require('../../utils/dbUtils');
 const SalesService = require('../../services/salesService');
-const { calculateItemSaleValue, calculateTotalSaleValue } = require('../../utils/saleValueCalculator');
 const salesController = require('../salesController');
 
 // Helper to create a mock response object
@@ -55,7 +40,7 @@ function createMockRes() {
 
 // Helper to create a mock request object
 function createMockReq(overrides = {}) {
-  return {
+  const req = {
     body: {},
     params: {},
     query: {},
@@ -63,11 +48,19 @@ function createMockReq(overrides = {}) {
     user: { id: 1, role: 'DM' },
     ...overrides,
   };
+  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
+  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
+  return req;
 }
 
 describe('salesController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // The real predicate: the mocked service module would otherwise return undefined
+    SalesService.filterValidSaleItems.mockImplementation((items) => ({
+      validItems: items.filter(i => i.unidentified !== true && i.value !== null && i.value !== undefined),
+      invalidItems: items.filter(i => i.unidentified === true || i.value === null || i.value === undefined),
+    }));
   });
 
   // ---------------------------------------------------------------
@@ -222,31 +215,34 @@ describe('salesController', () => {
       );
     });
 
-    it('should sell all items when keepIds is empty', async () => {
-      const req = createMockReq({
-        body: { keepIds: [] },
-      });
+    it('rejects an empty keepIds array (keeping nothing is the confirm-sale route, not this one)', async () => {
+      const req = createMockReq({ body: { keepIds: [] } });
       const res = createMockRes();
-
-      const mockResult = { sold: { count: 10, total: 5000 } };
-      SalesService.sellAllExceptItems.mockResolvedValue(mockResult);
 
       await salesController.sellAllExcept(req, res);
 
-      expect(SalesService.sellAllExceptItems).toHaveBeenCalledWith([]);
-      expect(res.success).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalled();
+      expect(SalesService.sellAllExceptItems).not.toHaveBeenCalled();
     });
 
-    it('should default keepIds to empty array when not provided', async () => {
+    it('rejects a body with no keepIds at all instead of selling everything', async () => {
       const req = createMockReq({ body: {} });
       const res = createMockRes();
 
-      const mockResult = { sold: { count: 10, total: 5000 } };
-      SalesService.sellAllExceptItems.mockResolvedValue(mockResult);
+      await salesController.sellAllExcept(req, res);
+
+      expect(res.validationError).toHaveBeenCalled();
+      expect(SalesService.sellAllExceptItems).not.toHaveBeenCalled();
+    });
+
+    it('rejects the old itemsToKeep field name (it must never be silently ignored)', async () => {
+      const req = createMockReq({ body: { itemsToKeep: [1, 2] } });
+      const res = createMockRes();
 
       await salesController.sellAllExcept(req, res);
 
-      expect(SalesService.sellAllExceptItems).toHaveBeenCalledWith([]);
+      expect(res.validationError).toHaveBeenCalled();
+      expect(SalesService.sellAllExceptItems).not.toHaveBeenCalled();
     });
 
     it('should return forbidden error for non-DM users', async () => {
@@ -326,202 +322,43 @@ describe('salesController', () => {
   });
 
   // ---------------------------------------------------------------
-  // cancelPendingSale
+  // DM gate: the per-campaign role decides, not the stale JWT role
   // ---------------------------------------------------------------
-  describe('cancelPendingSale', () => {
-    it('should cancel pending sale status for specified items', async () => {
-      const req = createMockReq({
-        body: { itemIds: [1, 2] },
-      });
-      const res = createMockRes();
+  describe('DM gate uses campaignRole and superadmin, not the JWT role', () => {
+    const gated = [
+      ['getPendingSaleItems', {}],
+      ['confirmSale', {}],
+      ['sellSelected', { body: { itemIds: [1] } }],
+      ['sellAllExcept', { body: { keepIds: [1] } }],
+      ['sellUpTo', { body: { maxAmount: 100 } }],
+    ];
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [
-          { id: 1, name: 'Longsword' },
-          { id: 2, name: 'Shield' },
-        ],
-      });
-
-      await salesController.cancelPendingSale(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        "UPDATE loot SET status = 'Unprocessed' WHERE id = ANY($1) AND status = 'Pending Sale' RETURNING id, name",
-        [[1, 2]]
-      );
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.cancelledItems).toHaveLength(2);
-      expect(data.count).toBe(2);
+    beforeEach(() => {
+      SalesService.getPendingSaleItems.mockResolvedValue([]);
+      SalesService.sellAllPendingItems.mockResolvedValue({ sold: { count: 0, total: 0 } });
+      SalesService.sellSelectedItems.mockResolvedValue({ sold: { count: 0, total: 0 } });
+      SalesService.sellAllExceptItems.mockResolvedValue({ sold: { count: 0, total: 0 } });
+      SalesService.sellUpToAmount.mockResolvedValue({ sold: { count: 0, total: 0 } });
     });
 
-    it('should return not found error when no matching items exist', async () => {
-      const req = createMockReq({
-        body: { itemIds: [999] },
-      });
+    it.each(gated)('%s refuses a user whose JWT role is DM but who is a Player in this campaign', async (name, extra) => {
+      const req = createMockReq({ user: { id: 3, role: 'DM' }, campaignRole: 'Player', ...extra });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await salesController.cancelPendingSale(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('No items found with pending sale status');
-    });
-
-    it('should return validation error when itemIds is empty', async () => {
-      const req = createMockReq({
-        body: { itemIds: [] },
-      });
-      const res = createMockRes();
-
-      await salesController.cancelPendingSale(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
-    });
-
-    it('should return forbidden error for non-DM users', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'Player' },
-        body: { itemIds: [1] },
-      });
-      const res = createMockRes();
-
-      await salesController.cancelPendingSale(req, res);
+      await salesController[name](req, res);
 
       expect(res.forbidden).toHaveBeenCalledWith('Only DMs can perform this operation');
+      expect(res.success).not.toHaveBeenCalled();
     });
-  });
 
-  // ---------------------------------------------------------------
-  // getSaleHistory
-  // ---------------------------------------------------------------
-  describe('getSaleHistory', () => {
-    it('should return sale history with pagination', async () => {
-      const req = createMockReq({
-        query: { limit: '20', page: '1' },
-      });
+    it.each(gated)('%s allows a superadmin whose JWT role is Player', async (name, extra) => {
+      const req = createMockReq({ user: { id: 4, role: 'Player' }, campaignRole: null, isSuperadmin: true, ...extra });
       const res = createMockRes();
 
-      const mockHistory = {
-        sales: [
-          { id: 1, name: 'Sold Longsword', soldfor: 7.5, soldon: '2024-01-15' },
-        ],
-        total: 1,
-        limit: 20,
-        offset: 0,
-      };
-      SalesService.getSaleHistory.mockResolvedValue(mockHistory);
+      await salesController[name](req, res);
 
-      await salesController.getSaleHistory(req, res);
-
-      expect(SalesService.getSaleHistory).toHaveBeenCalled();
+      expect(res.forbidden).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.sales).toHaveLength(1);
-      expect(data.pagination.total).toBe(1);
-      expect(data.pagination.hasMore).toBe(false);
-    });
-
-    it('should pass date filters to the service', async () => {
-      const req = createMockReq({
-        query: { limit: '50', startDate: '2024-01-01', endDate: '2024-12-31' },
-      });
-      const res = createMockRes();
-
-      const mockHistory = { sales: [], total: 0, limit: 50, offset: 0 };
-      SalesService.getSaleHistory.mockResolvedValue(mockHistory);
-
-      await salesController.getSaleHistory(req, res);
-
-      const calledOptions = SalesService.getSaleHistory.mock.calls[0][0];
-      expect(calledOptions.startDate).toBeInstanceOf(Date);
-      expect(calledOptions.endDate).toBeInstanceOf(Date);
-    });
-
-    it('should return forbidden error for non-DM users', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'Player' },
-        query: {},
-      });
-      const res = createMockRes();
-
-      await salesController.getSaleHistory(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can perform this operation');
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // getSaleStatistics
-  // ---------------------------------------------------------------
-  describe('getSaleStatistics', () => {
-    it('should return sale statistics for the specified number of days', async () => {
-      const req = createMockReq({
-        query: { days: '30' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        // summary stats query
-        .mockResolvedValueOnce({
-          rows: [{
-            total_sales: '15',
-            total_revenue: '4500.00',
-            average_sale_value: '300.00',
-            min_sale_value: '5.00',
-            max_sale_value: '1200.00',
-          }],
-        })
-        // daily breakdown query
-        .mockResolvedValueOnce({
-          rows: [
-            { sale_date: '2024-01-15', daily_sales: '3', daily_revenue: '900.00' },
-            { sale_date: '2024-01-14', daily_sales: '2', daily_revenue: '600.00' },
-          ],
-        });
-
-      await salesController.getSaleStatistics(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.period.days).toBe(30);
-      expect(data.summary.totalSales).toBe(15);
-      expect(data.summary.totalRevenue).toBe(4500);
-      expect(data.summary.averageSaleValue).toBe(300);
-      expect(data.summary.minSaleValue).toBe(5);
-      expect(data.summary.maxSaleValue).toBe(1200);
-      expect(data.dailyBreakdown).toHaveLength(2);
-      expect(data.dailyBreakdown[0].sales).toBe(3);
-      expect(data.dailyBreakdown[0].revenue).toBe(900);
-    });
-
-    it('should use default of 30 days when not specified', async () => {
-      const req = createMockReq({ query: {} });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [{ total_sales: '0', total_revenue: '0', average_sale_value: '0', min_sale_value: '0', max_sale_value: '0' }],
-        })
-        .mockResolvedValueOnce({ rows: [] });
-
-      await salesController.getSaleStatistics(req, res);
-
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.period.days).toBe(30);
-    });
-
-    it('should return forbidden error for non-DM users', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'Player' },
-        query: { days: '30' },
-      });
-      const res = createMockRes();
-
-      await salesController.getSaleStatistics(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can perform this operation');
     });
   });
 
@@ -529,7 +366,7 @@ describe('salesController', () => {
   // calculateSaleValues
   // ---------------------------------------------------------------
   describe('calculateSaleValues', () => {
-    it('should calculate sale values for provided items', async () => {
+    it('should calculate sale values and totals for provided items', async () => {
       const items = [
         { id: 1, name: 'Longsword', type: 'weapon', value: 30, quantity: 1 },
         { id: 2, name: 'Silk (bolt)', type: 'trade good', value: 60, quantity: 2 },
@@ -537,79 +374,67 @@ describe('salesController', () => {
       const req = createMockReq({ body: { items } });
       const res = createMockRes();
 
-      // Longsword: weapon sells at half = 15
-      // Silk: trade good sells at full = 60
-      calculateItemSaleValue
-        .mockReturnValueOnce(15)   // Longsword
-        .mockReturnValueOnce(60);  // Silk
-
-      // Total = 15*1 + 60*2 = 135
-      calculateTotalSaleValue
-        .mockReturnValueOnce(135)  // overall total
-        .mockReturnValueOnce(15)   // valid total
-        .mockReturnValueOnce(0);   // invalid total
-
       await salesController.calculateSaleValues(req, res);
 
-      expect(calculateItemSaleValue).toHaveBeenCalledTimes(2);
-      expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.items).toHaveLength(2);
+      // Longsword: weapon sells at half = 15; Silk: trade good sells at full = 60 x 2
       expect(data.items[0].saleValue).toBe(15);
       expect(data.items[0].canSell).toBe(true);
       expect(data.items[1].saleValue).toBe(60);
-      expect(data.items[1].totalSaleValue).toBe(120); // 60 * 2
+      expect(data.items[1].totalSaleValue).toBe(120);
       expect(data.totalSaleValue).toBe(135);
       expect(data.validCount).toBe(2);
       expect(data.invalidCount).toBe(0);
+      expect(data.summary).toEqual({ validTotal: 135, invalidTotal: 0 });
     });
 
-    it('should mark unidentified items as cannot sell', async () => {
+    it('should mark unidentified items as cannot sell and report their total separately', async () => {
       const items = [
-        { id: 1, name: 'Mystery Item', type: 'weapon', value: 100, quantity: 1, unidentified: true },
+        { id: 1, name: 'Sword', type: 'weapon', value: 40, quantity: 1 },
+        { id: 2, name: 'Mystery Item', type: 'weapon', value: 100, quantity: 1, unidentified: true },
       ];
       const req = createMockReq({ body: { items } });
       const res = createMockRes();
 
-      calculateItemSaleValue.mockReturnValue(50);
-      calculateTotalSaleValue.mockReturnValue(50).mockReturnValue(0).mockReturnValue(50);
-
       await salesController.calculateSaleValues(req, res);
 
-      expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
-      expect(data.items[0].canSell).toBe(false);
+      expect(data.items[0].canSell).toBe(true);
+      expect(data.items[1].canSell).toBe(false);
+      expect(data.validCount).toBe(1);
       expect(data.invalidCount).toBe(1);
+      expect(data.totalSaleValue).toBe(70);
+      expect(data.summary).toEqual({ validTotal: 20, invalidTotal: 50 });
     });
 
-    it('should mark items with null value as cannot sell', async () => {
+    it('should mark items with null or missing value as cannot sell', async () => {
       const items = [
         { id: 1, name: 'Priceless Artifact', type: 'weapon', value: null, quantity: 1 },
+        { id: 2, name: 'No value field', type: 'weapon', quantity: 1 },
       ];
       const req = createMockReq({ body: { items } });
       const res = createMockRes();
 
-      calculateItemSaleValue.mockReturnValue(0);
-      calculateTotalSaleValue.mockReturnValue(0).mockReturnValue(0).mockReturnValue(0);
-
       await salesController.calculateSaleValues(req, res);
 
-      expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
-      expect(data.items[0].canSell).toBe(false);
+      expect(data.items.map(i => i.canSell)).toEqual([false, false]);
+      expect(data.invalidCount).toBe(2);
+      expect(data.totalSaleValue).toBe(0);
     });
 
-    it('should return empty result for an empty items array', async () => {
+    it('should return zeros for an empty items array', async () => {
       const req = createMockReq({ body: { items: [] } });
       const res = createMockRes();
 
       await salesController.calculateSaleValues(req, res);
 
-      expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.items).toEqual([]);
       expect(data.totalSaleValue).toBe(0);
       expect(data.validCount).toBe(0);
+      expect(data.invalidCount).toBe(0);
     });
 
     it('should return validation error when items is not an array', async () => {
@@ -631,20 +456,15 @@ describe('salesController', () => {
     });
 
     it('should handle items with missing quantity by defaulting to 1', async () => {
-      const items = [
-        { id: 1, name: 'Dagger', type: 'weapon', value: 4 },
-      ];
+      const items = [{ id: 1, name: 'Dagger', type: 'weapon', value: 4 }];
       const req = createMockReq({ body: { items } });
       const res = createMockRes();
-
-      calculateItemSaleValue.mockReturnValue(2);
-      calculateTotalSaleValue.mockReturnValue(2).mockReturnValue(2).mockReturnValue(0);
 
       await salesController.calculateSaleValues(req, res);
 
       const data = res.success.mock.calls[0][0];
       expect(data.items[0].quantity).toBe(1);
-      expect(data.items[0].totalSaleValue).toBe(2); // 2 * 1
+      expect(data.items[0].totalSaleValue).toBe(2);
     });
   });
 });

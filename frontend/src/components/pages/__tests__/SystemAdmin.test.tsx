@@ -61,17 +61,22 @@ const mockUsers = [
     id: 1,
     username: 'root',
     email: 'root@example.com',
-    role: 'DM',
     is_superadmin: true,
     joined: '2025-01-01T00:00:00Z',
+    last_active_at: '2026-10-07T12:00:00Z',
+    campaigns: [
+      { id: 1, name: 'Rise of the Runelords', role: 'DM', is_active: true },
+      { id: 3, name: 'Old Pirates', role: 'Player', is_active: false },
+    ],
   },
   {
     id: 2,
     username: 'alice',
     email: 'alice@example.com',
-    role: 'Player',
     is_superadmin: false,
     joined: '2026-01-15T00:00:00Z',
+    last_active_at: null,
+    campaigns: [],
   },
 ];
 
@@ -150,7 +155,7 @@ describe('SystemAdmin', () => {
   // 2. Users section
   // -------------------------------------------------------------------------
   describe('Users section', () => {
-    it('lists all users with email, role, superadmin flag, and created date', async () => {
+    it('lists all users with email, campaign memberships, superadmin flag, and dates', async () => {
       renderSystemAdmin();
 
       await waitFor(() => {
@@ -164,6 +169,18 @@ describe('SystemAdmin', () => {
       expect(within(rootRow).getByText('Superadmin')).toBeInTheDocument();
       const aliceRow = getRow('alice');
       expect(within(aliceRow).queryByText('Superadmin')).not.toBeInTheDocument();
+
+      // Per-campaign memberships replace the deprecated global role column
+      expect(screen.getByRole('columnheader', { name: 'Campaigns' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Role' })).not.toBeInTheDocument();
+      expect(within(rootRow).getByText('Rise of the Runelords: DM')).toBeInTheDocument();
+      expect(within(rootRow).getByText('Old Pirates: Player (inactive)')).toBeInTheDocument();
+      expect(within(aliceRow).getByText('No campaigns')).toBeInTheDocument();
+
+      // Last activity: a date for root, a dash for alice who has not been seen yet
+      expect(screen.getByRole('columnheader', { name: 'Last active' })).toBeInTheDocument();
+      expect(within(rootRow).getByText(new Date('2026-10-07T12:00:00Z').toLocaleDateString())).toBeInTheDocument();
+      expect(within(aliceRow).getAllByText('—').length).toBeGreaterThanOrEqual(1);
     });
 
     it('generates a manual password reset link and shows it in a copyable dialog', async () => {
@@ -202,6 +219,41 @@ describe('SystemAdmin', () => {
       await waitFor(() => {
         expect(writeTextMock).toHaveBeenCalledWith(resetUrl);
       });
+    });
+
+    it('shows the expiry the server returned instead of a fixed lifetime (F-1453)', async () => {
+      const expiresAt = '2031-03-04T05:06:00.000Z';
+      (api.post as any).mockResolvedValueOnce({
+        success: true,
+        data: { resetUrl: 'https://example.com/reset/abc', expiresAt },
+      });
+
+      renderSystemAdmin();
+      await waitFor(() => {
+        expect(screen.getByText('alice')).toBeInTheDocument();
+      });
+      fireEvent.click(
+        within(getRow('alice')).getByRole('button', { name: /generate password reset link/i })
+      );
+
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('https://example.com/reset/abc');
+      expect(within(dialog).queryByText(/expire in 1 hour/i)).not.toBeInTheDocument();
+      expect(within(dialog).getByText(/this link expires on/i)).toHaveTextContent(
+        new Date(expiresAt).toLocaleString()
+      );
+    });
+
+    it('describes account deletion as a deactivation, not a permanent removal (F-1454)', async () => {
+      renderSystemAdmin();
+      await waitFor(() => {
+        expect(screen.getByText('alice')).toBeInTheDocument();
+      });
+      fireEvent.click(within(getRow('alice')).getByRole('button', { name: /delete account/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/deactivates the account "alice"/i)).toBeInTheDocument();
+      expect(within(dialog).queryByText(/permanently/i)).not.toBeInTheDocument();
     });
 
     it('surfaces a snackbar error when reset-link generation fails', async () => {
@@ -352,11 +404,11 @@ describe('SystemAdmin', () => {
       ).toHaveTextContent(/Invite only/i);
     });
 
-    it('derives the mode from legacy settings when registration_mode is missing', async () => {
+    it('shows the server default (invite only) when registration_mode is missing and ignores the legacy settings', async () => {
       setupDefaultGetMock({
         settings: [
-          { name: 'registrations_open', value: '1' },
-          { name: 'invite_required', value: '1' },
+          { name: 'registrations_open', value: '0' },
+          { name: 'invite_required', value: '0' },
         ],
       });
 
@@ -373,7 +425,48 @@ describe('SystemAdmin', () => {
   // -------------------------------------------------------------------------
   // 4. Campaigns section
   // -------------------------------------------------------------------------
+  describe('Instance settings', () => {
+    it('shows the stored frontend URL and saves a changed one', async () => {
+      setupDefaultGetMock({ settings: [...defaultSettings, { name: 'frontend_url', value: 'https://old.example.com' }] });
+      renderSystemAdmin();
+      const field = (await screen.findByLabelText(/Frontend URL/)) as HTMLInputElement;
+      await waitFor(() => expect(field.value).toBe('https://old.example.com'));
+      expect(screen.getByRole('button', { name: 'Save URL' })).toBeDisabled();
+
+      fireEvent.change(field, { target: { value: ' https://new.example.com ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save URL' }));
+      await waitFor(() => expect(api.put).toHaveBeenCalledWith('/user/update-setting', { name: 'frontend_url', value: 'https://new.example.com' }));
+    });
+
+    it('reports whether the secrets are stored and saves a new one without echoing it', async () => {
+      setupDefaultGetMock({ settings: [
+        ...defaultSettings,
+        { name: 'discord_bot_token', value: null, secret: true, is_set: true },
+        { name: 'openai_key', value: null, secret: true, is_set: false },
+      ] });
+      renderSystemAdmin();
+      expect(await screen.findByText(/A token is stored/)).toBeInTheDocument();
+      expect(screen.getByText(/No key stored/)).toBeInTheDocument();
+
+      const keyField = screen.getByLabelText(/OpenAI API key/) as HTMLInputElement;
+      expect(keyField.type).toBe('password');
+      expect(screen.getByRole('button', { name: 'Save key' })).toBeDisabled();
+      fireEvent.change(keyField, { target: { value: 'sk-test' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save key' }));
+
+      await waitFor(() => expect(api.put).toHaveBeenCalledWith('/user/update-setting', { name: 'openai_key', value: 'sk-test' }));
+      await waitFor(() => expect(keyField.value).toBe(''));
+      expect(await screen.findByText(/A key is stored/)).toBeInTheDocument();
+    });
+  });
+
   describe('Campaigns section', () => {
+    it('offers campaign administration actions', async () => {
+      renderSystemAdmin();
+      expect(await screen.findByRole('button', { name: 'New campaign' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Members of Rise of the Runelords' })).toBeInTheDocument();
+    });
+
     it('lists every campaign with name, slug, world, and active state', async () => {
       renderSystemAdmin();
 
@@ -387,6 +480,28 @@ describe('SystemAdmin', () => {
       expect(screen.getAllByText('Golarion').length).toBe(2);
       expect(within(getRow('Rise of the Runelords')).getByText('Active')).toBeInTheDocument();
       expect(within(getRow('Skulls & Shackles')).getByText('Inactive')).toBeInTheDocument();
+    });
+  });
+
+  describe("Act as DM switch", () => {
+    it("reflects the override and turns it on from the System Admin tab", async () => {
+      const setDmOverride = vi.fn();
+      campaignContextValue = makeContext({ dmOverride: false, setDmOverride });
+
+      renderSystemAdmin();
+
+      const toggle = await screen.findByLabelText(/act as dm in campaigns where i am a player/i);
+      expect(toggle).not.toBeChecked();
+      fireEvent.click(toggle);
+      expect(setDmOverride).toHaveBeenCalledWith(true);
+    });
+
+    it("shows the switch on while the override is active", async () => {
+      campaignContextValue = makeContext({ dmOverride: true, setDmOverride: vi.fn() });
+
+      renderSystemAdmin();
+
+      expect(await screen.findByLabelText(/act as dm in campaigns where i am a player/i)).toBeChecked();
     });
   });
 });

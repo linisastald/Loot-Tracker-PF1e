@@ -6,18 +6,6 @@ import React from 'react';
 // Mocks
 // ---------------------------------------------------------------------------
 
-// The user instruction asks for mocking ../../../../utils/api. Mock it to be safe
-// even though the component goes through lootService for most of its calls.
-vi.mock('../../../../utils/api', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-  },
-}));
-
 // Mock lootService - this is what the component actually uses for all data fetches
 // and what the utility helpers (updateItemAsDM, identifyItem) call internally.
 vi.mock('../../../../services/lootService', () => ({
@@ -78,7 +66,6 @@ vi.mock('../../../common/dialogs/ItemManagementDialog', () => ({
     ) : null,
 }));
 
-import api from '../../../../utils/api';
 import lootService from '../../../../services/lootService';
 import UnidentifiedItemsManagement from '../UnidentifiedItemsManagement';
 
@@ -125,7 +112,7 @@ const mockItemsList = [
     id: 100,
     name: 'Longsword',
     type: 'weapon',
-    caster_level: 5,
+    casterlevel: 5,
   },
 ];
 
@@ -583,6 +570,49 @@ describe('UnidentifiedItemsManagement', () => {
       expect(lootService.getMods).not.toHaveBeenCalled();
     });
 
+    it("shows the server's message when the list is refused", async () => {
+      (lootService.getUnidentifiedItems as any).mockRejectedValue({
+        response: { status: 403, data: { message: 'DM access required' } },
+      });
+
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText('DM access required')).toBeInTheDocument();
+      });
+    });
+
+    it('requests the catalog items once and reports a failure without a duplicate request', async () => {
+      (lootService.getItemsByIds as any).mockRejectedValue(new Error('boom'));
+
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to load the linked items')).toBeInTheDocument();
+      });
+      expect(lootService.getItemsByIds).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the server's message when identifying is refused", async () => {
+      (lootService.updateLootItem as any).mockRejectedValue({
+        response: { status: 403, data: { message: 'Use Identify to identify items' } },
+      });
+
+      renderComponent();
+      await waitFor(() => {
+        expect(screen.getByText('Glowing Sword')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(screen.getAllByRole('button', { name: /identify/i })[0]).not.toBeDisabled();
+      });
+
+      fireEvent.click(screen.getAllByRole('button', { name: /identify/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText('Use Identify to identify items')).toBeInTheDocument();
+      });
+    });
+
     it('shows an error alert when the response payload is malformed', async () => {
       // No `items` array under data -> component sets the "Invalid data structure" error
       (lootService.getUnidentifiedItems as any).mockResolvedValue({
@@ -596,26 +626,6 @@ describe('UnidentifiedItemsManagement', () => {
           screen.getByText('Invalid data structure received from server'),
         ).toBeInTheDocument();
       });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 9. Sanity: the directly-mocked api utility is wired but unused by this view.
-  // -------------------------------------------------------------------------
-  describe('api utility wiring', () => {
-    it('is available as a mock (component uses lootService instead)', async () => {
-      renderComponent();
-
-      await waitFor(() => {
-        expect(lootService.getUnidentifiedItems).toHaveBeenCalled();
-      });
-
-      // The component performs all of its data work via lootService, so
-      // direct api.* methods should remain untouched.
-      expect(api.get).not.toHaveBeenCalled();
-      expect(api.post).not.toHaveBeenCalled();
-      expect(api.put).not.toHaveBeenCalled();
-      expect(api.delete).not.toHaveBeenCalled();
     });
   });
 });

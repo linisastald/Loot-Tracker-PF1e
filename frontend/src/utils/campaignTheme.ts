@@ -23,6 +23,8 @@ export interface CampaignThemeOverride {
   background_paper?: string;
 }
 
+const COLOR_KEYS = ['primary', 'secondary', 'background_default', 'background_paper'] as const;
+
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const isValidHexColor = (value: unknown): value is string =>
@@ -43,17 +45,11 @@ export const parseCampaignThemeOverride = (raw: unknown): CampaignThemeOverride 
   if (candidate.mode === 'dark' || candidate.mode === 'light') {
     override.mode = candidate.mode;
   }
-  if (isValidHexColor(candidate.primary)) {
-    override.primary = candidate.primary;
-  }
-  if (isValidHexColor(candidate.secondary)) {
-    override.secondary = candidate.secondary;
-  }
-  if (isValidHexColor(candidate.background_default)) {
-    override.background_default = candidate.background_default;
-  }
-  if (isValidHexColor(candidate.background_paper)) {
-    override.background_paper = candidate.background_paper;
+  for (const key of COLOR_KEYS) {
+    const value = candidate[key];
+    if (isValidHexColor(value)) {
+      override[key] = value;
+    }
   }
 
   return Object.keys(override).length > 0 ? override : null;

@@ -6,6 +6,42 @@ const { hasDmRights } = require('../utils/roleUtils');
  * Service for handling validation operations
  */
 class ValidationService {
+  /** Email shape accepted by registration and change-email. */
+  static EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+  /** Every status a loot row can have; used by validateLootStatus and the request schemas. */
+  static LOOT_STATUSES = [
+    'Unprocessed', 'Kept Party', 'Kept Character', 'Pending Sale',
+    'Sold', 'Given Away', 'Trashed'
+  ];
+
+  /**
+   * The canonical item types (owner decision 2026-10-06): exactly these six.
+   * Anything else (consumable, shield, potion, ...) is a SUBTYPE, e.g. a
+   * consumable is a subtype of magic and a shield a subtype of armor.
+   * Stored lowercase, with a space in 'trade good'. The frontend list is
+   * ITEM_TYPES in frontend/src/utils/itemOptions.ts and must match.
+   */
+  static ITEM_TYPES = ['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'];
+
+  /**
+   * Validate an item type against the canonical list (any capitalisation is
+   * accepted; the lowercase stored form is returned).
+   * @param {*} value - The value to validate
+   * @param {string} fieldName - The field name for error messages
+   * @returns {string} - The canonical lowercase type
+   * @throws {Error} - If the value is not one of the six canonical types
+   */
+  static validateItemType(value, fieldName = 'type') {
+    const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (!this.ITEM_TYPES.includes(normalized)) {
+      throw controllerFactory.createValidationError(
+        `Invalid ${fieldName}. Must be one of: ${this.ITEM_TYPES.join(', ')}`
+      );
+    }
+    return normalized;
+  }
+
   /**
    * Validate DM permission (per-campaign role; superadmins always pass)
    * @param {Object} req - Express request object (after verifyToken)
@@ -103,42 +139,29 @@ class ValidationService {
   }
 
   /**
-   * Validate quantity field specifically
-   * @param {*} quantity - The quantity to validate
-   * @returns {number} - The validated quantity
-   * @throws {Error} - If quantity is invalid
+   * Validate a 1-based id or count (shared by the quantity / item / character validators)
+   * @param {*} value - The value to validate
+   * @param {string} label - The field name for error messages
+   * @returns {number} - The validated number (at least 1)
+   * @throws {Error} - If the value is not a number of at least 1
    */
+  static validatePositiveNumber(value, label) {
+    return this.validateRequiredNumber(value, label, { min: 1, allowZero: false });
+  }
+
+  /** Validate quantity field specifically */
   static validateQuantity(quantity) {
-    return this.validateRequiredNumber(quantity, 'quantity', { 
-      min: 1, 
-      allowZero: false 
-    });
+    return this.validatePositiveNumber(quantity, 'quantity');
   }
 
-  /**
-   * Validate item ID
-   * @param {*} id - The ID to validate
-   * @returns {number} - The validated ID
-   * @throws {Error} - If ID is invalid
-   */
+  /** Validate item ID */
   static validateItemId(id) {
-    return this.validateRequiredNumber(id, 'item ID', { 
-      min: 1, 
-      allowZero: false 
-    });
+    return this.validatePositiveNumber(id, 'item ID');
   }
 
-  /**
-   * Validate character ID
-   * @param {*} id - The ID to validate
-   * @returns {number} - The validated ID
-   * @throws {Error} - If ID is invalid
-   */
+  /** Validate character ID */
   static validateCharacterId(id) {
-    return this.validateRequiredNumber(id, 'character ID', { 
-      min: 1, 
-      allowZero: false 
-    });
+    return this.validatePositiveNumber(id, 'character ID');
   }
 
   /**
@@ -175,23 +198,6 @@ class ValidationService {
       min: 1, 
       max: 20 
     });
-  }
-
-  /**
-   * Validate email format
-   * @param {*} email - The email to validate
-   * @returns {string} - The validated email
-   * @throws {Error} - If email is invalid
-   */
-  static validateEmail(email) {
-    const validatedEmail = this.validateRequiredString(email, 'email');
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
-    if (!emailRegex.test(validatedEmail)) {
-      throw controllerFactory.createValidationError('Invalid email format');
-    }
-
-    return validatedEmail.toLowerCase();
   }
 
   /**

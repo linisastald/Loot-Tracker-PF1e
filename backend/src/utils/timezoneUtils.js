@@ -8,23 +8,26 @@
 const campaignSettings = require('./campaignSettings');
 const logger = require('./logger');
 
-// Valid IANA timezone identifiers commonly used in North America
-const VALID_TIMEZONES = [
-    'America/New_York',      // Eastern Time
-    'America/Chicago',       // Central Time
-    'America/Denver',        // Mountain Time
-    'America/Phoenix',       // Arizona (no DST)
-    'America/Los_Angeles',   // Pacific Time
-    'America/Anchorage',     // Alaska Time
-    'America/Honolulu',      // Hawaii Time
-    'America/Toronto',       // Eastern Time (Canada)
-    'America/Vancouver',     // Pacific Time (Canada)
-    'America/Edmonton',      // Mountain Time (Canada)
-    'America/Winnipeg',      // Central Time (Canada)
-    'America/Halifax',       // Atlantic Time (Canada)
-    'America/St_Johns',      // Newfoundland Time (Canada)
-    'UTC'                    // Coordinated Universal Time
+// Timezones offered in the UI: IANA identifiers commonly used in North America.
+// This is the single list; VALID_TIMEZONES below is derived from it.
+const TIMEZONE_OPTIONS = [
+    { value: 'America/New_York', label: 'Eastern Time (New York)' },
+    { value: 'America/Chicago', label: 'Central Time (Chicago)' },
+    { value: 'America/Denver', label: 'Mountain Time (Denver)' },
+    { value: 'America/Phoenix', label: 'Mountain Time - No DST (Phoenix)' },
+    { value: 'America/Los_Angeles', label: 'Pacific Time (Los Angeles)' },
+    { value: 'America/Anchorage', label: 'Alaska Time (Anchorage)' },
+    { value: 'America/Honolulu', label: 'Hawaii Time (Honolulu)' },
+    { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
+    { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
+    { value: 'America/Edmonton', label: 'Mountain Time (Edmonton)' },
+    { value: 'America/Winnipeg', label: 'Central Time (Winnipeg)' },
+    { value: 'America/Halifax', label: 'Atlantic Time (Halifax)' },
+    { value: 'America/St_Johns', label: 'Newfoundland Time (St. Johns)' },
+    { value: 'UTC', label: 'UTC (Coordinated Universal Time)' }
 ];
+
+const VALID_TIMEZONES = TIMEZONE_OPTIONS.map(option => option.value);
 
 // Per-campaign cache for the timezone setting: campaignId -> { timezone, fetchedAt }
 const timezoneCache = new Map();
@@ -76,10 +79,13 @@ async function getCampaignTimezone({ campaignId } = {}) {
             logger.warn(`No campaign_timezone setting found for campaign ${resolvedId}. Using default ${DEFAULT_TIMEZONE}`);
         }
     } catch (error) {
+        // Transient failure: answer with the default but do not cache it, so
+        // the next call reads the real setting once the database is back.
         logger.error(`Error fetching campaign timezone for campaign ${resolvedId}:`, error);
+        return DEFAULT_TIMEZONE;
     }
 
-    // Fallback to default
+    // The stored setting is missing or invalid: cache the default
     timezoneCache.set(resolvedId, { timezone: DEFAULT_TIMEZONE, fetchedAt: now });
     return DEFAULT_TIMEZONE;
 }
@@ -103,7 +109,7 @@ function isValidTimezone(timezone) {
     // This will throw if the timezone is invalid
     try {
         new Intl.DateTimeFormat('en-US', { timeZone: timezone });
-        logger.info(`Timezone validated using Intl.DateTimeFormat: ${timezone}`);
+        logger.debug(`Timezone validated using Intl.DateTimeFormat: ${timezone}`);
         return true;
     } catch (error) {
         logger.warn(`Timezone validation failed for: ${timezone}`, error);
@@ -129,26 +135,63 @@ function clearTimezoneCache(campaignId) {
 }
 
 /**
+ * Offset of a timezone from UTC at a given instant, in milliseconds
+ * (positive = ahead of UTC).
+ * @param {number} utcMs - Epoch milliseconds
+ * @param {string} timezone - IANA timezone identifier
+ * @returns {number}
+ */
+function zoneOffsetMs(utcMs, timezone) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hourCycle: 'h23',
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric'
+    }).formatToParts(new Date(utcMs));
+    const get = (type) => Number(parts.find((p) => p.type === type).value);
+    const localAsUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+    return localAsUtc - Math.floor(utcMs / 1000) * 1000;
+}
+
+/**
+ * UTC instant of local midnight at the start of a calendar day in a timezone.
+ */
+function localMidnightUtcMs(year, month, day, timezone) {
+    const guess = Date.UTC(year, month - 1, day);
+    let instant = guess - zoneOffsetMs(guess, timezone);
+    // Re-check with the offset in force at the candidate instant (DST boundary days)
+    instant = guess - zoneOffsetMs(instant, timezone);
+    return instant;
+}
+
+/**
+ * The half-open UTC range [start, end) covering one calendar day (YYYY-MM-DD) in the
+ * given timezone, for filtering timestamp columns by "what day was it for the
+ * campaign" instead of by the database session timezone.
+ * @param {string} dateStr - Calendar date, YYYY-MM-DD
+ * @param {string} timezone - IANA timezone identifier
+ * @returns {{start: string, end: string}|null} ISO instants, or null for a malformed date
+ */
+function getUtcRangeForLocalDate(dateStr, timezone) {
+    const match = typeof dateStr === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    if (!match) return null;
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) {
+        return null;
+    }
+    const next = new Date(Date.UTC(year, month - 1, day + 1));
+    const start = localMidnightUtcMs(year, month, day, timezone);
+    const end = localMidnightUtcMs(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), timezone);
+    return { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+}
+
+/**
  * Get list of valid timezone options for UI
  * @returns {Array<Object>} Array of timezone objects with value and label
  */
 function getTimezoneOptions() {
-    return [
-        { value: 'America/New_York', label: 'Eastern Time (New York)' },
-        { value: 'America/Chicago', label: 'Central Time (Chicago)' },
-        { value: 'America/Denver', label: 'Mountain Time (Denver)' },
-        { value: 'America/Phoenix', label: 'Mountain Time - No DST (Phoenix)' },
-        { value: 'America/Los_Angeles', label: 'Pacific Time (Los Angeles)' },
-        { value: 'America/Anchorage', label: 'Alaska Time (Anchorage)' },
-        { value: 'America/Honolulu', label: 'Hawaii Time (Honolulu)' },
-        { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
-        { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
-        { value: 'America/Edmonton', label: 'Mountain Time (Edmonton)' },
-        { value: 'America/Winnipeg', label: 'Central Time (Winnipeg)' },
-        { value: 'America/Halifax', label: 'Atlantic Time (Halifax)' },
-        { value: 'America/St_Johns', label: 'Newfoundland Time (St. Johns)' },
-        { value: 'UTC', label: 'UTC (Coordinated Universal Time)' }
-    ];
+    return TIMEZONE_OPTIONS.map(option => ({ ...option }));
 }
 
 module.exports = {
@@ -156,5 +199,6 @@ module.exports = {
     isValidTimezone,
     clearTimezoneCache,
     getTimezoneOptions,
+    getUtcRangeForLocalDate,
     VALID_TIMEZONES
 };

@@ -29,10 +29,11 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import FileCopyIcon from '@mui/icons-material/FileCopy';
 import {useSnackbar} from 'notistack';
 import {ApiResponse} from '@/types';
+import {getErrorMessage} from '../../../utils/apiErrors';
 import {useCampaignTimezone} from '../../../hooks/useCampaignTimezone';
 import {formatInCampaignTimezone} from '../../../utils/timezoneUtils';
 
-export interface Invite {
+interface Invite {
     id: number;
     code: string;
     created_at: string;
@@ -52,14 +53,17 @@ interface GeneratedInviteData {
 const MIN_EXPIRY_HOURS = 1;
 const MAX_EXPIRY_HOURS = 720;
 
+/** The api interceptor returns the response body, so a POST resolves to the envelope. */
+const postEnvelope = <T,>(url: string, body?: unknown) =>
+    (body === undefined ? api.post(url) : api.post(url, body)) as unknown as Promise<ApiResponse<T>>;
+
 const InviteManagement: React.FC = () => {
     const {enqueueSnackbar} = useSnackbar();
     const {timezone} = useCampaignTimezone();
 
     const [invites, setInvites] = useState<Invite[]>([]);
     const [isLoadingInvites, setIsLoadingInvites] = useState(false);
-    const [isGeneratingQuick, setIsGeneratingQuick] = useState(false);
-    const [isGeneratingCustom, setIsGeneratingCustom] = useState(false);
+    const [generating, setGenerating] = useState<'quick' | 'custom' | null>(null);
     const [lastGeneratedInvite, setLastGeneratedInvite] = useState<GeneratedInviteData | null>(null);
 
     // Custom invite dialog state
@@ -71,11 +75,6 @@ const InviteManagement: React.FC = () => {
     const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
     const [inviteToDeactivate, setInviteToDeactivate] = useState<Invite | null>(null);
     const [isDeactivating, setIsDeactivating] = useState(false);
-
-    const getErrorMessage = (err: unknown, fallback: string): string => {
-        const axiosLike = err as { response?: { data?: { message?: string; error?: string } } };
-        return axiosLike?.response?.data?.message || axiosLike?.response?.data?.error || fallback;
-    };
 
     const fetchInvites = useCallback(async () => {
         try {
@@ -94,20 +93,31 @@ const InviteManagement: React.FC = () => {
         fetchInvites();
     }, [fetchInvites]);
 
-    const handleQuickInvite = async () => {
+    /** Create an invite, show it, refresh the list; returns true on success. */
+    const createInvite = async (
+        kind: 'quick' | 'custom',
+        endpoint: string,
+        body: unknown,
+        okFallback: string,
+        errorFallback: string
+    ): Promise<boolean> => {
         try {
-            setIsGeneratingQuick(true);
-            // The api response interceptor returns the body, so this is the envelope
-            const response = await api.post('/invites/quick') as unknown as ApiResponse<GeneratedInviteData>;
+            setGenerating(kind);
+            const response = await postEnvelope<GeneratedInviteData>(endpoint, body);
             setLastGeneratedInvite(response.data);
-            enqueueSnackbar(response.message || 'Quick invite created', {variant: 'success'});
+            enqueueSnackbar(response.message || okFallback, {variant: 'success'});
             fetchInvites();
+            return true;
         } catch (err) {
-            enqueueSnackbar(getErrorMessage(err, 'Error generating quick invite'), {variant: 'error'});
+            enqueueSnackbar(getErrorMessage(err, errorFallback), {variant: 'error'});
+            return false;
         } finally {
-            setIsGeneratingQuick(false);
+            setGenerating(null);
         }
     };
+
+    const handleQuickInvite = () =>
+        createInvite('quick', '/invites/quick', undefined, 'Quick invite created', 'Error generating quick invite');
 
     const customHoursValid = (): boolean => {
         if (neverExpires) return true;
@@ -118,19 +128,15 @@ const InviteManagement: React.FC = () => {
     const handleCustomInvite = async () => {
         if (!customHoursValid()) return;
 
-        try {
-            setIsGeneratingCustom(true);
-            const response = await api.post('/invites/custom', {
-                expiresInHours: neverExpires ? null : Number(expiresInHours)
-            }) as unknown as ApiResponse<GeneratedInviteData>;
-            setLastGeneratedInvite(response.data);
-            enqueueSnackbar(response.message || 'Custom invite created', {variant: 'success'});
+        const created = await createInvite(
+            'custom',
+            '/invites/custom',
+            {expiresInHours: neverExpires ? null : Number(expiresInHours)},
+            'Custom invite created',
+            'Error generating custom invite'
+        );
+        if (created) {
             setCustomDialogOpen(false);
-            fetchInvites();
-        } catch (err) {
-            enqueueSnackbar(getErrorMessage(err, 'Error generating custom invite'), {variant: 'error'});
-        } finally {
-            setIsGeneratingCustom(false);
         }
     };
 
@@ -139,9 +145,9 @@ const InviteManagement: React.FC = () => {
 
         try {
             setIsDeactivating(true);
-            const response = await api.post('/invites/deactivate', {
+            const response = await postEnvelope<null>('/invites/deactivate', {
                 inviteId: inviteToDeactivate.id
-            }) as unknown as ApiResponse<null>;
+            });
             enqueueSnackbar(response.message || 'Invite deactivated', {variant: 'success'});
             setDeactivateDialogOpen(false);
             setInviteToDeactivate(null);
@@ -191,9 +197,9 @@ const InviteManagement: React.FC = () => {
                     color="primary"
                     startIcon={<BoltIcon/>}
                     onClick={handleQuickInvite}
-                    disabled={isGeneratingQuick}
+                    disabled={generating !== null}
                 >
-                    {isGeneratingQuick ? <CircularProgress size={24}/> : 'Quick Invite'}
+                    {generating === 'quick' ? <CircularProgress size={24}/> : 'Quick Invite'}
                 </Button>
                 <Button
                     variant="outlined"
@@ -347,9 +353,9 @@ const InviteManagement: React.FC = () => {
                         onClick={handleCustomInvite}
                         color="primary"
                         variant="outlined"
-                        disabled={isGeneratingCustom || !customHoursValid()}
+                        disabled={generating !== null || !customHoursValid()}
                     >
-                        {isGeneratingCustom ? <CircularProgress size={24}/> : 'Generate Invite'}
+                        {generating === 'custom' ? <CircularProgress size={24}/> : 'Generate Invite'}
                     </Button>
                 </DialogActions>
             </Dialog>

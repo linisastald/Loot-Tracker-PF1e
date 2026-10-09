@@ -1,19 +1,28 @@
 import { LootManagementConfig } from '../../../types/game';
 
-// Base column configurations
+// Base column configuration: every flag is listed once; each page overrides
+// only what differs.
 const baseColumns = {
   select: true,
   quantity: true,
   name: true,
   type: true,
   size: true,
+  whoHasIt: false,
+  believedValue: false,
+  averageAppraisal: false,
   sessionDate: true,
   lastUpdate: true,
+  unidentified: false,
+  pendingSale: false,
 };
 
 const baseFilters = {
   type: true,
   size: true,
+  pendingSale: false,
+  unidentified: false,
+  whoHas: false,
 };
 
 // Configuration for Unprocessed Loot page
@@ -21,7 +30,6 @@ export const unprocessedLootConfig: LootManagementConfig = {
   status: null, // No status filter for unprocessed
   showColumns: {
     ...baseColumns,
-    whoHasIt: false,
     believedValue: true,
     averageAppraisal: true,
     unidentified: true,
@@ -31,7 +39,6 @@ export const unprocessedLootConfig: LootManagementConfig = {
     ...baseFilters,
     pendingSale: true,
     unidentified: true,
-    whoHas: false,
   },
   actions: [], // Actions will be injected by the component
   containerProps: {
@@ -42,20 +49,8 @@ export const unprocessedLootConfig: LootManagementConfig = {
 // Configuration for Kept Party Loot page
 export const keptPartyLootConfig: LootManagementConfig = {
   status: 'Kept Party',
-  showColumns: {
-    ...baseColumns,
-    whoHasIt: false,
-    believedValue: false,
-    averageAppraisal: false,
-    unidentified: false,
-    pendingSale: false,
-  },
-  showFilters: {
-    ...baseFilters,
-    pendingSale: false,
-    unidentified: false,
-    whoHas: false,
-  },
+  showColumns: baseColumns,
+  showFilters: baseFilters,
   actions: [], // Actions will be injected by the component
 };
 
@@ -67,62 +62,25 @@ export const keptCharacterLootConfig: LootManagementConfig = {
     whoHasIt: true,
     believedValue: true,
     averageAppraisal: true,
-    unidentified: false,
-    pendingSale: false,
   },
   showFilters: {
     ...baseFilters,
-    pendingSale: false,
-    unidentified: false,
-    whoHas: true,
+    whoHas: true, // This page uses character filters
   },
   actions: [], // Actions will be injected by the component
-  hasFilters: true, // This page uses character filters
-};
-
-// Configuration for Sold Loot page
-export const soldLootConfig: LootManagementConfig = {
-  status: 'Sold',
-  showColumns: {
-    ...baseColumns,
-    whoHasIt: false,
-    believedValue: true,
-    averageAppraisal: false,
-    unidentified: false,
-    pendingSale: false,
-  },
-  showFilters: {
-    ...baseFilters,
-    pendingSale: false,
-    unidentified: false,
-    whoHas: false,
-  },
-  actions: [], // Usually no actions for sold items
 };
 
 // Configuration for Trashed/Given Away Loot page
 export const trashedLootConfig: LootManagementConfig = {
   status: 'Trash',
   showColumns: {
+    ...baseColumns,
     select: false, // No selection for trashed items
-    quantity: true,
-    name: true,
-    type: true,
     size: false, // Don't show size for trashed items
-    whoHasIt: false,
-    believedValue: false,
-    averageAppraisal: false,
-    sessionDate: true,
-    lastUpdate: true,
-    unidentified: false,
-    pendingSale: false,
   },
   showFilters: {
-    pendingSale: false,
-    unidentified: false,
-    type: true,
+    ...baseFilters,
     size: false, // Don't filter by size for trashed items
-    whoHas: false,
   },
   actions: [], // Usually no actions for trashed items
 };

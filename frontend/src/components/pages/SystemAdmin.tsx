@@ -15,18 +15,19 @@ import {
   CardHeader,
   Chip,
   CircularProgress,
-  Container,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
   Paper,
   Select,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -39,23 +40,34 @@ import {
 import type { SelectChangeEvent } from '@mui/material';
 import {
   AdminPanelSettings as AdminIcon,
-  Groups as CampaignsIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCampaign } from '../../contexts/CampaignContext';
+import CampaignAdministration from './SystemAdmin/CampaignAdministration';
+import PasswordField from '../common/PasswordField';
 
-export interface SystemUser {
+interface UserCampaignMembership {
+  id: number;
+  name: string;
+  role: 'DM' | 'Player';
+  is_active: boolean;
+}
+
+interface SystemUser {
   id: number;
   username: string;
   email: string | null;
-  role: string;
   is_superadmin?: boolean;
+  /** Campaign memberships with the per-campaign role (inactive campaigns included) */
+  campaigns?: UserCampaignMembership[];
   /** The all-users endpoint exposes the signup date as `joined` */
+  /** Last login, registration or session refresh; null until the account is next seen */
+  last_active_at?: string | null;
   joined?: string | null;
-  created_at?: string | null;
 }
 
 const REGISTRATION_MODES = [
@@ -64,6 +76,9 @@ const REGISTRATION_MODES = [
   { value: 'closed', label: 'Closed', description: 'No new registrations' },
 ];
 
+// What the server treats a missing registration_mode as
+const DEFAULT_REGISTRATION_MODE = 'invite-only';
+
 const formatDate = (value: string | null | undefined): string => {
   if (!value) return '—';
   const date = new Date(value);
@@ -71,9 +86,16 @@ const formatDate = (value: string | null | undefined): string => {
   return date.toLocaleDateString();
 };
 
+interface GlobalSettingRow {
+  name: string;
+  value: string | null;
+  secret?: boolean;
+  is_set?: boolean;
+}
+
 const SystemAdmin: React.FC = () => {
   const { user } = useAuth();
-  const { campaigns, isSuperadmin, loading: campaignLoading } = useCampaign();
+  const { campaigns, isSuperadmin, loading: campaignLoading, refresh: refreshCampaigns, dmOverride, setDmOverride } = useCampaign();
   const { enqueueSnackbar } = useSnackbar();
 
   // --- Users section state ---------------------------------------------
@@ -85,6 +107,7 @@ const SystemAdmin: React.FC = () => {
   const [resetTarget, setResetTarget] = useState<SystemUser | null>(null);
   const [generatingReset, setGeneratingReset] = useState(false);
   const [generatedResetLink, setGeneratedResetLink] = useState('');
+  const [resetLinkExpiresAt, setResetLinkExpiresAt] = useState('');
 
   // Delete account (type-the-username confirmation)
   const [deleteTarget, setDeleteTarget] = useState<SystemUser | null>(null);
@@ -93,9 +116,18 @@ const SystemAdmin: React.FC = () => {
   const [deleteError, setDeleteError] = useState('');
 
   // --- Global settings section state ------------------------------------
-  const [registrationMode, setRegistrationMode] = useState('closed');
+  const [registrationMode, setRegistrationMode] = useState(DEFAULT_REGISTRATION_MODE);
   const [savingRegistrationMode, setSavingRegistrationMode] = useState(false);
   const [settingsError, setSettingsError] = useState('');
+  const [frontendUrl, setFrontendUrl] = useState('');
+  const [savedFrontendUrl, setSavedFrontendUrl] = useState('');
+  const [savingFrontendUrl, setSavingFrontendUrl] = useState(false);
+  // Secrets are write-only: the server reports only whether one is stored
+  const [botTokenSet, setBotTokenSet] = useState(false);
+  const [openAiKeySet, setOpenAiKeySet] = useState(false);
+  const [botTokenInput, setBotTokenInput] = useState('');
+  const [openAiKeyInput, setOpenAiKeyInput] = useState('');
+  const [savingSecret, setSavingSecret] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async (): Promise<void> => {
     try {
@@ -113,20 +145,20 @@ const SystemAdmin: React.FC = () => {
   const fetchSettings = useCallback(async (): Promise<void> => {
     try {
       const response: any = await api.get('/user/settings');
-      const settings: Array<{ name: string; value: string }> = Array.isArray(response?.data)
+      const settings: GlobalSettingRow[] = Array.isArray(response?.data)
         ? response.data
         : [];
       const modeSetting = settings.find((s) => s.name === 'registration_mode');
-      if (modeSetting && REGISTRATION_MODES.some((m) => m.value === modeSetting.value)) {
-        setRegistrationMode(modeSetting.value);
-      } else {
-        // Legacy fallback: derive from registrations_open + invite_required
-        const legacyOpen = settings.find((s) => s.name === 'registrations_open');
-        const legacyInvite = settings.find((s) => s.name === 'invite_required');
-        const isOpen = legacyOpen?.value === '1' || (legacyOpen?.value as unknown) === 1;
-        const isInvite = legacyInvite?.value === '1' || (legacyInvite?.value as unknown) === 1;
-        setRegistrationMode(!isOpen ? 'closed' : isInvite ? 'invite-only' : 'open');
-      }
+      setRegistrationMode(
+        modeSetting && REGISTRATION_MODES.some((m) => m.value === modeSetting.value)
+          ? modeSetting.value
+          : DEFAULT_REGISTRATION_MODE
+      );
+      const urlSetting = settings.find((s) => s.name === 'frontend_url');
+      setFrontendUrl(urlSetting?.value || '');
+      setSavedFrontendUrl(urlSetting?.value || '');
+      setBotTokenSet(!!settings.find((s) => s.name === 'discord_bot_token')?.is_set);
+      setOpenAiKeySet(!!settings.find((s) => s.name === 'openai_key')?.is_set);
       setSettingsError('');
     } catch (err: any) {
       setSettingsError(err.response?.data?.message || 'Error loading global settings.');
@@ -145,6 +177,7 @@ const SystemAdmin: React.FC = () => {
     setResetTarget(target);
     setGeneratingReset(true);
     setGeneratedResetLink('');
+    setResetLinkExpiresAt('');
     try {
       const response: any = await api.post('/user/generate-manual-reset-link', {
         username: target.username,
@@ -152,6 +185,7 @@ const SystemAdmin: React.FC = () => {
       const url = response?.data?.resetUrl;
       if (url) {
         setGeneratedResetLink(url);
+        setResetLinkExpiresAt(response?.data?.expiresAt || '');
       } else {
         setResetTarget(null);
         enqueueSnackbar('No reset link returned by the server', { variant: 'error' });
@@ -230,6 +264,43 @@ const SystemAdmin: React.FC = () => {
     }
   };
 
+  const handleSaveFrontendUrl = async (): Promise<void> => {
+    const value = frontendUrl.trim();
+    setSavingFrontendUrl(true);
+    try {
+      await api.put('/user/update-setting', { name: 'frontend_url', value });
+      setFrontendUrl(value);
+      setSavedFrontendUrl(value);
+      enqueueSnackbar(value ? 'Frontend URL saved' : 'Frontend URL cleared', { variant: 'success' });
+    } catch (err: unknown) {
+      enqueueSnackbar(getErrorMessage(err, 'Error saving frontend URL'), { variant: 'error' });
+    } finally {
+      setSavingFrontendUrl(false);
+    }
+  };
+
+  const handleSaveSecret = async (name: 'discord_bot_token' | 'openai_key'): Promise<void> => {
+    const value = (name === 'discord_bot_token' ? botTokenInput : openAiKeyInput).trim();
+    if (!value) return;
+    setSavingSecret(name);
+    try {
+      await api.put('/user/update-setting', { name, value });
+      if (name === 'discord_bot_token') {
+        setBotTokenSet(true);
+        setBotTokenInput('');
+        enqueueSnackbar('Discord bot token saved', { variant: 'success' });
+      } else {
+        setOpenAiKeySet(true);
+        setOpenAiKeyInput('');
+        enqueueSnackbar('OpenAI key saved', { variant: 'success' });
+      }
+    } catch (err: unknown) {
+      enqueueSnackbar(getErrorMessage(err, 'Error saving setting'), { variant: 'error' });
+    } finally {
+      setSavingSecret(null);
+    }
+  };
+
   // --- Gate --------------------------------------------------------------
   if (campaignLoading) {
     return (
@@ -247,16 +318,17 @@ const SystemAdmin: React.FC = () => {
 
   if (!isSuperadmin) {
     return (
-      <Container maxWidth="md">
+      <Box sx={{ maxWidth: 'md' }}>
         <Alert severity="error" sx={{ mt: 4 }}>
           Access denied — this page is only available to the system administrator.
         </Alert>
-      </Container>
+      </Box>
     );
   }
 
+  // Rendered as the System Admin tab of Account & Settings (campaign-agnostic)
   return (
-    <Container maxWidth={false} component="main">
+    <Box>
       <Typography variant="h6" gutterBottom>
         System Administration
       </Typography>
@@ -292,9 +364,10 @@ const SystemAdmin: React.FC = () => {
                       <TableRow>
                         <TableCell>Username</TableCell>
                         <TableCell>Email</TableCell>
-                        <TableCell>Role</TableCell>
+                        <TableCell>Campaigns</TableCell>
                         <TableCell>Superadmin</TableCell>
                         <TableCell>Created</TableCell>
+                        <TableCell>Last active</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
@@ -303,7 +376,25 @@ const SystemAdmin: React.FC = () => {
                         <TableRow key={account.id}>
                           <TableCell>{account.username}</TableCell>
                           <TableCell>{account.email || '—'}</TableCell>
-                          <TableCell>{account.role}</TableCell>
+                          <TableCell>
+                            {account.campaigns && account.campaigns.length > 0 ? (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {account.campaigns.map((membership) => (
+                                  <Chip
+                                    key={membership.id}
+                                    size="small"
+                                    variant={membership.is_active ? 'filled' : 'outlined'}
+                                    color={membership.role === 'DM' ? 'secondary' : 'default'}
+                                    label={`${membership.name}: ${membership.role}${membership.is_active ? '' : ' (inactive)'}`}
+                                  />
+                                ))}
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                                No campaigns
+                              </Typography>
+                            )}
+                          </TableCell>
                           <TableCell>
                             {account.is_superadmin ? (
                               <Chip label="Superadmin" color="primary" size="small" />
@@ -311,7 +402,8 @@ const SystemAdmin: React.FC = () => {
                               '—'
                             )}
                           </TableCell>
-                          <TableCell>{formatDate(account.created_at ?? account.joined)}</TableCell>
+                          <TableCell>{formatDate(account.joined)}</TableCell>
+                          <TableCell>{formatDate(account.last_active_at)}</TableCell>
                           <TableCell align="right">
                             <Box
                               sx={{
@@ -343,7 +435,7 @@ const SystemAdmin: React.FC = () => {
                       ))}
                       {users.length === 0 && !usersError && (
                         <TableRow>
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={7}>
                             <Typography variant="body2" sx={{
                               color: "text.secondary"
                             }}>
@@ -398,56 +490,111 @@ const SystemAdmin: React.FC = () => {
                   per-campaign in the DM User Management tab.
                 </Typography>
               </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 3, alignItems: 'flex-start' }}>
+                <TextField
+                  label="Frontend URL"
+                  fullWidth
+                  size="small"
+                  type="url"
+                  name="instance-frontend-url"
+                  autoComplete="off"
+                  value={frontendUrl}
+                  onChange={(e) => setFrontendUrl(e.target.value)}
+                  placeholder="https://loot.example.com"
+                  helperText="Base address used in password-reset emails and Discord links. Leave empty to use the server default."
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                  disabled={savingFrontendUrl || frontendUrl.trim() === savedFrontendUrl}
+                  onClick={handleSaveFrontendUrl}
+                >
+                  Save URL
+                </Button>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+                <PasswordField
+                  label="Discord bot token"
+                  fullWidth
+                  size="small"
+                  value={botTokenInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBotTokenInput(e.target.value)}
+                  name="instance-discord-bot-token"
+                  autoComplete="new-password"
+                  helperText={botTokenSet ? 'A token is stored. Enter a new one to replace it.' : 'No token stored. Session announcements need one.'}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                  disabled={savingSecret !== null || !botTokenInput.trim()}
+                  onClick={() => handleSaveSecret('discord_bot_token')}
+                >
+                  Save token
+                </Button>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 2, alignItems: 'flex-start' }}>
+                <PasswordField
+                  label="OpenAI API key"
+                  fullWidth
+                  size="small"
+                  value={openAiKeyInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOpenAiKeyInput(e.target.value)}
+                  name="instance-openai-key"
+                  autoComplete="new-password"
+                  helperText={openAiKeySet ? 'A key is stored. Enter a new one to replace it.' : 'No key stored. Item description parsing needs one.'}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 0.5, whiteSpace: 'nowrap' }}
+                  disabled={savingSecret !== null || !openAiKeyInput.trim()}
+                  onClick={() => handleSaveSecret('openai_key')}
+                >
+                  Save key
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* --------------------------- Act as DM ---------------------------- */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card variant="outlined">
+            <CardHeader title="Act as DM" avatar={<AdminIcon />} />
+            <CardContent>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={Boolean(dmOverride)}
+                    onChange={(event) => setDmOverride?.(event.target.checked)}
+                    disabled={typeof setDmOverride !== 'function'}
+                  />
+                )}
+                label="Act as DM in campaigns where I am a Player"
+              />
+              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
+                Normally a campaign where you are a Player treats you as one: no DM menus, no DM
+                actions. Switch this on to use DM functions there anyway. It applies to this browser
+                only, and every campaign page shows an &quot;Acting as DM!&quot; banner with a button to
+                turn it off again.
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         {/* --------------------------- Campaigns ---------------------------- */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined">
-            <CardHeader title="Campaigns" avatar={<CampaignsIcon />} subheader="All campaigns on this instance" />
-            <CardContent>
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Slug</TableCell>
-                      <TableCell>World</TableCell>
-                      <TableCell>Active</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {campaigns.map((campaign) => (
-                      <TableRow key={campaign.id}>
-                        <TableCell>{campaign.name}</TableCell>
-                        <TableCell>{campaign.slug}</TableCell>
-                        <TableCell>{campaign.world || '—'}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={campaign.is_active === false ? 'Inactive' : 'Active'}
-                            color={campaign.is_active === false ? 'default' : 'success'}
-                            size="small"
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {campaigns.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4}>
-                          <Typography variant="body2" sx={{
-                            color: "text.secondary"
-                          }}>
-                            No campaigns found.
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
+        <Grid size={12}>
+          <CampaignAdministration
+            campaigns={campaigns}
+            users={users}
+            currentUserId={user?.id}
+            onCampaignsChanged={refreshCampaigns}
+          />
         </Grid>
       </Grid>
       {/* Reset link dialog (loading + result) */}
@@ -487,7 +634,9 @@ const SystemAdmin: React.FC = () => {
               <Typography variant="body2" sx={{
                 color: "text.secondary"
               }}>
-                This link will expire in 1 hour.
+                {resetLinkExpiresAt && !Number.isNaN(new Date(resetLinkExpiresAt).getTime())
+                  ? `This link expires on ${new Date(resetLinkExpiresAt).toLocaleString()}.`
+                  : 'This link expires soon and can be used once.'}
               </Typography>
             </>
           )}
@@ -512,7 +661,7 @@ const SystemAdmin: React.FC = () => {
         <DialogContent>
           <DialogContentText>
             {deleteTarget
-              ? `This permanently deletes the account "${deleteTarget.username}" from the entire instance, including all of their campaign memberships. This cannot be undone.`
+              ? `This deactivates the account "${deleteTarget.username}" on the entire instance: they can no longer sign in. Their username and email stay reserved and their campaign data is kept. This cannot be undone from this page.`
               : ''}
           </DialogContentText>
           <TextField
@@ -543,7 +692,7 @@ const SystemAdmin: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </Box>
   );
 };
 

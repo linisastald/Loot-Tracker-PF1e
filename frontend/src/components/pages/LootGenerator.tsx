@@ -9,6 +9,7 @@ import {
     Divider,
     FormControl,
     FormControlLabel,
+    FormHelperText,
     Grid,
     IconButton,
     InputLabel,
@@ -30,7 +31,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CasinoIcon from '@mui/icons-material/Casino';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
-import {isDM} from '../../utils/auth';
+import {useIsDM} from '../../contexts/CampaignContext';
 
 const CREATURE_TYPES = [
     'aberration', 'animal', 'construct', 'dragon', 'fey', 'humanoid', 'magical beast',
@@ -44,6 +45,12 @@ const TREASURE_TYPES = [
     {value: 'double', label: 'Double'},
     {value: 'triple', label: 'Triple'},
     {value: 'npc_gear', label: 'NPC Gear'},
+];
+
+// Where the gp value of "NPC Gear" enemies comes from (sent as npcGearSource)
+const NPC_GEAR_SOURCE_OPTIONS = [
+    {value: 'npc', label: 'NPC gear table (default)'},
+    {value: 'pc', label: 'PC wealth by level'},
 ];
 
 const TRACK_OPTIONS = [
@@ -114,7 +121,6 @@ interface PreviewItem {
 
 interface Preview {
     coins: Coins;
-    coinsGp: number;
     items: PreviewItem[];
     totalGp: number;
     effectiveCr?: string | null;
@@ -135,11 +141,12 @@ const makeEnemy = (): EnemyRow => ({
 });
 
 const LootGenerator: React.FC = () => {
-    const dmMode = isDM();
+    const dmMode = useIsDM();
     const [enemies, setEnemies] = useState<EnemyRow[]>([makeEnemy()]);
     const [track, setTrack] = useState<string>('medium');
     const [modifier, setModifier] = useState<string>('1');
     const [environment, setEnvironment] = useState<string>('dungeon');
+    const [npcGearSource, setNpcGearSource] = useState<string>('npc');
     const [environments, setEnvironments] = useState<EnvOption[]>(DEFAULT_ENVIRONMENTS);
     const [unidentified, setUnidentified] = useState<boolean>(true);
     const [preview, setPreview] = useState<Preview | null>(null);
@@ -201,6 +208,7 @@ const LootGenerator: React.FC = () => {
             modifier: parseFloat(modifier),
             unidentified,
             environment,
+            npcGearSource,
         };
         setGenerating(true);
         try {
@@ -260,6 +268,11 @@ const LootGenerator: React.FC = () => {
 
     const previewItemsValue = preview
         ? preview.items.reduce((s, it) => s + it.value * it.quantity, 0)
+        : 0;
+    // Derived from the CURRENT (possibly edited) coins and items, not the server's figure.
+    const previewTotalGp = preview
+        ? Math.round((preview.coins.platinum * 10 + preview.coins.gold + preview.coins.silver / 10
+            + preview.coins.copper / 100 + previewItemsValue) * 100) / 100
         : 0;
 
     return (
@@ -354,6 +367,19 @@ const LootGenerator: React.FC = () => {
                         </TableBody>
                     </Table>
                 </TableContainer>
+                {enemies.some(e => e.treasure === 'npc_gear') && (
+                    <FormControl size="small" sx={{mt: 2, minWidth: 240, maxWidth: 520}}>
+                        <InputLabel id="npc-gear-source-label">NPC gear values</InputLabel>
+                        <Select labelId="npc-gear-source-label" label="NPC gear values" value={npcGearSource}
+                                onChange={(e: SelectChangeEvent) => setNpcGearSource(e.target.value)}>
+                            {NPC_GEAR_SOURCE_OPTIONS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                        </Select>
+                        <FormHelperText>
+                            NPC gear table is what a typical NPC carries (Core Rulebook Table 14-9); PC wealth by level
+                            gives PC-sized gear, roughly three times as much.
+                        </FormHelperText>
+                    </FormControl>
+                )}
                 <Box sx={{mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap'}}>
                     <Button startIcon={<AddIcon/>} onClick={addEnemy} sx={{textTransform: 'none'}}>Add enemy</Button>
                     <Box sx={{flexGrow: 1}}/>
@@ -375,7 +401,7 @@ const LootGenerator: React.FC = () => {
                 <Paper sx={{p: 2, mb: 2, borderRadius: 2}} elevation={3}>
                     <Box sx={{display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
                         <Typography variant="h6">Preview</Typography>
-                        <Chip label={`Total ≈ ${preview.totalGp.toLocaleString()} gp`} color="primary" variant="outlined"/>
+                        <Chip label={`Total ≈ ${previewTotalGp.toLocaleString()} gp`} color="primary" variant="outlined"/>
                         {preview.effectiveCr && (
                             <Chip label={`Encounter CR ${preview.effectiveCr}`} size="small" variant="outlined"/>
                         )}

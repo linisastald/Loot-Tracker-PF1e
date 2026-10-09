@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
 
@@ -18,16 +19,29 @@ vi.mock('../../../services/crewService', () => ({
   },
 }));
 
-vi.mock('../../../hooks/useCampaignTimezone', () => ({
-  useCampaignTimezone: () => ({ timezone: 'America/New_York', loading: false }),
+vi.mock('../../../utils/timezoneUtils', () => ({
+  formatInCampaignTimezone: vi.fn().mockReturnValue('May 10, 2024'),
 }));
 
-vi.mock('../../../utils/timezoneUtils', () => ({
-  formatInCampaignTimezone: vi.fn().mockReturnValue('Jan 1, 2025'),
+// DM gating comes from the current campaign role
+const campaign = vi.hoisted(() => ({ isDM: true }));
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => campaign.isDM,
 }));
 
 import OutpostManagement from '../OutpostManagement';
 import outpostService from '../../../services/outpostService';
+import crewService from '../../../services/crewService';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+
+const fort = {
+  id: 1,
+  name: 'Fort Rannick',
+  location: 'Hook Mountain',
+  access_date: '2024-05-10',
+  crew_count: 5,
+};
+const thistle = { id: 2, name: 'Thistletop', location: null, access_date: null, crew_count: 0 };
 
 const renderComponent = () =>
   render(
@@ -36,9 +50,14 @@ const renderComponent = () =>
     </BrowserRouter>
   );
 
+const withOutposts = (...outposts: unknown[]) =>
+  vi.mocked(outpostService.getAllOutposts).mockResolvedValue({ data: { outposts } });
+
 describe('OutpostManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    campaign.isDM = true;
+    withOutposts();
   });
 
   it('renders loading state initially', () => {
@@ -80,28 +99,176 @@ describe('OutpostManagement', () => {
   });
 
   it('renders outpost data when returned', async () => {
-    vi.mocked(outpostService.getAllOutposts).mockResolvedValueOnce({
-      data: {
-        outposts: [
-          {
-            id: 1,
-            name: 'Fort Rannick',
-            location: 'Hook Mountain',
-            established_date: '2025-01-01',
-            status: 'Active',
-            access_date: '2025-01-01',
-            crew_count: 5,
-          },
-        ],
-      },
-    });
+    withOutposts(fort);
     renderComponent();
     expect(await screen.findByText('Fort Rannick')).toBeInTheDocument();
+    expect(screen.getByText('Hook Mountain')).toBeInTheDocument();
   });
 
   it('shows error when fetch fails', async () => {
     vi.mocked(outpostService.getAllOutposts).mockRejectedValueOnce(new Error('fail'));
     renderComponent();
     expect(await screen.findByText('Failed to load outposts')).toBeInTheDocument();
+  });
+
+  it('formats the access date as a calendar date in UTC, not the campaign timezone', async () => {
+    withOutposts(fort, thistle);
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+
+    expect(formatInCampaignTimezone).toHaveBeenCalledWith('2024-05-10T00:00:00Z', 'UTC', 'PP');
+    // An outpost without an access date shows Unknown (location and date)
+    expect(within(screen.getByText('Thistletop').closest('tr') as HTMLElement).getAllByText('Unknown')).toHaveLength(2);
+  });
+
+  it('creates an outpost and refetches the list', async () => {
+    const user = userEvent.setup();
+    vi.mocked(outpostService.createOutpost).mockResolvedValue({ data: {} });
+    renderComponent();
+    await user.click(await screen.findByRole('button', { name: /add outpost/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Outpost Name/i), 'Sandspit');
+    await user.type(within(dialog).getByLabelText(/^Location/i), 'Southern coast');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(outpostService.createOutpost).toHaveBeenCalledWith({
+      name: 'Sandspit', location: 'Southern coast', access_date: null,
+    }));
+    expect(await screen.findByText('Outpost created successfully')).toBeInTheDocument();
+    expect(outpostService.getAllOutposts).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses to save a blank name', async () => {
+    const user = userEvent.setup();
+    renderComponent();
+    await user.click(await screen.findByRole('button', { name: /add outpost/i }));
+
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByText('Outpost name is required')).toBeInTheDocument();
+    expect(outpostService.createOutpost).not.toHaveBeenCalled();
+  });
+
+  it('shows the server message inside the open dialog when a save fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(outpostService.createOutpost).mockRejectedValue({
+      response: { data: { message: 'Access date must be a valid date (YYYY-MM-DD)' } },
+    });
+    renderComponent();
+    await user.click(await screen.findByRole('button', { name: /add outpost/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Outpost Name/i), 'Sandspit');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    expect(await within(dialog).findByText('Access date must be a valid date (YYYY-MM-DD)')).toBeInTheDocument();
+  });
+
+  it('edits an outpost, prefilling the stored date, and refreshes the details tab', async () => {
+    const user = userEvent.setup();
+    withOutposts(fort);
+    vi.mocked(outpostService.updateOutpost).mockResolvedValue({ data: {} });
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+
+    // Open the details tab for the outpost, then edit it from the list
+    await user.click(screen.getByTitle('View Details'));
+    expect(await screen.findByText('Location: Hook Mountain')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /outpost list/i }));
+    await user.click(screen.getByTitle('Edit'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText(/Access Date/i)).toHaveValue('2024-05-10');
+
+    withOutposts({ ...fort, location: 'Moved' });
+    const location = within(dialog).getByLabelText(/^Location/i);
+    await user.clear(location);
+    await user.type(location, 'Moved');
+    await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => expect(outpostService.updateOutpost).toHaveBeenCalledWith(1, {
+      name: 'Fort Rannick', location: 'Moved', access_date: '2024-05-10',
+    }));
+    await user.click(await screen.findByRole('tab', { name: /outpost details/i }));
+    expect(await screen.findByText('Location: Moved')).toBeInTheDocument();
+  });
+
+  it('deletes an outpost after confirmation and drops the details tab selection', async () => {
+    const user = userEvent.setup();
+    withOutposts(fort);
+    vi.mocked(outpostService.deleteOutpost).mockResolvedValue({ data: {} });
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+    await user.click(screen.getByTitle('View Details'));
+    await screen.findByText('Outpost Information');
+    await user.click(screen.getByRole('tab', { name: /outpost list/i }));
+
+    await user.click(screen.getByTitle('Delete'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/Are you sure you want to delete "Fort Rannick"/)).toBeInTheDocument();
+    withOutposts();
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(outpostService.deleteOutpost).toHaveBeenCalledWith(1));
+    expect(await screen.findByText('Outpost deleted successfully')).toBeInTheDocument();
+    expect(outpostService.getAllOutposts).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('tab', { name: /outpost details/i })).toBeDisabled();
+  });
+
+  it('keeps the outpost and reports the server message when delete fails', async () => {
+    const user = userEvent.setup();
+    withOutposts(fort);
+    vi.mocked(outpostService.deleteOutpost).mockRejectedValue({ response: { data: { message: 'Outpost not found' } } });
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+
+    await user.click(screen.getByTitle('Delete'));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByText('Outpost not found')).toBeInTheDocument();
+    expect(screen.getByText('Fort Rannick')).toBeInTheDocument();
+  });
+
+  it('loads the crew stationed at an outpost for the details tab', async () => {
+    const user = userEvent.setup();
+    withOutposts(fort);
+    vi.mocked(crewService.getCrewByLocation).mockResolvedValue({
+      data: { crew: [{ id: 9, name: 'Ameiko', race: 'Human' }] },
+    });
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+
+    await user.click(screen.getByTitle('View Details'));
+
+    expect(crewService.getCrewByLocation).toHaveBeenCalledWith('outpost', 1);
+    expect(await screen.findByText('Ameiko')).toBeInTheDocument();
+    expect(screen.getByText('1 crew members stationed')).toBeInTheDocument();
+  });
+});
+
+describe('OutpostManagement for a player (not a DM)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    campaign.isDM = false;
+    withOutposts(fort, thistle);
+  });
+
+  it('hides the delete control but keeps view details and edit', async () => {
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+    expect(screen.queryByTitle('Delete')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('Edit')).toHaveLength(2);
+    expect(screen.getAllByTitle('View Details')).toHaveLength(2);
+  });
+});
+
+describe('OutpostManagement for a DM', () => {
+  it('shows the delete control on every row', async () => {
+    campaign.isDM = true;
+    withOutposts(fort, thistle);
+    renderComponent();
+    await screen.findByText('Fort Rannick');
+    expect(screen.getAllByTitle('Delete')).toHaveLength(2);
   });
 });

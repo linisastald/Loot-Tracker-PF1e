@@ -95,7 +95,6 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (417, '+1', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (220, 'Versatile Design', NULL, 'Power', '+500', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (221, 'Vital Guard', NULL, 'Power', '+500', 'armor', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (222, 'Vitalguard', NULL, 'Power', '+500', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (223, 'Cryptstone', NULL, 'Material', '+500', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (224, 'Whipwood', NULL, 'Material', '+500', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (225, 'Living Steel', NULL, 'Material', '+500', 'weapon', NULL);
@@ -120,7 +119,7 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (244, 'Siccatite (Hot)', NULL, 'Material', '+6000', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (245, 'Singing Steel', NULL, 'Material', '+6000', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (246, 'Sunsilk', NULL, 'Material', '+6000', 'armor', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (247, 'locksmith', NULL, 'Power', '+6500', 'armor', NULL);
+INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (247, 'Locksmith', NULL, 'Power', '+6500', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (248, 'Acid Resistance, Greater', NULL, 'Power', '+66000', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (249, 'Cold Resistance, greater', NULL, 'Power', '+66000', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (250, 'Electricity Resistance, Greater', NULL, 'Power', '+66000', 'armor', NULL);
@@ -237,7 +236,7 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (152, 'Armored Kilt', NULL, 'Power', '+20', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (153, 'Griffon Mane', NULL, 'Material', '+200', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (154, 'Viridium', NULL, 'Material', '+200', 'weapon', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (155, 'Dual- Balanced', NULL, 'Power', '+2000', 'weapon', NULL);
+INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (155, 'Dual-Balanced', NULL, 'Power', '+2000', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (156, 'Fitting', NULL, 'Power', '+2000', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (157, 'Phantom ammunition', NULL, 'Power', '+2000', 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (158, 'Serrated Edge', NULL, 'Power', '+2000', 'weapon', NULL);
@@ -272,7 +271,7 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (187, 'Shield Boss, illuminating', NULL, 'Power', '+35', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (188, 'Aquadynamic', NULL, 'Power', '+3750', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (189, 'Exclusionary', NULL, 'Power', '+3750', 'weapon', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (190, 'jousting', NULL, 'Power', '+3750', 'armor', NULL);
+INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (190, 'Jousting', NULL, 'Power', '+3750', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (191, 'Shadow', NULL, 'Power', '+3750', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (192, 'Slick', NULL, 'Power', '+3750', 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (193, 'Shield Boss, hooked tower', NULL, 'Power', '+380', 'armor', NULL);
@@ -391,7 +390,7 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (364, 'Miserable', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (365, 'Mythic Bane', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (366, 'Neutralizing', 1, 'Power', NULL, 'weapon', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (367, 'Ominuous', 1, 'Power', NULL, 'weapon', NULL);
+INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (367, 'Ominous', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (368, 'Patriotic', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (369, 'Pitfall', 1, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (370, 'Planar', 1, 'Power', NULL, 'weapon', NULL);
@@ -521,7 +520,7 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (496, 'Weeping', 2, 'Power', NULL, 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (497, 'Wounding', 2, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (500, 'Arrow-Collecting', 3, 'Power', NULL, 'armor', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (501, 'Brawling', 3, 'Power', NULL, 'armor', NULL);
+INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (501, 'Brawling', 1, 'Power', NULL, 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (502, 'Cotraveling', 3, 'Power', NULL, 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (503, 'Deflecting', 3, 'Power', NULL, 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (504, 'Exhausting', 3, 'Power', NULL, 'weapon', NULL);
@@ -531,7 +530,7 @@ INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALU
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (508, 'Gory', 3, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (509, 'Invulnerability', 3, 'Power', NULL, 'armor', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (510, 'Lucky, Greater', 3, 'Power', NULL, 'weapon', NULL);
-INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (511, 'ifying', 3, 'Power', NULL, 'weapon', NULL);
+INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (511, 'Nullifying', 3, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (512, 'Redeemed', 3, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (513, 'Repositioning', 3, 'Power', NULL, 'weapon', NULL);
 INSERT INTO public.mod (id, name, plus, type, valuecalc, target, subtarget) VALUES (514, 'Sensing', 3, 'Power', NULL, 'armor', NULL);

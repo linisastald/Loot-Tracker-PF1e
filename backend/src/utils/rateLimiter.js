@@ -40,18 +40,6 @@ class RateLimiter {
         // Record this request
         this.requests.push(now);
     }
-
-    /**
-     * Wrap an async function with rate limiting
-     * @param {Function} fn - Async function to wrap
-     * @returns {Function} - Rate-limited version of the function
-     */
-    wrap(fn) {
-        return async (...args) => {
-            await this.acquire();
-            return fn(...args);
-        };
-    }
 }
 
 // Create a singleton rate limiter for Discord API

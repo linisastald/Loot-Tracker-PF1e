@@ -4,18 +4,16 @@ const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
 const lootGeneratorService = require('../services/lootGenerator/lootGeneratorService');
-const { crKey } = require('../services/lootGenerator/treasureTables');
+const { crKey, NPC_GEAR_SOURCES, DEFAULT_NPC_GEAR_SOURCE } = require('../services/lootGenerator/treasureTables');
 const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/treasureFlavor');
 const spellbookService = require('../services/lootGenerator/spellbookService');
 const Spellbook = require('../models/Spellbook');
 
-const SPELLBOOK_CLASSES = Object.keys(spellbookService.CLASS_CONFIG);
-
 // Sanitize an edited spellbook payload before persisting (clamp class/level and
 // cap/clean the spell list so malformed client input can't reach the DB).
 const sanitizeBook = (sb) => {
-  const casterClass = SPELLBOOK_CLASSES.includes(sb.casterClass) ? sb.casterClass : 'wizard';
-  const casterLevel = Math.max(1, Math.min(20, parseInt(sb.casterLevel, 10) || 1));
+  const casterClass = spellbookService.resolveClass(sb.casterClass);
+  const casterLevel = spellbookService.clampCasterLevel(sb.casterLevel);
   const school = typeof sb.school === 'string' ? sb.school.slice(0, 20) : null;
   const spells = (Array.isArray(sb.spells) ? sb.spells : [])
     .slice(0, 300)
@@ -43,6 +41,13 @@ const INSERT_LOOT = `
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL)
   RETURNING id, name, quantity`;
 
+// The global (campaign_id NULL) catalog row that marks a loot row as a spellbook (migration 080).
+const SPELLBOOK_CATALOG_NAME = 'Spellbook';
+const SPELLBOOK_CATALOG_LOOKUP = `
+  SELECT id FROM item
+   WHERE name = $1 AND subtype = 'spellbook' AND campaign_id IS NULL
+   ORDER BY id LIMIT 1`;
+
 const INSERT_GOLD = `
   INSERT INTO gold (session_date, who, transaction_type, platinum, gold, silver, copper, notes)
   VALUES ($1, $2, 'Loot', $3, $4, $5, $6, $7)
@@ -51,17 +56,39 @@ const INSERT_GOLD = `
 // Trim and clamp a string to a DB column width (returns null for non-strings).
 const clampStr = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) || null : null);
 // Coerce to a non-negative integer or null (so a malformed edited field can't
-// reach an INTEGER column and 500).
+// reach an INTEGER column and 500); negative values clamp to 0.
 const toIntOrNull = (v) => {
   const n = parseInt(v, 10);
-  return Number.isInteger(n) ? n : null;
+  return Number.isInteger(n) ? Math.max(0, n) : null;
+};
+
+// A catalog/mod id from the edited preview: null when absent, otherwise it must be a
+// positive integer (a bad or stale id would otherwise fail the whole commit later).
+const toIdOrNull = (v, label, index) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) {
+    throw controllerFactory.createValidationError(`Item ${index + 1}: ${label} must be a positive integer`);
+  }
+  return n;
+};
+
+// Validate and normalise one edited preview item before the transaction starts.
+const validateCommitItem = (it, index) => {
+  if (!it || typeof it.name !== 'string' || it.name.trim() === '') {
+    throw controllerFactory.createValidationError(`Item ${index + 1}: a name is required`);
+  }
+  const modIds = Array.isArray(it.modIds)
+    ? it.modIds.map((m) => toIdOrNull(m, 'modIds entries', index)).filter((m) => m !== null)
+    : [];
+  return { itemId: toIdOrNull(it.itemId, 'itemId', index), modIds };
 };
 
 /**
  * Generate a treasure preview from a list of enemies (no DB writes). DM only.
  */
 const generate = async (req, res) => {
-  const { enemies, track, modifier, unidentified, environment } = req.body;
+  const { enemies, track, modifier, unidentified, environment, npcGearSource } = req.body;
 
   if (!Array.isArray(enemies) || enemies.length === 0) {
     throw controllerFactory.createValidationError('At least one enemy is required');
@@ -85,7 +112,12 @@ const generate = async (req, res) => {
     };
   });
 
-  const options = {};
+  // Where 'npc_gear' enemies get their gp value: the CRB NPC Gear table (default) or PC wealth
+  if (npcGearSource !== undefined && !NPC_GEAR_SOURCES.includes(npcGearSource)) {
+    throw controllerFactory.createValidationError(`npcGearSource must be one of: ${NPC_GEAR_SOURCES.join(', ')}`);
+  }
+
+  const options = { npcGearSource: npcGearSource || DEFAULT_NPC_GEAR_SOURCE };
   if (ALLOWED_TRACKS.includes(track)) options.track = track;
   const mod = parseFloat(modifier);
   if (mod > 0) options.modifier = Math.min(mod, 100);
@@ -120,16 +152,30 @@ const commit = async (req, res) => {
     throw controllerFactory.createValidationError('Invalid session date');
   }
 
+  const validated = itemList.map(validateCommitItem);
+
   const result = await dbUtils.executeTransaction(async (client) => {
     const createdItems = [];
-    for (const it of itemList) {
-      if (typeof it.name !== 'string' || it.name.trim() === '') continue;
+    for (const [index, it] of itemList.entries()) {
+      let { itemId } = validated[index];
+      const { modIds } = validated[index];
       const quantity = Math.max(1, parseInt(it.quantity, 10) || 1);
       const value = it.value === null || it.value === undefined ? null : Number(it.value);
-      const modids = Array.isArray(it.modIds) && it.modIds.length > 0 ? it.modIds : null;
+      const modids = modIds.length > 0 ? modIds : null;
+      // Owner decision: a spellbook is a subtype of magic. Older clients sent the
+      // non-canonical type 'spellbook', which is still honoured but stored as magic.
+      const isSpellbook = it.subtype === 'spellbook' || it.type === 'spellbook';
       // Unidentified items are stored under a generic name so the loot list
       // doesn't reveal what they are; the real identity is recoverable on
       // identification via itemid/modids.
+      // A generated spellbook is linked to the global catalog 'Spellbook' so that its
+      // subtype is known (loot rows have no subtype column). The row keeps its own name,
+      // type, value and notes. Not linked when unidentified (identifying would rename it
+      // from the catalog item) or when the catalog row is missing (saved as before).
+      if (isSpellbook && itemId === null && !it.unidentified) {
+        const catalog = await client.query(SPELLBOOK_CATALOG_LOOKUP, [SPELLBOOK_CATALOG_NAME]);
+        itemId = catalog.rows[0] ? catalog.rows[0].id : null;
+      }
       const storedName = (it.unidentified && typeof it.unidentifiedName === 'string' && it.unidentifiedName.trim() !== '')
         ? it.unidentifiedName
         : it.name;
@@ -139,9 +185,9 @@ const commit = async (req, res) => {
         clampStr(storedName, 255),
         Boolean(it.unidentified),
         Boolean(it.masterwork),
-        clampStr(it.type, 15),
+        clampStr(isSpellbook ? 'magic' : it.type, 15),
         clampStr(it.size, 15),
-        it.itemId || null,
+        itemId,
         modids,
         Number.isFinite(value) ? value : null,
         req.user?.id || null,
@@ -152,7 +198,7 @@ const commit = async (req, res) => {
       createdItems.push(inserted.rows[0]);
 
       // A spellbook item also persists its spell list, linked to this loot row.
-      if (it.type === 'spellbook' && it.spellbook && Array.isArray(it.spellbook.spells)) {
+      if (isSpellbook && it.spellbook && Array.isArray(it.spellbook.spells)) {
         await Spellbook.insertWithClient(client, inserted.rows[0].id, sanitizeBook(it.spellbook));
       }
     }

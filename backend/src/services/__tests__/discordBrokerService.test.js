@@ -80,6 +80,19 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
     expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-pathfinder-loot-tracker');
   });
 
+  it('gives two deployments with different callback URLs different appIds, and is stable per deployment', async () => {
+    delete process.env.GROUP_NAME;
+    process.env.DISCORD_CALLBACK_URL = 'http://live.local:5000/api/discord/interactions';
+    await discordBrokerService.resolveAppIdentity();
+    const live = discordBrokerService.appId;
+    await discordBrokerService.resolveAppIdentity();
+    expect(discordBrokerService.appId).toBe(live);
+
+    process.env.DISCORD_CALLBACK_URL = 'http://test.local:5001/api/discord/interactions';
+    await discordBrokerService.resolveAppIdentity();
+    expect(discordBrokerService.appId).not.toBe(live);
+  });
+
   it('lets the GROUP_NAME env var override the identity', async () => {
     process.env.DISCORD_CALLBACK_URL = 'https://rotr.example.com/api/discord/interactions';
     process.env.GROUP_NAME = 'My Table';
@@ -87,6 +100,15 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
     await discordBrokerService.resolveAppIdentity();
 
     expect(discordBrokerService.groupName).toBe('My Table');
+    expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-my-table');
+  });
+
+  it('keeps honouring GROUP_NAME exactly, whatever the callback URL', async () => {
+    process.env.GROUP_NAME = 'My Table';
+    process.env.DISCORD_CALLBACK_URL = 'http://anything.local/x';
+
+    await discordBrokerService.resolveAppIdentity();
+
     expect(discordBrokerService.appId).toBe('pathfinder-loot-tracker-my-table');
   });
 
@@ -252,5 +274,282 @@ describe('DiscordBrokerService.startHeartbeat', () => {
     svc.startHeartbeat();
 
     expect(svc.heartbeatInterval).toBe(firstInterval);
+  });
+});
+
+describe('DiscordBrokerService.makeRequest broker secret', () => {
+  const axios = require('axios');
+  const origSecret = process.env.DISCORD_BROKER_SECRET;
+
+  afterEach(() => {
+    if (origSecret === undefined) delete process.env.DISCORD_BROKER_SECRET;
+    else process.env.DISCORD_BROKER_SECRET = origSecret;
+  });
+
+  it('sends the shared secret header to the broker when configured', async () => {
+    process.env.DISCORD_BROKER_SECRET = 'shared-secret';
+    axios.mockResolvedValueOnce({ data: { success: true } });
+    await discordBrokerService.makeRequest('/heartbeat', 'POST', { appId: 'x' });
+    expect(axios.mock.calls[0][0].headers['X-Broker-Secret']).toBe('shared-secret');
+  });
+
+  it('omits the header when no secret is configured', async () => {
+    delete process.env.DISCORD_BROKER_SECRET;
+    axios.mockResolvedValueOnce({ data: { success: true } });
+    await discordBrokerService.makeRequest('/heartbeat', 'POST', { appId: 'x' });
+    expect(axios.mock.calls[0][0].headers['X-Broker-Secret']).toBeUndefined();
+  });
+});
+
+describe('DiscordBrokerService.makeRequest error handling', () => {
+  const axios = require('axios');
+
+  it('keeps the HTTP status when the broker error response has no body', async () => {
+    axios.mockRejectedValueOnce({ response: { status: 502, data: undefined } });
+    await expect(discordBrokerService.makeRequest('/register', 'POST', {}))
+      .rejects.toThrow('HTTP 502: Unknown error');
+  });
+
+  it('uses the broker message when there is one', async () => {
+    axios.mockRejectedValueOnce({ response: { status: 401, data: { message: 'Unauthorized' } } });
+    await expect(discordBrokerService.makeRequest('/register', 'POST', {}))
+      .rejects.toThrow('HTTP 401: Unauthorized');
+  });
+});
+
+describe('DiscordBrokerService.buildAllChannelsConfig legacy fallback', () => {
+  beforeEach(() => {
+    dbUtils.executeQuery.mockReset();
+  });
+
+  it('does not fall back to the global channel when every campaign is explicitly disabled', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({
+      rows: [{ campaign_id: 1, channel_id: '111', campaign_name: 'ROTR', enabled: 'false' }],
+    });
+
+    const channels = await discordBrokerService.buildAllChannelsConfig();
+
+    expect(channels).toEqual({});
+    expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fall back to the global channel when the enumeration query fails', async () => {
+    dbUtils.executeQuery.mockRejectedValueOnce(new Error('db down'));
+
+    const channels = await discordBrokerService.buildAllChannelsConfig();
+
+    expect(channels).toEqual({});
+    expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DiscordBrokerService Discord REST calls', () => {
+  const axios = require('axios');
+  const CHANNEL = '123456789012345678';
+  const MESSAGE = '223456789012345678';
+
+  beforeEach(() => {
+    dbUtils.executeQuery.mockReset();
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ value: 'bot-token' }] });
+  });
+
+  describe('sendMessage', () => {
+    it('posts to the versioned API with the bot token and returns the message', async () => {
+      axios.mockResolvedValueOnce({ data: { id: MESSAGE } });
+
+      const result = await discordBrokerService.sendMessage({
+        channelId: CHANNEL, content: 'hi', embed: { title: 'e' }, components: [{ type: 1 }]
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ id: MESSAGE });
+      const call = axios.mock.calls[0][0];
+      expect(call.method).toBe('post');
+      expect(call.url).toBe(`https://discord.com/api/v10/channels/${CHANNEL}/messages`);
+      expect(call.headers.Authorization).toBe('Bot bot-token');
+      expect(call.data.content).toBe('hi');
+      expect(call.data.embeds).toEqual([{ title: 'e' }]);
+      expect(call.data.components).toEqual([{ type: 1 }]);
+    });
+
+    it('accepts an embeds array and a caller-supplied allowed_mentions', async () => {
+      axios.mockResolvedValueOnce({ data: { id: MESSAGE } });
+
+      await discordBrokerService.sendMessage({
+        channelId: CHANNEL, embeds: [{ title: 'a' }, { title: 'b' }], allowedMentions: { parse: [] }
+      });
+
+      const call = axios.mock.calls[0][0];
+      expect(call.data.embeds).toHaveLength(2);
+      expect(call.data.allowed_mentions).toEqual({ parse: [] });
+    });
+
+    it('never lets @everyone/@here or user mentions through by default', async () => {
+      axios.mockResolvedValueOnce({ data: { id: MESSAGE } });
+
+      await discordBrokerService.sendMessage({ channelId: CHANNEL, content: '@everyone <@&5> <@7>' });
+
+      const mentions = axios.mock.calls[0][0].data.allowed_mentions;
+      expect(mentions.parse).not.toContain('everyone');
+      expect(mentions.parse).not.toContain('users');
+    });
+
+    it('fails without calling Discord when the bot token is missing', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      const result = await discordBrokerService.sendMessage({ channelId: CHANNEL, content: 'hi' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Discord bot token not configured');
+      expect(axios).not.toHaveBeenCalled();
+    });
+
+    it('refuses a channel id that is not a snowflake (no path injection)', async () => {
+      const result = await discordBrokerService.sendMessage({ channelId: '../guilds/1/channels?', content: 'x' });
+
+      expect(result.success).toBe(false);
+      expect(axios).not.toHaveBeenCalled();
+    });
+
+    it('maps a Discord 429 to RATE_LIMITED and other errors to DISCORD_API_ERROR', async () => {
+      axios.mockRejectedValueOnce({ message: 'x', response: { status: 429, data: { message: 'slow down' } } });
+      const limited = await discordBrokerService.sendMessage({ channelId: CHANNEL, content: 'hi' });
+      expect(limited.success).toBe(false);
+      expect(limited.error.code).toBe('RATE_LIMITED');
+      expect(limited.message).toBe('slow down');
+
+      axios.mockRejectedValueOnce({ message: 'boom', response: { status: 500, data: {} } });
+      const failed = await discordBrokerService.sendMessage({ channelId: CHANNEL, content: 'hi' });
+      expect(failed.error.code).toBe('DISCORD_API_ERROR');
+    });
+  });
+
+  describe('updateMessage', () => {
+    it('patches the message and keeps empty-string content', async () => {
+      axios.mockResolvedValueOnce({ data: { id: MESSAGE } });
+
+      const result = await discordBrokerService.updateMessage({
+        channelId: CHANNEL, messageId: MESSAGE, content: '', embed: { title: 'e' }
+      });
+
+      expect(result.success).toBe(true);
+      const call = axios.mock.calls[0][0];
+      expect(call.method).toBe('patch');
+      expect(call.url).toBe(`https://discord.com/api/v10/channels/${CHANNEL}/messages/${MESSAGE}`);
+      expect(call.data.content).toBe('');
+      expect(call.data.embeds).toEqual([{ title: 'e' }]);
+    });
+
+    it('returns a failure result when Discord rejects the update', async () => {
+      axios.mockRejectedValueOnce({ message: 'nope', response: { status: 404, data: { message: 'Unknown Message' } } });
+
+      const result = await discordBrokerService.updateMessage({ channelId: CHANNEL, messageId: MESSAGE, content: 'x' });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Unknown Message');
+    });
+  });
+
+  describe('deleteMessage', () => {
+    it('deletes the message and returns a success result', async () => {
+      axios.mockResolvedValueOnce({ data: {} });
+
+      const result = await discordBrokerService.deleteMessage({ channelId: CHANNEL, messageId: MESSAGE });
+
+      expect(result.success).toBe(true);
+      const call = axios.mock.calls[0][0];
+      expect(call.method).toBe('delete');
+      expect(call.url).toBe(`https://discord.com/api/v10/channels/${CHANNEL}/messages/${MESSAGE}`);
+    });
+
+    it('returns a failure result when Discord refuses', async () => {
+      axios.mockRejectedValueOnce({ message: 'x', response: { status: 403, data: { message: 'Missing Access' } } });
+
+      const result = await discordBrokerService.deleteMessage({ channelId: CHANNEL, messageId: MESSAGE });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Missing Access');
+    });
+  });
+});
+
+describe('DiscordBrokerService heartbeat and re-registration', () => {
+  const svc = discordBrokerService;
+
+  beforeEach(() => {
+    svc.appId = 'test-app';
+    svc.groupName = 'Test';
+    svc.isRegistered = true;
+    svc.lastChannelKey = '111';
+    jest.spyOn(svc, 'makeRequest');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    svc.isRegistered = false;
+    svc.lastChannelKey = null;
+  });
+
+  it('sendHeartbeat posts the app id and throws when the broker refuses', async () => {
+    svc.makeRequest.mockResolvedValueOnce({ success: true });
+    await svc.sendHeartbeat();
+    expect(svc.makeRequest).toHaveBeenCalledWith('/heartbeat', 'POST', expect.objectContaining({ appId: 'test-app' }));
+
+    svc.makeRequest.mockResolvedValueOnce({ success: false, message: 'unknown app' });
+    await expect(svc.sendHeartbeat()).rejects.toThrow('Heartbeat failed: unknown app');
+  });
+
+  it('sendHeartbeat carries the callback endpoint so the broker can detect an overwritten registration', async () => {
+    svc.makeRequest.mockResolvedValueOnce({ success: true });
+    await svc.sendHeartbeat();
+    expect(svc.makeRequest).toHaveBeenCalledWith('/heartbeat', 'POST', expect.objectContaining({
+      endpoint: svc.buildCallbackUrl()
+    }));
+  });
+
+  it('a 404 "not registered" heartbeat drops to unregistered and the next tick registers again', async () => {
+    jest.useFakeTimers();
+    try {
+      svc.heartbeatInterval = null;
+      svc.makeRequest.mockRejectedValueOnce(new Error('HTTP 404: App not registered'));
+      const register = jest.spyOn(svc, 'registerWithBroker').mockResolvedValue(undefined);
+
+      svc.startHeartbeat();
+      await jest.advanceTimersByTimeAsync(30000);
+      expect(svc.isRegistered).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(30000);
+      expect(register).toHaveBeenCalledTimes(1);
+    } finally {
+      clearInterval(svc.heartbeatInterval);
+      svc.heartbeatInterval = null;
+      jest.useRealTimers();
+    }
+  });
+
+  it('sendHeartbeat does nothing when not registered', async () => {
+    svc.isRegistered = false;
+    await svc.sendHeartbeat();
+    expect(svc.makeRequest).not.toHaveBeenCalled();
+  });
+
+  it('refreshRegistrationIfChanged re-registers when the channel set changed', async () => {
+    jest.spyOn(svc, 'buildAllChannelsConfig').mockResolvedValue({ '111': {}, '222': {} });
+    svc.makeRequest.mockResolvedValueOnce({ success: true });
+
+    await svc.refreshRegistrationIfChanged();
+
+    expect(svc.makeRequest).toHaveBeenCalledWith('/register', 'POST', expect.objectContaining({
+      channels: { '111': {}, '222': {} }
+    }));
+    expect(svc.lastChannelKey).toBe('111,222');
+  });
+
+  it('refreshRegistrationIfChanged does nothing when the set is unchanged or empty', async () => {
+    const build = jest.spyOn(svc, 'buildAllChannelsConfig').mockResolvedValue({ '111': {} });
+    await svc.refreshRegistrationIfChanged();
+    build.mockResolvedValue({});
+    await svc.refreshRegistrationIfChanged();
+    expect(svc.makeRequest).not.toHaveBeenCalled();
   });
 });

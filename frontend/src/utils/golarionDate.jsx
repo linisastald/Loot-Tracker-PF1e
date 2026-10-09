@@ -120,26 +120,8 @@ export const formatGolarionDate = (year, month, day) => {
   return `${day} ${monthName} ${year}`;
 };
 
-// Convert display format to Golarion date object
-export const parseGolarionDate = (dateString) => {
-  if (!dateString) return null;
-  
-  const parts = dateString.split(' ');
-  if (parts.length !== 3) return null;
-  
-  const day = parseInt(parts[0]);
-  const monthName = parts[1];
-  const year = parseInt(parts[2]);
-  
-  const monthIndex = GOLARION_MONTHS.findIndex(m => m.name === monthName);
-  if (monthIndex === -1) return null;
-  
-  return {
-    year,
-    month: monthIndex + 1, // Backend uses 1-indexed months
-    day
-  };
-};
+// Fallback when the calendar cannot be reached.
+const DEFAULT_GOLARION_DATE = { year: 4722, month: 1, day: 1 };
 
 // Get current Golarion date from the calendar system
 export const getCurrentGolarionDate = async () => {
@@ -150,7 +132,7 @@ export const getCurrentGolarionDate = async () => {
   } catch (error) {
     console.error('Error fetching current Golarion date:', error);
     // Return a default date if fetch fails
-    return { year: 4722, month: 1, day: 1 };
+    return { ...DEFAULT_GOLARION_DATE };
   }
 };
 
@@ -177,11 +159,7 @@ export const inputFormatToGolarion = (inputValue) => {
 
 // Get today's date in input format for default values
 export const getTodayInInputFormat = async () => {
-  try {
-    const currentDate = await getCurrentGolarionDate();
-    return golarionToInputFormat(currentDate.year, currentDate.month, currentDate.day);
-  } catch (error) {
-    console.error('Error getting today in input format:', error);
-    return golarionToInputFormat(4722, 1, 1); // Default fallback
-  }
+  // getCurrentGolarionDate never throws: it falls back to the default date.
+  const { year, month, day } = await getCurrentGolarionDate();
+  return golarionToInputFormat(year, month, day);
 };

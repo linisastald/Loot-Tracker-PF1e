@@ -14,34 +14,41 @@ import {
   Typography,
 } from '@mui/material';
 import {KeyboardArrowDown, KeyboardArrowUp} from '@mui/icons-material';
-import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
-import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+import { formatDateOnly } from '../../../utils/dateOnly';
+
+interface SoldSummaryRow {
+    soldon: string;
+    number_of_items: number | string;
+    total: number | string;
+}
+
+interface SoldDetailRow {
+    id?: number;
+    session_date: string;
+    quantity: number;
+    name: string;
+    soldfor: number | string;
+}
+
+// The sold endpoints answer { records } / { items } in the response body
+// (or a bare array); normalize once.
+const toRows = <T,>(payload: unknown, key: string): T[] => {
+    if (Array.isArray(payload)) return payload as T[];
+    const nested = (payload as Record<string, unknown> | null | undefined)?.[key];
+    return Array.isArray(nested) ? (nested as T[]) : [];
+};
 
 const SoldLoot = () => {
-    const [soldSummary, setSoldSummary] = useState([]);
-    const [soldDetails, setSoldDetails] = useState({});
-    const [openItems, setOpenItems] = useState({});
-
-    // Campaign timezone hook
-    const { timezone, loading: timezoneLoading } = useCampaignTimezone();
+    const [soldSummary, setSoldSummary] = useState<SoldSummaryRow[]>([]);
+    const [soldDetails, setSoldDetails] = useState<Record<string, SoldDetailRow[]>>({});
+    const [openItems, setOpenItems] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         const fetchSoldSummary = async () => {
             try {
-                const response = await api.get(`/sold`);
-
-                // Make sure we have an array of items
-                if (response.data && Array.isArray(response.data)) {
-                    setSoldSummary(response.data);
-                } else if (response.data && Array.isArray(response.data.records)) {
-                    // Handle if the API returns an object with a records array
-                    setSoldSummary(response.data.records);
-                } else {
-                    console.error('Unexpected response format:', response.data);
-                    setSoldSummary([]);
-                }
-            } catch (error) {
-                console.error('Error fetching sold data:', error);
+                const response = await api.get('/sold');
+                setSoldSummary(toRows<SoldSummaryRow>(response.data, 'records'));
+            } catch {
                 setSoldSummary([]);
             }
         };
@@ -49,61 +56,38 @@ const SoldLoot = () => {
         fetchSoldSummary();
     }, []);
 
-    const handleToggleOpen = (date) => {
+    const fetchSoldDetails = async (date: string) => {
+        // The summary endpoint returns `soldon` as an ISO string at UTC
+        // midnight (e.g. "2026-04-25T00:00:00.000Z"). The detail endpoint
+        // expects YYYY-MM-DD matching the date the row was stored under,
+        // not the viewer's local date. Slicing the ISO string keeps us
+        // on the stored UTC date regardless of timezone.
+        const formattedDate = typeof date === 'string' && date.length >= 10
+            ? date.slice(0, 10)
+            : new Date(date).toISOString().slice(0, 10);
+
+        let rows: SoldDetailRow[] = [];
+        try {
+            const response = await api.get(`/sold/${formattedDate}`);
+            rows = toRows<SoldDetailRow>(response.data, 'items');
+        } catch {
+            rows = [];
+        }
+        setSoldDetails((prevDetails) => ({...prevDetails, [date]: rows}));
+    };
+
+    const handleToggleOpen = (date: string) => {
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
             [date]: !prevOpenItems[date],
         }));
 
         if (!soldDetails[date]) {
-            const fetchSoldDetails = async () => {
-                try {
-                    // The summary endpoint returns `soldon` as an ISO string at UTC
-                    // midnight (e.g. "2026-04-25T00:00:00.000Z"). The detail endpoint
-                    // expects YYYY-MM-DD matching the date the row was stored under,
-                    // not the viewer's local date. Slicing the ISO string keeps us
-                    // on the stored UTC date regardless of timezone.
-                    const formattedDate = typeof date === 'string' && date.length >= 10
-                        ? date.slice(0, 10)
-                        : new Date(date).toISOString().slice(0, 10);
-
-                    const response = await api.get(`/sold/${formattedDate}`);
-
-                    // Handle different response formats
-                    if (response.data && Array.isArray(response.data)) {
-                        setSoldDetails((prevDetails) => ({
-                            ...prevDetails,
-                            [date]: response.data,
-                        }));
-                    } else if (response.data && Array.isArray(response.data.items)) {
-                        setSoldDetails((prevDetails) => ({
-                            ...prevDetails,
-                            [date]: response.data.items,
-                        }));
-                    } else {
-                        console.error('Unexpected detail response format:', response.data);
-                        setSoldDetails((prevDetails) => ({
-                            ...prevDetails,
-                            [date]: [],
-                        }));
-                    }
-                } catch (error) {
-                    console.error('Error fetching sold details:', error);
-                    setSoldDetails((prevDetails) => ({
-                        ...prevDetails,
-                        [date]: [],
-                    }));
-                }
-            };
-
-            fetchSoldDetails();
+            fetchSoldDetails(date);
         }
     };
 
-    // Safely calculate total with fallback to 0 if not an array
-    const totalSold = Array.isArray(soldSummary)
-        ? soldSummary.reduce((total, item) => total + parseFloat(item.total || 0), 0)
-        : 0;
+    const totalSold = soldSummary.reduce((total, item) => total + parseFloat(String(item.total || 0)), 0);
 
     return (
         <Container component="main" sx={{maxWidth: 'none', overflowX: 'auto'}}>
@@ -111,11 +95,7 @@ const SoldLoot = () => {
                 <Typography variant="subtitle1">Total Sold: {totalSold.toFixed(2)} GP</Typography>
             </Paper>
 
-            {!Array.isArray(soldSummary) ? (
-                <Paper sx={{p: 2}}>
-                    <Typography color="error">No sold items data available</Typography>
-                </Paper>
-            ) : soldSummary.length === 0 ? (
+            {soldSummary.length === 0 ? (
                 <Paper sx={{p: 2}}>
                     <Typography>No sold items found</Typography>
                 </Paper>
@@ -135,7 +115,7 @@ const SoldLoot = () => {
                                 <React.Fragment key={`summary-${item.soldon || index}`}>
                                     <TableRow>
                                         <TableCell>
-                                            {timezone && formatInCampaignTimezone(item.soldon, timezone, 'PP')}
+                                            {formatDateOnly(item.soldon)}
                                         </TableCell>
                                         <TableCell>{item.number_of_items}</TableCell>
                                         <TableCell>{item.total}</TableCell>
@@ -166,7 +146,7 @@ const SoldLoot = () => {
                                                             <TableRow
                                                                 key={`detail-${detail.id || `${item.soldon}-${detailIndex}`}`}>
                                                                 <TableCell>
-                                                                    {timezone && formatInCampaignTimezone(detail.session_date, timezone, 'PP')}
+                                                                    {formatDateOnly(detail.session_date)}
                                                                 </TableCell>
                                                                 <TableCell>{detail.quantity}</TableCell>
                                                                 <TableCell>{detail.name}</TableCell>

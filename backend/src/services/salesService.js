@@ -1,10 +1,27 @@
 // src/services/salesService.js
 const dbUtils = require('../utils/dbUtils');
 const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
-const logger = require('../utils/logger');
+const controllerFactory = require('../utils/controllerFactory');
+const Gold = require('../models/Gold');
+
+// COALESCE so DM-linked items inherit the catalog value when the row's own
+// value is null (otherwise they would sell for 0 gold).
+// gold.notes is VARCHAR(255) (database/init.sql)
+const GOLD_NOTES_MAX = 255;
+
+const SALE_ITEMS_SELECT = `
+  SELECT l.*, COALESCE(l.value, i.value) AS value
+  FROM loot l
+  LEFT JOIN item i ON i.id = l.itemid
+`;
 
 /**
- * Service for handling item sales operations
+ * Service for handling item sales operations.
+ *
+ * Every sale path runs in one transaction that first takes the per-campaign gold
+ * ledger lock (Gold.lockLedger), locks the loot rows it is about to sell, writes
+ * the sold rows, flips the loot status with a status-guarded UPDATE and credits
+ * the gold through the same client. No path can sell the same row twice.
  */
 class SalesService {
   /**
@@ -13,45 +30,63 @@ class SalesService {
    * @returns {Object} - Object containing validItems and invalidItems arrays
    */
   static filterValidSaleItems(items) {
-    const validItems = items.filter(item => item.unidentified !== true && item.value !== null);
-    const invalidItems = items.filter(item => item.unidentified === true || item.value === null);
+    const validItems = [];
+    const invalidItems = [];
+    for (const item of items) {
+      const sellable = item.unidentified !== true && item.value !== null && item.value !== undefined;
+      (sellable ? validItems : invalidItems).push(item);
+    }
     return { validItems, invalidItems };
   }
 
   /**
    * Create gold entry for sales
-   * @param {number} totalSold - Total amount sold
+   * @param {number} totalSold - Total amount sold, in gold
    * @param {string} notes - Notes for the transaction
    * @returns {Object} - Gold entry object
    */
   static createGoldEntry(totalSold, notes) {
+    // gold.notes is VARCHAR(255): a longer note would abort the whole sale
+    const fittingNotes = typeof notes === 'string' ? notes.slice(0, GOLD_NOTES_MAX) : notes;
+    // Work in whole copper (1 gp = 100 cp). Rounding to 1e-4 cp first strips the
+    // binary floating-point noise (2.3 gp is 229.99999999999997 cp) while keeping
+    // the existing convention of dropping any fraction of a copper piece.
+    const copper = Math.floor(Math.round(totalSold * 1e6) / 1e4);
     return {
       session_date: new Date(),
       transaction_type: 'Sale',
       platinum: 0,
-      gold: Math.floor(totalSold),
-      silver: Math.floor((totalSold % 1) * 10),
-      copper: Math.floor(((totalSold * 10) % 1) * 10),
-      notes
+      gold: Math.floor(copper / 100),
+      silver: Math.floor((copper % 100) / 10),
+      copper: copper % 10,
+      notes: fittingNotes
     };
   }
 
   /**
-   * Insert gold entry into database
-   * @param {Object} client - Database client
-   * @param {Object} entry - Gold entry object
-   * @returns {Promise<Object>} - The inserted gold record
+   * Gold note for a sale of selected items: "Sold N items: a, b, c ... (+k more)",
+   * cut so it always fits gold.notes (VARCHAR(255)) however many or however
+   * long the item names are.
+   * @param {string[]} names - Names of the items being sold
+   * @returns {string}
    */
-  static async insertGoldEntry(client, entry) {
-    const result = await client.query(
-      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [entry.session_date, entry.transaction_type, entry.platinum, entry.gold, entry.silver, entry.copper, entry.notes]
-    );
-    return result.rows[0];
+  static buildSelectedSaleNote(names) {
+    const total = names.length;
+    const header = `Sold ${total} item${total === 1 ? '' : 's'}`;
+    const tail = (hidden) => (hidden > 0 ? ` ... (+${hidden} more)` : '');
+
+    let best = null;
+    for (let shown = 1; shown <= total; shown++) {
+      const candidate = `${header}: ${names.slice(0, shown).join(', ')}${tail(total - shown)}`;
+      if (candidate.length > GOLD_NOTES_MAX) break;
+      best = candidate;
+    }
+    return best || `${header} (names omitted)`;
   }
 
   /**
-   * Process sale items common logic
+   * Process sale items common logic. Must run inside a transaction that already
+   * holds the gold ledger lock.
    * @param {Object} client - Database client (for transactions)
    * @param {Array} validItems - Valid items to sell
    * @param {string} notes - Notes for the transaction
@@ -62,32 +97,50 @@ class SalesService {
     const validItemIds = validItems.map(item => item.id);
     const now = new Date();
 
-    // Compute sale values and build sold items list
+    // sold.soldfor is the line total (unit sale value x quantity) so the sold
+    // rows add up to the gold credit.
     const soldItems = validItems.map(item => {
-      const saleValue = calculateItemSaleValue(item);
+      const quantity = parseInt(item.quantity) || 1;
       return {
         id: item.id,
         name: item.name,
         value: parseFloat(item.value),
-        soldFor: parseFloat(saleValue.toFixed(2))
+        quantity,
+        soldFor: parseFloat((calculateItemSaleValue(item) * quantity).toFixed(2))
       };
     });
 
     // Batch insert all sold records in a single query
-    const lootIds = soldItems.map(s => s.id);
-    const soldForValues = soldItems.map(s => s.soldFor);
     await client.query(
       `INSERT INTO sold (lootid, soldfor, soldon)
        SELECT unnest($1::int[]), unnest($2::numeric[]), $3`,
-      [lootIds, soldForValues, now]
+      [soldItems.map(s => s.id), soldItems.map(s => s.soldFor), now]
     );
 
-    // Update status to Sold
-    await client.query("UPDATE loot SET status = 'Sold' WHERE id = ANY($1)", [validItemIds]);
+    // Update status to Sold. The status guard in the WHERE clause plus the row
+    // count check make a double-sale impossible even if a concurrent request
+    // slipped past the caller's own status check.
+    const updateResult = await client.query(
+      "UPDATE loot SET status = 'Sold' WHERE id = ANY($1) AND status = 'Pending Sale'",
+      [validItemIds]
+    );
+    if (updateResult.rowCount !== validItemIds.length) {
+      throw controllerFactory.createValidationError(
+        'Some items are no longer pending sale (they may have just been sold); no items were sold'
+      );
+    }
 
-    // Create gold entry
+    // Credit the gold through the ledger model, on the same client
     const goldEntry = this.createGoldEntry(totalSold, notes);
-    const goldResult = await this.insertGoldEntry(client, goldEntry);
+    const goldResult = await Gold.create({
+      sessionDate: goldEntry.session_date,
+      transactionType: goldEntry.transaction_type,
+      platinum: goldEntry.platinum,
+      gold: goldEntry.gold,
+      silver: goldEntry.silver,
+      copper: goldEntry.copper,
+      notes: goldEntry.notes
+    }, client);
 
     return { soldItems, totalSold, goldResult };
   }
@@ -122,34 +175,48 @@ class SalesService {
   }
 
   /**
+   * Run the shared sale pipeline on already-fetched (and locked) rows: drop the
+   * unsellable ones, write the sale and build the response.
+   * @private
+   */
+  static async _sellItems(client, items, notes, keptIds = []) {
+    const { validItems, invalidItems } = this.filterValidSaleItems(items);
+
+    if (validItems.length === 0) {
+      throw new Error('No valid items to sell (all items are unidentified or have no value)');
+    }
+
+    const saleResult = await this.processSaleItems(client, validItems, notes);
+    return this.createSaleResponse(saleResult.soldItems, saleResult.totalSold, saleResult.goldResult, keptIds, invalidItems);
+  }
+
+  /**
+   * Fetch (and row-lock) the loot rows a sale will touch.
+   * whereSql and orderSql are fixed strings from this file, never user input.
+   * @private
+   */
+  static async _fetchLockedItems(client, whereSql, params, orderSql = 'l.id') {
+    const result = await client.query(
+      `${SALE_ITEMS_SELECT} WHERE ${whereSql} ORDER BY ${orderSql} FOR UPDATE OF l`,
+      params
+    );
+    return result.rows;
+  }
+
+  /**
    * Sell all pending sale items
    * @returns {Promise<Object>} - Sale result
    */
   static async sellAllPendingItems() {
     return await dbUtils.executeTransaction(async (client) => {
-      // Get all items with status 'Pending Sale'.
-      // COALESCE so DM-linked items inherit the catalog value when the row's
-      // own value is null (otherwise we'd sell them for 0 gold).
-      const itemsResult = await client.query(`
-        SELECT l.*, COALESCE(l.value, i.value) AS value
-        FROM loot l
-        LEFT JOIN item i ON i.id = l.itemid
-        WHERE l.status = 'Pending Sale'
-      `);
-      const items = itemsResult.rows;
+      await Gold.lockLedger(client);
 
+      const items = await this._fetchLockedItems(client, "l.status = 'Pending Sale'", []);
       if (items.length === 0) {
         throw new Error('No items pending sale found');
       }
 
-      const { validItems, invalidItems } = this.filterValidSaleItems(items);
-
-      if (validItems.length === 0) {
-        throw new Error('No valid items to sell (all items are unidentified or have no value)');
-      }
-
-      const saleResult = await this.processSaleItems(client, validItems, 'Bulk sale of all pending items');
-      return this.createSaleResponse(saleResult.soldItems, saleResult.totalSold, saleResult.goldResult, [], invalidItems);
+      return this._sellItems(client, items, 'Bulk sale of all pending items');
     });
   }
 
@@ -164,28 +231,32 @@ class SalesService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
-      // Get the specified items, falling back to catalog value when the row's
-      // own value is null so DM-linked items still sell for the right price.
-      const itemsResult = await client.query(`
-        SELECT l.*, COALESCE(l.value, i.value) AS value
-        FROM loot l
-        LEFT JOIN item i ON i.id = l.itemid
-        WHERE l.id = ANY($1)
-      `, [itemIds]);
-      const items = itemsResult.rows;
+      await Gold.lockLedger(client);
+
+      // Rows are locked (FOR UPDATE) so a concurrent sale of the same ids waits,
+      // then sees status 'Sold' and is rejected below.
+      const items = await this._fetchLockedItems(client, 'l.id = ANY($1)', [itemIds]);
 
       if (items.length === 0) {
         throw new Error('No items found with the specified IDs');
       }
 
-      const { validItems, invalidItems } = this.filterValidSaleItems(items);
-
-      if (validItems.length === 0) {
-        throw new Error('No valid items to sell (all items are unidentified or have no value)');
+      // Only 'Pending Sale' items are sellable, same as the other sale paths.
+      const notSellable = items.filter(item => item.status !== 'Pending Sale');
+      const foundIds = new Set(items.map(item => Number(item.id)));
+      const missingIds = itemIds.filter(id => !foundIds.has(Number(id)));
+      if (notSellable.length > 0 || missingIds.length > 0) {
+        const parts = notSellable.map(item => `${item.name} (id ${item.id}, status ${item.status})`);
+        if (missingIds.length > 0) {
+          parts.push(`not found: ${missingIds.join(', ')}`);
+        }
+        throw controllerFactory.createValidationError(
+          `Cannot sell items that are not pending sale: ${parts.join('; ')}. No items were sold.`
+        );
       }
 
-      const saleResult = await this.processSaleItems(client, validItems, `Sale of selected items: ${validItems.map(i => i.name).join(', ')}`);
-      return this.createSaleResponse(saleResult.soldItems, saleResult.totalSold, saleResult.goldResult, [], invalidItems);
+      const validNames = this.filterValidSaleItems(items).validItems.map(i => i.name);
+      return this._sellItems(client, items, this.buildSelectedSaleNote(validNames));
     });
   }
 
@@ -200,42 +271,17 @@ class SalesService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
-      // Same COALESCE so DM-linked items inherit catalog value when needed.
-      let query, params;
+      await Gold.lockLedger(client);
 
-      if (keepIds.length > 0) {
-        query = `
-          SELECT l.*, COALESCE(l.value, i.value) AS value
-          FROM loot l
-          LEFT JOIN item i ON i.id = l.itemid
-          WHERE l.status = 'Pending Sale' AND l.id != ALL($1)
-        `;
-        params = [keepIds];
-      } else {
-        query = `
-          SELECT l.*, COALESCE(l.value, i.value) AS value
-          FROM loot l
-          LEFT JOIN item i ON i.id = l.itemid
-          WHERE l.status = 'Pending Sale'
-        `;
-        params = [];
-      }
-
-      const itemsResult = await client.query(query, params);
-      const items = itemsResult.rows;
-
+      // `!= ALL` over an empty array is true for every row, so no special case.
+      const items = await this._fetchLockedItems(
+        client, "l.status = 'Pending Sale' AND l.id != ALL($1::int[])", [keepIds]
+      );
       if (items.length === 0) {
         throw new Error('No items to sell found');
       }
 
-      const { validItems, invalidItems } = this.filterValidSaleItems(items);
-
-      if (validItems.length === 0) {
-        throw new Error('No valid items to sell (all items are unidentified or have no value)');
-      }
-
-      const saleResult = await this.processSaleItems(client, validItems, 'Sale of all items except specified keeps');
-      return this.createSaleResponse(saleResult.soldItems, saleResult.totalSold, saleResult.goldResult, keepIds, invalidItems);
+      return this._sellItems(client, items, 'Sale of all items except specified keeps', keepIds);
     });
   }
 
@@ -250,33 +296,32 @@ class SalesService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
-      // Get all pending sale items ordered by value (lowest first for better selection).
-      // COALESCE so DM-linked items with a null loot.value but a populated
-      // catalog item.value still qualify and sort correctly.
-      const itemsResult = await client.query(`
-        SELECT l.*, COALESCE(l.value, i.value) AS value
-        FROM loot l
-        LEFT JOIN item i ON i.id = l.itemid
-        WHERE l.status = 'Pending Sale'
-          AND l.unidentified != true
-          AND COALESCE(l.value, i.value) IS NOT NULL
-        ORDER BY COALESCE(l.value, i.value) ASC
-      `);
-      const items = itemsResult.rows;
+      await Gold.lockLedger(client);
 
+      // Lowest value first for better selection. IS NOT TRUE so a NULL
+      // unidentified flag counts as identified, like filterValidSaleItems.
+      const items = await this._fetchLockedItems(
+        client,
+        `l.status = 'Pending Sale'
+          AND l.unidentified IS NOT TRUE
+          AND COALESCE(l.value, i.value) IS NOT NULL`,
+        [],
+        'COALESCE(l.value, i.value) ASC, l.id'
+      );
       if (items.length === 0) {
         throw new Error('No valid items pending sale found');
       }
 
-      // Select items up to the maximum amount
+      // Select items up to the maximum amount; a stack counts at quantity x unit
+      // value, the same amount processSaleItems will credit.
       const selectedItems = [];
       let currentTotal = 0;
 
       for (const item of items) {
-        const itemSaleValue = calculateItemSaleValue(item);
-        if (currentTotal + itemSaleValue <= maxAmount) {
+        const lineValue = calculateItemSaleValue(item) * (parseInt(item.quantity) || 1);
+        if (currentTotal + lineValue <= maxAmount + 1e-9) {
           selectedItems.push(item);
-          currentTotal += itemSaleValue;
+          currentTotal += lineValue;
         }
       }
 
@@ -284,8 +329,7 @@ class SalesService {
         throw new Error('No items found within the specified amount limit');
       }
 
-      const saleResult = await this.processSaleItems(client, selectedItems, `Sale up to ${maxAmount} gold`);
-      return this.createSaleResponse(saleResult.soldItems, saleResult.totalSold, saleResult.goldResult);
+      return this._sellItems(client, selectedItems, `Sale up to ${maxAmount} gold`);
     });
   }
 
@@ -313,66 +357,6 @@ class SalesService {
       ORDER BY l.name
     `);
     return result.rows;
-  }
-
-  /**
-   * Get sale history for reporting
-   * @param {Object} options - Query options
-   * @param {number} options.limit - Limit number of results
-   * @param {number} options.offset - Offset for pagination
-   * @param {Date} options.startDate - Start date filter
-   * @param {Date} options.endDate - End date filter
-   * @returns {Promise<Object>} - Sale history with pagination
-   */
-  static async getSaleHistory(options = {}) {
-    const { limit = 50, offset = 0, startDate, endDate } = options;
-    
-    let whereClause = '';
-    const params = [limit, offset];
-    let paramIndex = 3;
-
-    if (startDate || endDate) {
-      const conditions = [];
-      if (startDate) {
-        conditions.push(`s.soldon >= $${paramIndex}`);
-        params.push(startDate);
-        paramIndex++;
-      }
-      if (endDate) {
-        conditions.push(`s.soldon <= $${paramIndex}`);
-        params.push(endDate);
-        paramIndex++;
-      }
-      whereClause = `WHERE ${conditions.join(' AND ')}`;
-    }
-
-    const query = `
-      SELECT s.*, l.name, l.value as original_value
-      FROM sold s
-      JOIN loot l ON s.lootid = l.id
-      ${whereClause}
-      ORDER BY s.soldon DESC
-      LIMIT $1 OFFSET $2
-    `;
-
-    const countQuery = `
-      SELECT COUNT(*) 
-      FROM sold s
-      JOIN loot l ON s.lootid = l.id
-      ${whereClause}
-    `;
-
-    const [historyResult, countResult] = await Promise.all([
-      dbUtils.executeQuery(query, params),
-      dbUtils.executeQuery(countQuery, startDate || endDate ? params.slice(2) : [])
-    ]);
-
-    return {
-      sales: historyResult.rows,
-      total: parseInt(countResult.rows[0].count),
-      limit,
-      offset
-    };
   }
 }
 

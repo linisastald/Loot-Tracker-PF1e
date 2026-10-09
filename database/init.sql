@@ -11,14 +11,28 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL,
     google_id VARCHAR(255),
     discord_id VARCHAR(20),
-    is_superadmin BOOLEAN NOT NULL DEFAULT FALSE
+    is_superadmin BOOLEAN NOT NULL DEFAULT FALSE,
+    password_changed_at TIMESTAMPTZ
 );
+COMMENT ON COLUMN users.password_changed_at IS 'When the password was last changed or reset (UTC). JWTs issued before this moment are rejected. NULL = never changed since this column was added.';
 
 -- Create unique constraints for users
 CREATE UNIQUE INDEX users_email_idx ON users(email);
 CREATE UNIQUE INDEX users_google_id_key ON users(google_id);
 CREATE UNIQUE INDEX users_discord_id_key ON users(discord_id);
-CREATE INDEX idx_users_google_id ON users(google_id);
+
+-- Password reset tokens (global, account level: no campaign_id, no RLS).
+-- Same shape as migration 076 and production.
+CREATE TABLE password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+COMMENT ON TABLE password_reset_tokens IS 'Single-use password reset tokens (SHA-256 hex digest of the emailed token). Global: not campaign-scoped.';
 
 -- Multi-campaign support: campaigns, memberships, and per-campaign settings.
 -- Campaign-specific tables below carry campaign_id with a session-GUC default
@@ -53,8 +67,9 @@ CREATE TABLE user_campaign (
 
 CREATE INDEX idx_user_campaign_campaign_id ON user_campaign(campaign_id);
 
--- Per-campaign settings. Intentionally empty for now: rows migrate from the
--- global settings table in a later phase of the multi-campaign refactor.
+-- Per-campaign settings (discord_channel_id, campaign_role_id, quantity defaults, ...),
+-- read and written by backend/src/utils/campaignSettings.js and models/Campaign.js.
+-- Instance-wide settings stay in the global settings table.
 CREATE TABLE campaign_settings (
     id SERIAL PRIMARY KEY,
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -89,10 +104,59 @@ CREATE TABLE ships (
     damage INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
+    -- Extended columns used by backend/src/models/Ship.js. Also added idempotently
+    -- by migration 064 for databases created before they were in init.sql
+    -- (origin: the pre-v0.8 ship migrations, since removed).
+    ship_type VARCHAR(50),
+    size VARCHAR(20) DEFAULT 'Colossal',
+    cost INTEGER DEFAULT 0,
+    max_speed INTEGER DEFAULT 30,
+    acceleration INTEGER DEFAULT 15,
+    propulsion VARCHAR(100),
+    min_crew INTEGER DEFAULT 1,
+    max_crew INTEGER DEFAULT 10,
+    cargo_capacity INTEGER DEFAULT 10000,
+    max_passengers INTEGER DEFAULT 10,
+    decks INTEGER DEFAULT 1,
+    ramming_damage VARCHAR(20) DEFAULT '1d8',
+    base_ac INTEGER DEFAULT 10,
+    touch_ac INTEGER DEFAULT 10,
+    hardness INTEGER DEFAULT 0,
+    max_hp INTEGER DEFAULT 100,
+    current_hp INTEGER DEFAULT 100,
+    cmb INTEGER DEFAULT 0,
+    cmd INTEGER DEFAULT 10,
+    saves INTEGER DEFAULT 0,
+    initiative INTEGER DEFAULT 0,
+    legacy_damage INTEGER,
+    plunder INTEGER DEFAULT 0,
+    infamy INTEGER DEFAULT 0,
+    disrepute INTEGER DEFAULT 0,
+    sails_oars VARCHAR(100),
+    sailing_check_bonus INTEGER DEFAULT 0,
+    weapons JSONB DEFAULT '[]'::jsonb,
+    officers JSONB DEFAULT '[]'::jsonb,
+    improvements JSONB DEFAULT '[]'::jsonb,
+    cargo_manifest JSONB DEFAULT '{"items": [], "passengers": [], "impositions": []}'::jsonb,
+    ship_notes TEXT,
+    captain_name VARCHAR(255),
+    flag_description TEXT,
+    status VARCHAR(20) DEFAULT 'Active',
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
+    CONSTRAINT ships_hp_check CHECK (current_hp >= 0 AND current_hp <= max_hp),
+    CONSTRAINT ships_ac_check CHECK (base_ac >= 0 AND base_ac <= 50 AND touch_ac >= 0 AND touch_ac <= 50),
+    CONSTRAINT ships_crew_check CHECK (min_crew >= 0 AND max_crew >= min_crew),
+    CONSTRAINT ships_capacity_check CHECK (cargo_capacity >= 0 AND max_passengers >= 0),
+    CONSTRAINT ships_campaign_stats_check CHECK (plunder >= 0 AND infamy >= 0 AND disrepute >= 0),
+    CONSTRAINT ships_status_check CHECK (status IN ('PC Active', 'Active', 'Docked', 'Lost', 'Sunk'))
 );
 
 CREATE INDEX idx_ships_campaign_id ON ships(campaign_id);
+CREATE INDEX idx_ships_status ON ships(status);
+CREATE INDEX idx_ships_weapons ON ships USING GIN (weapons);
+CREATE INDEX idx_ships_officers ON ships USING GIN (officers);
+CREATE INDEX idx_ships_improvements ON ships USING GIN (improvements);
+CREATE INDEX idx_ships_cargo ON ships USING GIN (cargo_manifest);
 
 CREATE TABLE outposts (
     id SERIAL PRIMARY KEY,
@@ -116,6 +180,7 @@ CREATE TABLE crew (
     location_id INTEGER, -- references ships.id or outposts.id
     ship_position VARCHAR(100), -- captain, first mate, etc (null if at outpost)
     is_alive BOOLEAN DEFAULT true,
+    hire_date DATE,
     death_date DATE,
     departure_date DATE,
     departure_reason TEXT,
@@ -157,6 +222,7 @@ CREATE TABLE mod (
     valuecalc VARCHAR(255),
     target VARCHAR(31),
     subtarget VARCHAR(31),
+    casterlevel INTEGER,
     campaign_id INTEGER REFERENCES campaigns(id)
 );
 
@@ -182,11 +248,30 @@ CREATE TABLE loot (
     notes VARCHAR(511),
     spellcraft_dc INTEGER,
     dm_notes TEXT,
+    cursed BOOLEAN DEFAULT false,
     campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_loot_campaign_id ON loot(campaign_id);
 CREATE INDEX idx_loot_status_character ON loot(status, whohas);
+
+-- lastupdate is set by the column default on insert and refreshed by this trigger
+-- whenever a row actually changes (migration 081). An explicit value in the UPDATE wins.
+CREATE OR REPLACE FUNCTION set_loot_lastupdate()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.lastupdate IS NOT DISTINCT FROM OLD.lastupdate THEN
+        NEW.lastupdate := CURRENT_TIMESTAMP;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER loot_set_lastupdate
+    BEFORE UPDATE ON loot
+    FOR EACH ROW
+    WHEN (OLD.* IS DISTINCT FROM NEW.*)
+    EXECUTE FUNCTION set_loot_lastupdate();
 
 CREATE TABLE appraisal (
     id SERIAL PRIMARY KEY,
@@ -200,6 +285,8 @@ CREATE TABLE appraisal (
 );
 
 CREATE INDEX idx_appraisal_campaign_id ON appraisal(campaign_id);
+-- Covers the appraisal.characterid foreign key (migration 052 drops the single-column index as its prefix).
+CREATE INDEX idx_appraisal_character_time ON appraisal(characterid, appraised_on);
 
 CREATE TABLE gold (
     id SERIAL PRIMARY KEY,
@@ -317,8 +404,6 @@ CREATE TABLE fame (
 
 -- Create fame indexes
 CREATE INDEX idx_fame_campaign_id ON fame(campaign_id);
-CREATE INDEX fame_character_id_idx ON fame(character_id);
-CREATE INDEX idx_fame_character_id ON fame(character_id);
 
 CREATE TABLE fame_history (
     id SERIAL PRIMARY KEY,
@@ -333,7 +418,6 @@ CREATE TABLE fame_history (
 
 -- Create fame_history indexes
 CREATE INDEX idx_fame_history_campaign_id ON fame_history(campaign_id);
-CREATE INDEX fame_history_character_id_idx ON fame_history(character_id);
 CREATE INDEX idx_fame_history_character_id ON fame_history(character_id);
 CREATE INDEX idx_fame_history_created_at ON fame_history(created_at);
 
@@ -350,7 +434,6 @@ CREATE TABLE invites (
 );
 
 -- Create invites indexes
-CREATE INDEX idx_invites_code ON invites(code);
 CREATE INDEX idx_invites_campaign_id ON invites(campaign_id);
 
 CREATE TABLE min_caster_levels (
@@ -364,6 +447,36 @@ CREATE TABLE min_costs (
     min_cost NUMERIC,
     PRIMARY KEY (item_type, spell_level)
 );
+
+-- Base shape of the session tables. Migrations 014/015 (and later) ALTER these
+-- without IF EXISTS, so a fresh install needs them here; they add the columns,
+-- campaign_id and RLS on top.
+CREATE TABLE game_sessions (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    discord_message_id VARCHAR(255),
+    discord_channel_id VARCHAR(255)
+);
+
+CREATE TABLE session_attendance (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    character_id INTEGER REFERENCES characters(id),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('accepted', 'declined', 'tentative')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (session_id, user_id)
+);
+
+CREATE INDEX idx_session_attendance_session_id ON session_attendance(session_id);
+CREATE INDEX idx_session_attendance_user_id ON session_attendance(user_id);
+CREATE INDEX idx_session_attendance_character_id ON session_attendance(character_id);
 
 CREATE TABLE session_messages (
     message_id VARCHAR(20) PRIMARY KEY,
@@ -395,8 +508,6 @@ CREATE TABLE golarion_calendar_notes (
     campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     CONSTRAINT golarion_calendar_notes_campaign_year_month_day_key UNIQUE (campaign_id, year, month, day)
 );
-
-CREATE INDEX idx_golarion_calendar_notes_campaign_id ON golarion_calendar_notes(campaign_id);
 
 -- Rich calendar notes: multi-day (spanning) notes, multiple notes per day,
 -- DM-only visibility, and authorship. A note spans start..end inclusive;
@@ -490,7 +601,6 @@ CREATE TABLE golarion_weather (
 -- leading column; see migration 052)
 CREATE INDEX idx_weather_date_region ON golarion_weather(year, month, day, region);
 
--- One infamy row per campaign (UNIQUE on campaign_id); legacy id PK retained.
 -- One infamy row per campaign. PK is campaign_id; the legacy id column is
 -- fixed at 1 (infamyController addresses the per-campaign singleton as
 -- WHERE id = 1 under RLS). A global PK on id would block every campaign
@@ -528,8 +638,6 @@ CREATE TABLE favored_ports (
     CONSTRAINT favored_ports_campaign_port_name_key UNIQUE (campaign_id, port_name)
 );
 
-CREATE INDEX idx_favored_ports_campaign_id ON favored_ports(campaign_id);
-
 CREATE TABLE port_visits (
     id SERIAL PRIMARY KEY,
     port_name VARCHAR(255) NOT NULL,
@@ -565,17 +673,19 @@ CREATE TABLE imposition_uses (
 
 CREATE INDEX idx_imposition_uses_campaign_id ON imposition_uses(campaign_id);
 
--- Insert initial data for settings
-INSERT INTO settings (name, value, value_type, description) VALUES ('registrations_open', '1', 'boolean', 'DEPRECATED (superseded by registration_mode): whether new user registrations are allowed (1=open, 0=closed)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('registration_mode', 'open', 'string', 'How new accounts may register: open (anyone), invite-only (a valid invite code is required), or closed (no new registrations)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('campaign_name', 'PF1e Campaign', 'string', 'Name of the current campaign/group');
-INSERT INTO settings (name, value, value_type, description) VALUES ('discord_integration_enabled', '0', 'boolean', 'Whether Discord integration is enabled (1=enabled, 0=disabled)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('infamy_system_enabled', '0', 'boolean', 'Whether infamy system is enabled (1=enabled, 0=disabled)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('auto_appraisal_enabled', '0', 'boolean', 'Whether automatic appraisal is enabled (1=enabled, 0=disabled)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('theme', 'dark', 'string', 'Default UI theme (dark/light)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('weather_forecast_days', '7', 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather (DM-visible forecast; players see only up to the current date)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_track', 'medium', 'string', 'Treasure progression track used by the loot generator (slow, medium, or fast)');
-INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_modifier', '1', 'string', 'Overall multiplier applied to generated treasure amounts (0.5 low fantasy, 1 standard, 2 high fantasy)');
+-- Insert initial data for settings. registration_mode stays 'open' on a fresh install on
+-- purpose: the first account (which becomes the DM) registers without an invite, and
+-- invite-only mode requires one. Set it to invite-only or closed after creating that account.
+-- (The deprecated registrations_open and campaign_name rows are no longer seeded.)
+INSERT INTO settings (name, value, value_type, description) VALUES
+    ('registration_mode', 'open', 'string', 'How new accounts may register: open (anyone), invite-only (a valid invite code is required), or closed (no new registrations)'),
+    ('discord_integration_enabled', '0', 'boolean', 'Whether Discord integration is enabled (1=enabled, 0=disabled)'),
+    ('infamy_system_enabled', '0', 'boolean', 'Whether infamy system is enabled (1=enabled, 0=disabled)'),
+    ('auto_appraisal_enabled', '0', 'boolean', 'Whether automatic appraisal is enabled (1=enabled, 0=disabled)'),
+    ('theme', 'dark', 'string', 'Default UI theme (dark/light)'),
+    ('weather_forecast_days', '7', 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather (DM-visible forecast; players see only up to the current date)'),
+    ('treasure_track', 'medium', 'string', 'Treasure progression track used by the loot generator (slow, medium, or fast)'),
+    ('treasure_modifier', '1', 'string', 'Overall multiplier applied to generated treasure amounts (0.5 low fantasy, 1 standard, 2 high fantasy)');
 
 -- ============================================================================
 -- Row-Level Security (multi-campaign refactor Phase 2a, mirrors migration
@@ -591,277 +701,48 @@ INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_mo
 -- on 'all'). Default policy type FOR ALL covers all DML.
 -- ============================================================================
 
-ALTER TABLE characters ENABLE ROW LEVEL SECURITY;
-CREATE POLICY characters_tenant ON characters
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE ships ENABLE ROW LEVEL SECURITY;
-CREATE POLICY ships_tenant ON ships
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE outposts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY outposts_tenant ON outposts
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE crew ENABLE ROW LEVEL SECURITY;
-CREATE POLICY crew_tenant ON crew
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE loot ENABLE ROW LEVEL SECURITY;
-CREATE POLICY loot_tenant ON loot
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE appraisal ENABLE ROW LEVEL SECURITY;
-CREATE POLICY appraisal_tenant ON appraisal
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE gold ENABLE ROW LEVEL SECURITY;
-CREATE POLICY gold_tenant ON gold
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE sold ENABLE ROW LEVEL SECURITY;
-CREATE POLICY sold_tenant ON sold
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE consumableuse ENABLE ROW LEVEL SECURITY;
-CREATE POLICY consumableuse_tenant ON consumableuse
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE identify ENABLE ROW LEVEL SECURITY;
-CREATE POLICY identify_tenant ON identify
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE spellbook ENABLE ROW LEVEL SECURITY;
-CREATE POLICY spellbook_tenant ON spellbook
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE spellbook_spell ENABLE ROW LEVEL SECURITY;
-CREATE POLICY spellbook_spell_tenant ON spellbook_spell
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE fame ENABLE ROW LEVEL SECURITY;
-CREATE POLICY fame_tenant ON fame
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE fame_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY fame_history_tenant ON fame_history
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE invites ENABLE ROW LEVEL SECURITY;
-CREATE POLICY invites_tenant ON invites
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE session_messages ENABLE ROW LEVEL SECURITY;
-CREATE POLICY session_messages_tenant ON session_messages
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE golarion_current_date ENABLE ROW LEVEL SECURITY;
-CREATE POLICY golarion_current_date_tenant ON golarion_current_date
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE golarion_calendar_notes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY golarion_calendar_notes_tenant ON golarion_calendar_notes
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE golarion_notes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY golarion_notes_tenant ON golarion_notes
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE golarion_weather ENABLE ROW LEVEL SECURITY;
-CREATE POLICY golarion_weather_tenant ON golarion_weather
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE ship_infamy ENABLE ROW LEVEL SECURITY;
-CREATE POLICY ship_infamy_tenant ON ship_infamy
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE infamy_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY infamy_history_tenant ON infamy_history
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE favored_ports ENABLE ROW LEVEL SECURITY;
-CREATE POLICY favored_ports_tenant ON favored_ports
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE port_visits ENABLE ROW LEVEL SECURITY;
-CREATE POLICY port_visits_tenant ON port_visits
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
-
-ALTER TABLE imposition_uses ENABLE ROW LEVEL SECURITY;
-CREATE POLICY imposition_uses_tenant ON imposition_uses
-    USING (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    )
-    WITH CHECK (
-        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
-        OR current_setting('app.current_campaign', true) = 'all'
-    );
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY[
+        'characters',
+        'ships',
+        'outposts',
+        'crew',
+        'loot',
+        'appraisal',
+        'gold',
+        'sold',
+        'consumableuse',
+        'identify',
+        'spellbook',
+        'spellbook_spell',
+        'fame',
+        'fame_history',
+        'invites',
+        'session_messages',
+        'golarion_current_date',
+        'golarion_calendar_notes',
+        'golarion_notes',
+        'golarion_weather',
+        'ship_infamy',
+        'infamy_history',
+        'favored_ports',
+        'port_visits',
+        'imposition_uses'
+    ] LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format(
+            $f$CREATE POLICY %I_tenant ON %I
+                USING (
+                    campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+                    OR current_setting('app.current_campaign', true) = 'all'
+                )
+                WITH CHECK (
+                    campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+                    OR current_setting('app.current_campaign', true) = 'all'
+                )$f$, t, t);
+    END LOOP;
+END
+$$;

@@ -1,10 +1,14 @@
 // src/models/SpellcastingService.js
 const dbUtils = require('../utils/dbUtils');
+const { rollD100 } = require('../utils/dice');
 
 /**
  * Calculate spellcasting service cost
- * Formula: spell_level × caster_level × 10 gp
- * Minimum: 10 gp for 0-level spells
+ * Formula: spell_level × caster_level × 10 gp (Core Rulebook, Table: Goods and
+ * Services, "Spellcasting"; 0-level spells use a spell level of 1/2, i.e.
+ * caster_level × 5 gp). Costly material components and focuses are added by the
+ * caller, not here.
+ * House rule: a 0-level service never costs less than 10 gp.
  *
  * @param {number} spellLevel - Level of the spell (0-9)
  * @param {number} casterLevel - Caster level required
@@ -18,27 +22,39 @@ const calculateCost = (spellLevel, casterLevel) => {
 };
 
 /**
- * Check if a spell is available in a city of given size
- * Special cases:
- * - Villages (max_spell_level = 0): No guaranteed spellcasters, but 5% chance for 1st-level spell
- * - Metropolis + 9th-level: Only 1% chance of finding a capable caster
+ * Roll d100 against a percentage threshold and build the availability result.
+ * @param {number} threshold - Percent chance (roll <= threshold succeeds)
+ * @param {string} foundReason - reason code when the roll succeeds
+ * @param {string} missReason - reason code when the roll fails
+ * @return {Object} { available, reason, roll, threshold }
+ */
+const rollChance = (threshold, foundReason, missReason) => {
+  const roll = rollD100();
+  const available = roll <= threshold;
+  return { available, reason: available ? foundReason : missReason, roll, threshold };
+};
+
+/**
+ * Check if a spell is available in a city of given size.
+ *
+ * The settlement max-spell-level table (migration 021: 0/0/0/1/2/4/6/9) and the
+ * two chance rules below are HOUSE RULES, deliberately different from the
+ * Game Mastery Guide settlement table and the Core Rulebook "Spellcasting and
+ * Services" guidance (coreRulebook/equipment.html). The owner has decided to keep
+ * them. Special cases:
+ * - Settlements with max_spell_level = 0 (thorp/hamlet/village): no guaranteed
+ *   spellcasters, but a 5% chance of a wandering caster for a 1st-level spell
+ * - Level 9 spells: only a 1% chance of finding a capable caster, even where
+ *   the settlement could support it (RAW: "Even a metropolis isn't guaranteed
+ *   to have a local spellcaster able to cast 9th-level spells")
  * @param {number} spellLevel - Spell level
  * @param {number} cityMaxSpellLevel - City's max spell level
  * @return {Object} Availability result with available flag and optional roll info
  */
 const isSpellAvailable = (spellLevel, cityMaxSpellLevel) => {
-  // Villages (max_spell_level = 0) - special handling
   if (cityMaxSpellLevel === 0) {
-    // 1st-level spells have a 5% chance (wandering spellcaster)
     if (spellLevel === 1) {
-      const roll = Math.floor(Math.random() * 100) + 1; // 1d100
-      const available = roll <= 5; // 5% chance
-      return {
-        available,
-        reason: available ? 'village_spellcaster_found' : 'village_no_spellcaster',
-        roll,
-        threshold: 5
-      };
+      return rollChance(5, 'village_spellcaster_found', 'village_no_spellcaster');
     }
     // No spellcasters for any other spell level
     return { available: false, reason: 'no_spellcasters' };
@@ -49,16 +65,8 @@ const isSpellAvailable = (spellLevel, cityMaxSpellLevel) => {
     return { available: false, reason: 'exceeds_max_level' };
   }
 
-  // Level 9 spells have only a 1% chance of being available
   if (spellLevel === 9) {
-    const roll = Math.floor(Math.random() * 100) + 1; // 1d100
-    const available = roll <= 1; // 1% chance
-    return {
-      available,
-      reason: available ? 'level_9_found' : 'level_9_not_found',
-      roll,
-      threshold: 1
-    };
+    return rollChance(1, 'level_9_found', 'level_9_not_found');
   }
 
   // All other spells are available if within city's max level
@@ -103,7 +111,7 @@ const checkCasterLevelAvailability = (requestedCL, minCL, settlementCasterLevel)
   }
 
   const threshold = Math.max(1, 100 - (requestedCL - ceiling) * CASTER_LEVEL_FIND_PENALTY_PER_CL);
-  const roll = Math.floor(Math.random() * 100) + 1; // 1d100
+  const roll = rollD100();
   const available = roll <= threshold;
   return {
     available,
@@ -149,7 +157,7 @@ exports.create = async (serviceData) => {
 
 /**
  * Get all spellcasting services with details
- * @param {Object} options - Filter options (city_id, character_id)
+ * @param {Object} options - Filter options (city_id, character_id, dateRange {start, end}, limit)
  * @return {Promise<Array>} Array of service records
  */
 exports.getAll = async (options = {}) => {
@@ -179,10 +187,13 @@ exports.getAll = async (options = {}) => {
     values.push(options.character_id);
   }
 
-  if (options.date) {
-    // Filter by date (YYYY-MM-DD format)
-    conditions.push(`DATE(s.request_datetime) = $${paramIndex++}`);
-    values.push(options.date);
+  if (options.dateRange) {
+    // Half-open [start, end) UTC range for one calendar day in the campaign's timezone
+    // (see timezoneUtils.getUtcRangeForLocalDate), so "today" is the campaign's today.
+    conditions.push(`s.request_datetime >= $${paramIndex++}::timestamptz`);
+    values.push(options.dateRange.start);
+    conditions.push(`s.request_datetime < $${paramIndex++}::timestamptz`);
+    values.push(options.dateRange.end);
   }
 
   if (conditions.length > 0) {
@@ -201,46 +212,11 @@ exports.getAll = async (options = {}) => {
 };
 
 /**
- * Get service by ID
- * @param {number} id
- * @return {Promise<Object|null>} Service record or null
- */
-exports.findById = async (id) => {
-  const query = `
-    SELECT
-      s.*,
-      c.name as city_name,
-      c.size as city_size,
-      c.max_spell_level as city_max_spell_level,
-      ch.name as character_name
-    FROM spellcasting_service s
-    JOIN city c ON s.city_id = c.id
-    LEFT JOIN characters ch ON s.character_id = ch.id
-    WHERE s.id = $1
-  `;
-
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
-};
-
-/**
- * Delete a service record
- * @param {number} id
- * @return {Promise<boolean>} Success status
- */
-exports.delete = async (id) => {
-  const query = 'DELETE FROM spellcasting_service WHERE id = $1';
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rowCount > 0;
-};
-
-/**
  * Export helper functions
  */
 exports.calculateCost = calculateCost;
 exports.isSpellAvailable = isSpellAvailable;
 exports.getMinCasterLevel = getMinCasterLevel;
 exports.checkCasterLevelAvailability = checkCasterLevelAvailability;
-exports.CASTER_LEVEL_FIND_PENALTY_PER_CL = CASTER_LEVEL_FIND_PENALTY_PER_CL;
 
 module.exports = exports;

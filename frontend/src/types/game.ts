@@ -2,34 +2,18 @@
  * Core game entity type definitions for Pathfinder 1e Loot Tracker
  */
 
-// Currency and value types
-export interface CurrencyValue {
-  platinum?: number;
-  gold?: number;
-  silver?: number;
-  copper?: number;
-}
-
-export interface ItemValue {
-  value: number;
-  currency?: 'pp' | 'gp' | 'sp' | 'cp';
-}
+import type { SxProps, Theme } from '@mui/material/styles';
 
 // Item and equipment types
-export type ItemType = 
-  | 'weapon' 
-  | 'armor' 
-  | 'shield' 
-  | 'item' 
-  | 'trade good' 
-  | 'consumable'
-  | 'wondrous item'
-  | 'ring'
-  | 'rod'
-  | 'staff'
-  | 'wand'
-  | 'scroll'
-  | 'potion';
+// Owner decision (2026-10-06): exactly six canonical item types (ITEM_TYPES in
+// utils/itemOptions.ts). Anything else (consumable, shield, wand, ...) is a subtype.
+export type ItemType =
+  | 'weapon'
+  | 'armor'
+  | 'magic'
+  | 'gear'
+  | 'trade good'
+  | 'other';
 
 export type ItemSubtype = string; // Flexible for various subtypes
 
@@ -67,14 +51,22 @@ export interface BaseItem {
 }
 
 // Loot instance (actual items found/owned)
-export type LootStatus = 
-  | null // For unprocessed items
-  | 'Kept Self'
+// Mirrors ValidationService.LOOT_STATUSES in the backend (see also LOOT_STATUSES in
+// utils/itemOptions.ts); null is a row that has not been processed yet.
+export type LootStatus =
+  | null
+  | 'Unprocessed'
   | 'Kept Party'
+  | 'Kept Character'
+  | 'Pending Sale'
   | 'Sold'
-  | 'Trash'
   | 'Given Away'
-  | 'Pending Sale'; // Add this status that appears in the actual data
+  | 'Trashed';
+
+// Which list a Loot Management page shows. These are page keys read by
+// useLootManagement, not loot statuses: 'Kept Self' is the Kept Character page and
+// 'Trash' the Given Away / Trashed page.
+export type LootPageKey = null | 'Kept Party' | 'Kept Self' | 'Trash';
 
 export interface LootItem {
   id: number;
@@ -135,33 +127,6 @@ export interface LootItem {
   average_appraisal?: number;
 }
 
-// Character types
-export interface CharacterStats {
-  strength?: number;
-  dexterity?: number;
-  constitution?: number;
-  intelligence?: number;
-  wisdom?: number;
-  charisma?: number;
-}
-
-export interface Character {
-  id: number;
-  name: string;
-  player_name?: string;
-  class?: string;
-  level?: number;
-  stats?: CharacterStats;
-  campaign_id: number;
-  active: boolean;
-  created_at?: string;
-  updated_at?: string;
-  
-  // Computed fields
-  inventory?: LootItem[];
-  total_wealth?: number;
-}
-
 // Loot management configuration types
 export interface LootTableColumnConfig {
   select: boolean;
@@ -193,104 +158,16 @@ export interface LootManagementAction {
   color: 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success';
   variant: 'contained' | 'outlined' | 'text';
   actionKey: LootActionKey;
-  showCondition?: boolean;
 }
 
 export interface LootManagementConfig {
-  status?: LootStatus | null;
+  status?: LootPageKey;
   showColumns: LootTableColumnConfig;
   showFilters: LootTableFilterConfig;
   actions: LootManagementAction[];
-  hasFilters?: boolean;
   containerProps?: {
-    sx?: any;
+    sx?: SxProps<Theme>;
   };
-}
-
-// Campaign and session types
-export interface Campaign {
-  id: number;
-  name: string;
-  description?: string;
-  gm_user_id: number;
-  active: boolean;
-  created_at: string;
-  updated_at?: string;
-  
-  // Related data
-  characters?: Character[];
-  sessions?: Session[];
-}
-
-export interface Session {
-  id: number;
-  name: string;
-  description?: string;
-  session_date: string;
-  campaign_id: number;
-  created_at?: string;
-  updated_at?: string;
-  
-  // Related data
-  loot_items?: LootItem[];
-}
-
-// User and authentication types
-export interface User {
-  id: number;
-  username: string;
-  email?: string;
-  role: 'admin' | 'gm' | 'player';
-  active: boolean;
-  created_at?: string;
-  
-  // Permissions
-  campaigns?: Campaign[];
-  characters?: Character[];
-}
-
-// Gold/currency tracking
-export interface GoldEntry {
-  id: number;
-  amount: number;
-  currency: 'pp' | 'gp' | 'sp' | 'cp';
-  description: string;
-  entry_type: 'income' | 'expense' | 'transfer';
-  character_id?: number;
-  session_id?: number;
-  campaign_id: number;
-  created_at: string;
-  
-  // Joined data
-  character_name?: string;
-  session_name?: string;
-}
-
-// Ship and crew types (for nautical campaigns)
-export type ShipStatus = 'PC Active' | 'Active' | 'Docked' | 'Lost' | 'Sunk';
-
-export interface Ship {
-  id: number;
-  name: string;
-  type: string;
-  status: ShipStatus;
-  campaign_id: number;
-  description?: string;
-  stats?: Record<string, any>; // Flexible for ship stats
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface CrewMember {
-  id: number;
-  name: string;
-  position: string;
-  ship_id?: number;
-  campaign_id: number;
-  active: boolean;
-  stats?: Record<string, any>; // Flexible for crew stats
-  created_at?: string;
-  updated_at?: string;
 }
 
 // API response types
@@ -299,54 +176,4 @@ export interface ApiResponse<T = any> {
   message: string;
   data: T;
   error?: string;
-}
-
-export interface PaginatedResponse<T = any> extends ApiResponse<T[]> {
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-// Filter and search types
-export interface LootFilters {
-  search?: string;
-  character?: string | number;
-  characterId?: number;
-  itemType?: ItemType;
-  status?: LootStatus;
-  session?: string | number;
-  sessionId?: number;
-  identified?: boolean;
-  minValue?: number;
-  maxValue?: number;
-  campaign?: string | number;
-  campaignId?: number;
-}
-
-export interface CharacterFilters {
-  search?: string;
-  campaign?: string | number;
-  campaignId?: number;
-  active?: boolean;
-  class?: string;
-  level?: number;
-}
-
-// Component prop types
-export interface TableColumn<T = any> {
-  id: keyof T | string;
-  label: string;
-  minWidth?: number;
-  align?: 'left' | 'center' | 'right';
-  format?: (value: any) => string | React.ReactNode;
-  sortable?: boolean;
-}
-
-export interface SelectOption {
-  value: string | number;
-  label: string;
-  disabled?: boolean;
 }

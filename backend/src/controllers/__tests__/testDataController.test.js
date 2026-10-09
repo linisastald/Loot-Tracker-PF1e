@@ -2,10 +2,12 @@
  * Unit tests for testDataController
  *
  * Covers:
- *  - Environment guard: only `test.kempsonandko.com` in ALLOWED_ORIGINS permits generation
+ *  - Environment guard: only an ALLOWED_ORIGINS entry whose host is exactly `test.kempsonandko.com` permits generation
  *  - DM-only role guard: non-DM callers are rejected
- *  - Happy path: DM on test env receives a populated `summary` payload
- *  - Idempotency: re-running uses guarded INSERTs (NOT EXISTS) and does not throw on duplicates
+ *  - Happy path: a populated `summary`, the issued INSERTs per target, correct pairing of users and characters
+ *  - Accounts: role 'Player' (the only value login accepts), campaign membership in the CURRENT campaign,
+ *    a random password per run that is hashed, returned once and never logged
+ *  - Idempotency: guarded INSERTs, and loot/gold are not duplicated on a second run
  *  - Error path: a DB failure is caught by controllerFactory.createHandler and returns 500
  *  - Logging: logger.info is called on initiation and on success
  */
@@ -29,7 +31,7 @@ jest.mock('../../services/validationService', () => ({
 }));
 
 jest.mock('bcryptjs', () => ({
-  hash: jest.fn().mockResolvedValue('hashed-testpass123'),
+  hash: jest.fn(),
 }));
 
 const dbUtils = require('../../utils/dbUtils');
@@ -60,120 +62,74 @@ function createMockReq(overrides = {}) {
     params: {},
     query: {},
     user: { id: 1, role: 'DM' },
+    campaignId: 1,
     ...overrides,
   };
 }
 
+const USERNAMES = ['testplayer1', 'testplayer2', 'testplayer3', 'testplayer4'];
+const CHARACTER_NAMES = ['Captain Blackwater', 'Quartermaster Swift', 'Navigator Reef', 'Gunner Ironbeard'];
+const SHIP_NAMES = ['The Salty Revenge', 'Crimson Wave', 'Storm Dancer', 'Dead Mans Folly', "The Kraken's Bane"];
+const OUTPOST_NAMES = ['Rickety Squibs', 'Pirates Den', 'Smugglers Cove', 'Port Royal Trading Post'];
+
 /**
- * Build a stateful mock client whose `query()` answers the specific shapes
- * `generateTestData` expects in order:
- *   1. INSERT users ... RETURNING id, username
- *   2. SELECT id FROM users WHERE username IN (...)  -> 4 user rows
- *   3. INSERT characters ...                          -> rowCount only
- *   4. INSERT ships ...
- *   5. INSERT outposts ...
- *   6. SELECT id FROM ships ORDER BY id LIMIT 5       -> 5 ship rows
- *   7. SELECT id FROM outposts ORDER BY id LIMIT 4    -> 4 outpost rows
- *   8. 13x INSERT crew ...
- *   9. SELECT id FROM characters WHERE name IN (...)  -> 4 character rows
- *  10. 20x INSERT loot ...
- *  11. 14x INSERT gold ...
- *  12. 7x SELECT COUNT(*) ...                          -> count rows for summary
- *
- * Returns the client plus a counts-config object for tweaking summary numbers
- * per test.
+ * Build a mock transaction client that answers the lookups generateTestData
+ * makes and records every statement. Options tweak what "already exists".
  */
 function makeTransactionClient(opts = {}) {
   const {
-    insertedUserIds = [101, 102, 103, 104],
-    existingUserIds = [101, 102, 103, 104],
+    userIds = [101, 102, 103, 104],
+    characterIds = [11, 12, 13, 14],
     shipIds = [1, 2, 3, 4, 5],
     outpostIds = [1, 2, 3, 4],
-    characterIds = [11, 12, 13, 14],
-    counts = {
-      users: 4,
-      characters: 4,
-      ships: 5,
-      outposts: 4,
-      crew: 13,
-      loot: 20,
-      gold: 14,
-    },
+    lootAlreadySeeded = false,
+    goldAlreadySeeded = false,
+    counts = { users: 4, characters: 4, ships: 5, outposts: 4, crew: 13, loot: 20, gold: 15 },
   } = opts;
 
-  const queryFn = jest.fn(async (sql /* , params */) => {
+  const named = (names, ids) => ({
+    rows: ids.map((id, i) => ({ id, name: names[i] })),
+    rowCount: ids.length,
+  });
+
+  const query = jest.fn(async (sql) => {
     const s = String(sql);
 
-    if (s.includes('INSERT INTO users')) {
-      return {
-        rows: insertedUserIds.map((id, i) => ({
-          id,
-          username: `testplayer${i + 1}`,
-        })),
-        rowCount: insertedUserIds.length,
-      };
+    if (s.includes('COUNT(*) FROM users')) return { rows: [{ count: String(counts.users) }] };
+    if (s.includes('FROM users WHERE username = ANY')) {
+      return { rows: userIds.map((id, i) => ({ id, username: USERNAMES[i] })), rowCount: userIds.length };
     }
+    if (s.includes('FROM characters WHERE name = ANY')) return named(CHARACTER_NAMES, characterIds);
+    if (s.includes('FROM ships WHERE name = ANY')) return named(SHIP_NAMES, shipIds);
+    if (s.includes('FROM outposts WHERE name = ANY')) return named(OUTPOST_NAMES, outpostIds);
+    if (s.includes('FROM loot WHERE name')) return { rows: lootAlreadySeeded ? [{ '?column?': 1 }] : [] };
+    if (s.includes('FROM gold WHERE transaction_type')) return { rows: goldAlreadySeeded ? [{ '?column?': 1 }] : [] };
 
-    if (s.includes('FROM users WHERE username IN')) {
-      return {
-        rows: existingUserIds.map((id) => ({ id })),
-        rowCount: existingUserIds.length,
-      };
-    }
+    if (s.includes('COUNT(*) FROM users')) return { rows: [{ count: String(counts.users) }] };
+    if (s.includes('COUNT(*) FROM characters')) return { rows: [{ count: String(counts.characters) }] };
+    if (s.includes('COUNT(*) FROM ships')) return { rows: [{ count: String(counts.ships) }] };
+    if (s.includes('COUNT(*) FROM outposts')) return { rows: [{ count: String(counts.outposts) }] };
+    if (s.includes('COUNT(*) FROM crew')) return { rows: [{ count: String(counts.crew) }] };
+    if (s.includes('COUNT(*) FROM loot')) return { rows: [{ count: String(counts.loot) }] };
+    if (s.includes('COUNT(*) FROM gold')) return { rows: [{ count: String(counts.gold) }] };
 
-    if (s.includes('SELECT id FROM ships')) {
-      return {
-        rows: shipIds.map((id) => ({ id })),
-        rowCount: shipIds.length,
-      };
-    }
-
-    if (s.includes('SELECT id FROM outposts')) {
-      return {
-        rows: outpostIds.map((id) => ({ id })),
-        rowCount: outpostIds.length,
-      };
-    }
-
-    if (s.includes('SELECT id FROM characters WHERE name IN')) {
-      return {
-        rows: characterIds.map((id) => ({ id })),
-        rowCount: characterIds.length,
-      };
-    }
-
-    if (s.includes("COUNT(*) FROM users")) {
-      return { rows: [{ count: String(counts.users) }] };
-    }
-    if (s.includes('COUNT(*) FROM characters')) {
-      return { rows: [{ count: String(counts.characters) }] };
-    }
-    if (s.includes('COUNT(*) FROM ships')) {
-      return { rows: [{ count: String(counts.ships) }] };
-    }
-    if (s.includes('COUNT(*) FROM outposts')) {
-      return { rows: [{ count: String(counts.outposts) }] };
-    }
-    if (s.includes('COUNT(*) FROM crew')) {
-      return { rows: [{ count: String(counts.crew) }] };
-    }
-    if (s.includes('COUNT(*) FROM loot')) {
-      return { rows: [{ count: String(counts.loot) }] };
-    }
-    if (s.includes('COUNT(*) FROM gold')) {
-      return { rows: [{ count: String(counts.gold) }] };
-    }
-
-    // Generic INSERT (characters, ships, outposts, crew, loot, gold) — just
-    // return success, no rows needed.
     return { rows: [], rowCount: 1 };
   });
 
-  return {
-    query: queryFn,
-    release: jest.fn(),
-  };
+  return { query, release: jest.fn() };
 }
+
+/** Statements the client ran whose SQL contains the fragment. */
+const callsMatching = (client, fragment) =>
+  client.query.mock.calls.filter((c) => String(c[0]).includes(fragment));
+
+const run = async (client, reqOverrides) => {
+  dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+  const req = createMockReq(reqOverrides);
+  const res = createMockRes();
+  await testDataController.generateTestData(req, res);
+  return { req, res };
+};
 
 // ─── Suite ──────────────────────────────────────────────────────────
 
@@ -182,7 +138,8 @@ describe('testDataController.generateTestData', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Default to a permissive env; individual tests override.
+    // Both Jest configs set resetMocks, which wipes factory implementations
+    bcrypt.hash.mockImplementation(async (password) => `hashed:${password}`);
     process.env.ALLOWED_ORIGINS =
       'https://test.kempsonandko.com,https://kempsonandko.com';
 
@@ -201,9 +158,13 @@ describe('testDataController.generateTestData', () => {
   // ─── Environment guard ───────────────────────────────────────────
 
   describe('environment guard', () => {
-    it('rejects with 403 when ALLOWED_ORIGINS does not include the test host', async () => {
-      // The test instance signature is the substring 'test.kempsonandko.com'.
-      process.env.ALLOWED_ORIGINS = 'https://prod.kempsonandko.com';
+    it.each([
+      ['an unrelated origin', 'https://prod.kempsonandko.com'],
+      ['the test host only as a prefix of another host', 'https://test.kempsonandko.com.evil.example'],
+      ['the test host only as a path', 'https://example.com/test.kempsonandko.com'],
+      ['a lookalike subdomain', 'https://nottest.kempsonandko.com'],
+    ])('rejects with 403 when ALLOWED_ORIGINS only has %s', async (_label, origins) => {
+      process.env.ALLOWED_ORIGINS = origins;
 
       const req = createMockReq();
       const res = createMockRes();
@@ -232,6 +193,13 @@ describe('testDataController.generateTestData', () => {
         'Test data generation is only available on test instances'
       );
       expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('accepts the test host among several comma-separated origins', async () => {
+      process.env.ALLOWED_ORIGINS = 'http://localhost:3000, https://test.kempsonandko.com ,https://x.example';
+      const { res } = await run(makeTransactionClient());
+
+      expect(res.success).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -266,22 +234,13 @@ describe('testDataController.generateTestData', () => {
   describe('happy path', () => {
     it('seeds the test data and returns a summary with all counts', async () => {
       const client = makeTransactionClient();
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
-
-      const req = createMockReq({ user: { id: 42, role: 'DM' } });
-      const res = createMockRes();
-
-      await testDataController.generateTestData(req, res);
+      const { req, res } = await run(client, { user: { id: 42, role: 'DM' } });
 
       // requireDM ran first
       expect(ValidationService.requireDM).toHaveBeenCalledWith(req);
 
       // Transaction was opened
       expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
-
-      // Password hashed once for all four test users
-      expect(bcrypt.hash).toHaveBeenCalledTimes(1);
-      expect(bcrypt.hash).toHaveBeenCalledWith('testpass123', 10);
 
       // Success response was sent (after COMMIT)
       expect(res.success).toHaveBeenCalledTimes(1);
@@ -290,119 +249,176 @@ describe('testDataController.generateTestData', () => {
       expect(message).toBe('Test data generation completed');
       expect(payload).toMatchObject({
         message: 'Test data generated successfully',
-        summary: {
-          users: 4,
-          characters: 4,
-          ships: 5,
-          outposts: 4,
-          crew: 13,
-          loot: 20,
-          gold: 14,
-        },
-        testCredentials: {
-          username: 'testplayer1-4',
-          password: 'testpass123',
-        },
+        summary: { users: 4, characters: 4, ships: 5, outposts: 4, crew: 13, loot: 20, gold: 15 },
+        testCredentials: { username: 'testplayer1-4' },
       });
       expect(typeof payload.testCredentials.note).toBe('string');
     });
 
-    it('grants campaign 1 membership for each test user', async () => {
+    it('issues one INSERT per fixture row (13 crew, 20 loot, 15 gold)', async () => {
       const client = makeTransactionClient();
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      await run(client, { user: { id: 42, role: 'DM' } });
 
-      const req = createMockReq({ user: { id: 42, role: 'DM' } });
-      const res = createMockRes();
+      expect(callsMatching(client, 'INSERT INTO crew')).toHaveLength(13);
+      expect(callsMatching(client, 'INSERT INTO loot')).toHaveLength(20);
+      expect(callsMatching(client, 'INSERT INTO gold')).toHaveLength(15);
+    });
 
-      await testDataController.generateTestData(req, res);
+    it('attaches crew to the seeded ships and outposts, looked up by name', async () => {
+      const client = makeTransactionClient({ shipIds: [51, 52, 53, 54, 55], outpostIds: [61, 62, 63, 64] });
+      await run(client);
 
-      const membershipCalls = client.query.mock.calls.filter((c) =>
-        String(c[0]).includes('INSERT INTO user_campaign')
-      );
+      const crew = callsMatching(client, 'INSERT INTO crew').map((c) => c[1]);
+      const locations = crew.map((params) => [params[4], params[5]]);
+      expect(locations.slice(0, 4)).toEqual([['ship', 51], ['ship', 51], ['ship', 51], ['ship', 51]]);
+      expect(locations[4]).toEqual(['ship', 52]);
+      expect(locations[8]).toEqual(['ship', 53]);
+      expect(locations.slice(9)).toEqual([['outpost', 61], ['outpost', 62], ['outpost', 63], ['outpost', 64]]);
+    });
 
-      // One membership insert per test user, all in campaign 1 as Player
-      expect(membershipCalls).toHaveLength(4);
-      expect(membershipCalls.map((c) => c[1])).toEqual([
-        [101, 'Player'],
-        [102, 'Player'],
-        [103, 'Player'],
-        [104, 'Player'],
-      ]);
-      membershipCalls.forEach((c) => {
-        expect(String(c[0])).toMatch(/ON CONFLICT DO NOTHING/i);
-      });
+    it('skips crew when a seeded ship or outpost cannot be found', async () => {
+      const client = makeTransactionClient({ shipIds: [51, 52], outpostIds: [61, 62, 63, 64] });
+      const { res } = await run(client);
 
+      expect(callsMatching(client, 'INSERT INTO crew')).toHaveLength(0);
       expect(res.success).toHaveBeenCalledTimes(1);
     });
 
+    it('pairs each purchase with the same player\'s own character', async () => {
+      const client = makeTransactionClient({ userIds: [101, 102, 103, 104], characterIds: [11, 12, 13, 14] });
+      await run(client);
+
+      const purchases = callsMatching(client, 'INSERT INTO gold')
+        .map((c) => c[1])
+        .filter((params) => params[2] === 'Purchase');
+
+      // [session_date, who, type, notes, copper, silver, gold, platinum, character_id]
+      expect(purchases.map((p) => [p[1], p[8]])).toEqual([[101, 11], [102, 12], [103, 13], [104, 14]]);
+    });
+
+    it('credits loot kept by a character to that player\'s character', async () => {
+      const client = makeTransactionClient({ characterIds: [11, 12, 13, 14] });
+      await run(client);
+
+      const loot = callsMatching(client, 'INSERT INTO loot').map((c) => c[1]);
+      const byName = Object.fromEntries(loot.map((p) => [p[2], p[10]]));
+      expect(byName['Chain Shirt +1']).toBe(11);
+      expect(byName['Rapier +1']).toBe(12);
+      expect(byName['Cloak of Resistance +1']).toBe(13);
+      expect(byName['Plate Armor +2']).toBe(14);
+    });
+  });
+
+  // ─── Accounts ────────────────────────────────────────────────────
+
+  describe('test accounts', () => {
+    it("creates users with role 'Player' (the only role value login accepts)", async () => {
+      const client = makeTransactionClient();
+      await run(client);
+
+      const [usersInsert] = callsMatching(client, 'INSERT INTO users');
+      expect(String(usersInsert[0])).toContain("'Player'");
+      expect(String(usersInsert[0])).not.toContain("'player'");
+    });
+
+    it('generates a random password per run, hashes it and passes only the hash to the INSERT', async () => {
+      const client = makeTransactionClient();
+      const { res } = await run(client);
+
+      const { password } = res.success.mock.calls[0][0].testCredentials;
+      expect(password).toMatch(/^[A-Za-z0-9_-]{16,}$/);
+      expect(password).not.toBe('testpass123');
+
+      expect(bcrypt.hash).toHaveBeenCalledTimes(1);
+      expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
+
+      const [usersInsert] = callsMatching(client, 'INSERT INTO users');
+      expect(usersInsert[1][0]).toBe(`hashed:${password}`);
+    });
+
+    it('returns a different password on every run', async () => {
+      const first = (await run(makeTransactionClient())).res.success.mock.calls[0][0].testCredentials.password;
+      jest.clearAllMocks();
+      bcrypt.hash.mockImplementation(async (password) => `hashed:${password}`);
+      ValidationService.requireDM.mockImplementation(() => {});
+      const second = (await run(makeTransactionClient())).res.success.mock.calls[0][0].testCredentials.password;
+
+      expect(second).not.toBe(first);
+    });
+
+    it('resets the password of accounts that already exist, so the returned one always works', async () => {
+      const client = makeTransactionClient();
+      const { res } = await run(client);
+
+      const { password } = res.success.mock.calls[0][0].testCredentials;
+      const [update] = callsMatching(client, 'UPDATE users SET password');
+      expect(String(update[0])).toContain('password_changed_at = $2');
+      expect(update[1]).toEqual([`hashed:${password}`, expect.any(Date), USERNAMES]);
+    });
+
+    it('never writes the password (or its hash) to the logs', async () => {
+      const client = makeTransactionClient();
+      const { res } = await run(client);
+
+      const { password } = res.success.mock.calls[0][0].testCredentials;
+      const logged = JSON.stringify([
+        ...logger.info.mock.calls, ...logger.warn.mock.calls, ...logger.error.mock.calls, ...logger.debug.mock.calls,
+      ]);
+      expect(logged).not.toContain(password);
+      expect(logged).not.toContain('hashed:');
+    });
+
+    it('grants Player membership in the CURRENT campaign, not campaign 1', async () => {
+      const client = makeTransactionClient();
+      await run(client, { user: { id: 42, role: 'DM' }, campaignId: 7 });
+
+      const membership = callsMatching(client, 'INSERT INTO user_campaign');
+      expect(membership).toHaveLength(1);
+      expect(String(membership[0][0])).toMatch(/ON CONFLICT DO NOTHING/i);
+      expect(membership[0][1]).toEqual([[101, 102, 103, 104], 7, 'Player']);
+    });
+  });
+
+  // ─── Idempotency ─────────────────────────────────────────────────
+
+  describe('idempotency', () => {
     it('issues guarded INSERTs (NOT EXISTS) so re-runs do not throw on duplicates', async () => {
-      // Re-run scenario: users already exist. The controller's INSERT uses
-      // `WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = v.username)`,
-      // so the INSERT inserts zero rows but the subsequent SELECT picks up
-      // the already-existing user IDs. Same idempotency pattern is used for
-      // characters, ships, outposts, and crew.
-      const client = makeTransactionClient({
-        insertedUserIds: [],
-        existingUserIds: [201, 202, 203, 204],
-      });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
-
-      const req = createMockReq({ user: { id: 7, role: 'DM' } });
-      const res = createMockRes();
-
-      await testDataController.generateTestData(req, res);
+      const client = makeTransactionClient();
+      const { res } = await run(client, { user: { id: 7, role: 'DM' } });
 
       expect(res.error).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledTimes(1);
 
-      // Verify the INSERT statements use the idempotency guard.
-      const insertSqls = client.query.mock.calls
-        .map((c) => String(c[0]))
-        .filter((s) => s.includes('INSERT INTO'));
-
-      const usersInsert = insertSqls.find((s) => s.includes('INSERT INTO users'));
-      const charsInsert = insertSqls.find((s) =>
-        s.includes('INSERT INTO characters')
-      );
-      const shipsInsert = insertSqls.find((s) => s.includes('INSERT INTO ships'));
-      const outpostsInsert = insertSqls.find((s) =>
-        s.includes('INSERT INTO outposts')
-      );
-      const crewInsert = insertSqls.find((s) => s.includes('INSERT INTO crew'));
-
-      expect(usersInsert).toMatch(/WHERE NOT EXISTS/i);
-      expect(charsInsert).toMatch(/WHERE NOT EXISTS/i);
-      expect(shipsInsert).toMatch(/WHERE NOT EXISTS/i);
-      expect(outpostsInsert).toMatch(/WHERE NOT EXISTS/i);
-      expect(crewInsert).toMatch(/WHERE NOT EXISTS/i);
+      for (const table of ['users', 'characters', 'ships', 'outposts', 'crew']) {
+        const [insert] = callsMatching(client, `INSERT INTO ${table}`);
+        expect(String(insert[0])).toMatch(/WHERE NOT EXISTS/i);
+      }
     });
 
-    it('skips character/loot/gold inserts when fewer than 4 users exist', async () => {
-      // If the user lookup returns fewer than 4 IDs, the controller skips the
-      // characters insert (and consequently the loot/gold inserts gated on
-      // characterIds.length >= 4).
-      const client = makeTransactionClient({
-        insertedUserIds: [],
-        existingUserIds: [301, 302], // only 2 users
-        characterIds: [], // characters lookup returns nothing
-      });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+    it('does not insert loot again when the seeded loot is already there', async () => {
+      const client = makeTransactionClient({ lootAlreadySeeded: true });
+      const { res } = await run(client);
 
-      const req = createMockReq({ user: { id: 1, role: 'DM' } });
-      const res = createMockRes();
+      expect(callsMatching(client, 'INSERT INTO loot')).toHaveLength(0);
+      expect(callsMatching(client, 'INSERT INTO gold')).toHaveLength(15);
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
 
-      await testDataController.generateTestData(req, res);
+    it('does not insert gold again when the seeded transactions are already there', async () => {
+      const client = makeTransactionClient({ goldAlreadySeeded: true });
+      await run(client);
 
-      const sqls = client.query.mock.calls.map((c) => String(c[0]));
-      const sawCharacterInsert = sqls.some((s) =>
-        s.includes('INSERT INTO characters')
-      );
-      const sawLootInsert = sqls.some((s) => s.includes('INSERT INTO loot'));
-      const sawGoldInsert = sqls.some((s) => s.includes('INSERT INTO gold'));
+      expect(callsMatching(client, 'INSERT INTO gold')).toHaveLength(0);
+      expect(callsMatching(client, 'INSERT INTO loot')).toHaveLength(20);
+    });
 
-      expect(sawCharacterInsert).toBe(false);
-      expect(sawLootInsert).toBe(false);
-      expect(sawGoldInsert).toBe(false);
+    it('skips character/loot/gold inserts when the test accounts or characters are incomplete', async () => {
+      const client = makeTransactionClient({ userIds: [301, 302], characterIds: [] });
+      const { res } = await run(client);
+
+      expect(callsMatching(client, 'INSERT INTO characters')).toHaveLength(0);
+      expect(callsMatching(client, 'INSERT INTO loot')).toHaveLength(0);
+      expect(callsMatching(client, 'INSERT INTO gold')).toHaveLength(0);
 
       // Ships, outposts and counts still run — overall request still succeeds.
       expect(res.success).toHaveBeenCalledTimes(1);
@@ -451,12 +467,7 @@ describe('testDataController.generateTestData', () => {
   describe('logging', () => {
     it('logs the DM-initiated event on entry and the success event on exit', async () => {
       const client = makeTransactionClient();
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
-
-      const req = createMockReq({ user: { id: 99, role: 'DM' } });
-      const res = createMockRes();
-
-      await testDataController.generateTestData(req, res);
+      await run(client, { user: { id: 99, role: 'DM' } });
 
       // At least one info log on success.
       expect(logger.info).toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {Link, useLocation} from 'react-router-dom';
 import {
   Avatar,
@@ -43,7 +43,7 @@ import {
   People as CrewIcon,
   Home as OutpostIcon,
   LocationCity as LocationCityIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon,
+  ManageAccounts as ManageAccountsIcon,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -52,22 +52,102 @@ import StyleIcon from '@mui/icons-material/Style';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
 import { useAuth } from '../../contexts/AuthContext';
-import { useCampaign } from '../../contexts/CampaignContext';
+import { useCampaign, useIsDM } from '../../contexts/CampaignContext';
 import { APP_EVENTS } from '../../utils/events';
+import { APP_BAR_HEIGHT, DRAWER_WIDTH, drawerWidthFor } from './layoutConstants';
+
+// Collapsed state and current path for the nav items, which live at module scope
+// (a component declared inside Sidebar would remount every item on each render).
+const NavContext = createContext({ isCollapsed: false, pathname: '' });
+
+const isActiveRoute = (pathname, route) => pathname === route || pathname.startsWith(route + '/');
+
+const MenuItem = ({ to, primary, icon, onClick, open, children, badge, isCategory }) => {
+  const { isCollapsed, pathname } = useContext(NavContext);
+  const active = to ? isActiveRoute(pathname, to) : false;
+  const ComponentToUse = to ? Link : 'div';
+
+  return (
+    <React.Fragment>
+      <ListItemButton
+        component={ComponentToUse}
+        to={to}
+        onClick={onClick}
+        aria-current={active ? 'page' : undefined}
+        aria-expanded={children ? open : undefined}
+        sx={{
+          pl: isCategory ? 2 : 4,
+          py: 1.5,
+          mb: 0.5,
+          borderRadius: isCollapsed ? 0 : '0 20px 20px 0',
+          mr: 1,
+          bgcolor: active ? 'rgba(144, 202, 249, 0.16)' : 'transparent',
+          '&:hover': {
+            bgcolor: active ? 'rgba(144, 202, 249, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+          },
+          '&:focus-visible': {
+            outline: '2px solid',
+            outlineColor: 'primary.main',
+            outlineOffset: '2px',
+          },
+          '& .MuiListItemIcon-root': {
+            color: active ? 'primary.main' : 'text.secondary',
+            minWidth: isCollapsed ? 'auto' : 40,
+          },
+          '& .MuiListItemText-primary': {
+            color: active ? 'primary.main' : 'text.primary',
+            fontWeight: active ? 600 : 400,
+            fontSize: '0.875rem',
+          },
+        }}
+      >
+        <ListItemIcon>
+          {isCollapsed && badge ? (
+            <Badge badgeContent={badge} color="error">
+              {icon}
+            </Badge>
+          ) : (
+            icon
+          )}
+        </ListItemIcon>
+        {!isCollapsed && (
+          <>
+            {badge ? (
+              <Badge badgeContent={badge} color="error" sx={{ flexGrow: 1 }}>
+                <ListItemText primary={primary} />
+              </Badge>
+            ) : (
+              <ListItemText primary={primary} sx={{ flexGrow: 1 }} />
+            )}
+            {children && (open ? <ExpandLess /> : <ExpandMore />)}
+          </>
+        )}
+      </ListItemButton>
+      {children && !isCollapsed && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {children}
+          </List>
+        </Collapse>
+      )}
+    </React.Fragment>
+  );
+};
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLogout }) => {
-  const [openBeta, setOpenBeta] = useState(false);
   const [openSessionTools, setOpenSessionTools] = useState(false);
   const [openDMSettings, setOpenDMSettings] = useState(false);
   const [openFleetManagement, setOpenFleetManagement] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [unidentifiedLootCount, setUnidentifiedLootCount] = useState(0);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-  const [versionInfo, setVersionInfo] = useState({ fullVersion: '0.7.1', version: '0.7.1', buildNumber: 0 });
+  const [logoutError, setLogoutError] = useState('');
+  const [versionInfo, setVersionInfo] = useState({ fullVersion: 'unknown', version: 'unknown', buildNumber: 0 });
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { user, isDM } = useAuth();
+  const { user } = useAuth();
+  const isDM = useIsDM();
   const username = user?.username || '';
   const activeCharacter = user?.activeCharacter || null;
 
@@ -75,7 +155,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   // Infamy nav entries follow the campaign's infamy_system_enabled setting.
   // Both update live when the campaign context refreshes (e.g. after a DM
   // renames the campaign or toggles infamy in Campaign Settings).
-  const { currentCampaign, campaignSettings, isSuperadmin } = useCampaign();
+  const { currentCampaign, campaignSettings } = useCampaign();
   const groupName = currentCampaign?.name || 'Loot Tracker';
   const infamyEnabled = campaignSettings?.infamy_system_enabled === '1';
   const harrowEnabled = campaignSettings?.harrow_system_enabled === '1';
@@ -100,38 +180,27 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
     }
   }, []);
 
+  // The version cannot change inside a session, so it is fetched once, independently
+  // of the badge counts (a failing count request must not hide it).
   useEffect(() => {
     let isMounted = true;
 
-    const fetchInitial = async () => {
-      try {
-        const [lootCountRes, unidentifiedCountRes, versionRes] = await Promise.all([
-          lootService.getUnprocessedCount(),
-          lootService.getUnidentifiedCount(),
-          versionService.getVersion()
-        ]);
-
-        if (isMounted) {
-          setUnprocessedLootCount(lootCountRes.data.count);
-          setUnidentifiedLootCount(unidentifiedCountRes.data.count);
-
-          if (versionRes.data) {
-            setVersionInfo(versionRes.data);
-          }
+    versionService.getVersion()
+      .then((versionRes) => {
+        if (isMounted && versionRes?.data) {
+          setVersionInfo(versionRes.data);
         }
-      } catch (error) {
-        console.error('Error fetching sidebar data:', error);
-      }
-    };
-
-    fetchInitial();
+      })
+      .catch((error) => {
+        console.error('Error fetching version:', error);
+      });
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Refresh counts on route change. Covers the common case where the user
+  // Refresh counts on mount and on route change. Covers the common case where the user
   // takes an action on one page (sells, identifies, marks status) and then
   // navigates somewhere — by the time the next page renders, the badges
   // reflect reality.
@@ -166,122 +235,34 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
     };
   }, [refreshCounts]);
 
-
-
-
   useEffect(() => {
     if (isMobile && mobileOpen) {
       onMobileClose();
     }
   }, [location.pathname]);
 
-  const isActiveRoute = (route) => {
-    return location.pathname === route;
-  };
-
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
-
-  const handleLogoutClick = () => {
-    setLogoutDialogOpen(true);
-  };
-  
-  const handleLogoutConfirm = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    if (onLogout) onLogout();
-    setLogoutDialogOpen(false);
-  };
-  
-  const handleLogoutCancel = () => {
+  const handleLogoutConfirm = async () => {
+    // onLogout resolves false when the server could not be reached: the session
+    // is still valid, so say so instead of pretending the user signed out.
+    const loggedOut = onLogout ? await onLogout() : true;
+    if (loggedOut === false) {
+      setLogoutError('Could not reach the server to log you out. Check your connection and try again.');
+      return;
+    }
     setLogoutDialogOpen(false);
   };
 
-  const MenuItem = ({ to, primary, icon, onClick, open, children, badge, isCategory }) => {
-    const active = to ? isActiveRoute(to) : false;
-    const ComponentToUse = to ? Link : 'div';
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        if (onClick) {
-          onClick();
-        }
-      }
-    };
-
-    return (
-      <React.Fragment>
-        <ListItemButton
-          component={ComponentToUse}
-          to={to}
-          onClick={onClick}
-          onKeyDown={handleKeyDown}
-          tabIndex={0}
-          role={to ? "link" : "button"}
-          aria-current={active ? "page" : undefined}
-          aria-expanded={children ? open : undefined}
-          sx={{
-            pl: isCategory ? 2 : 4,
-            py: 1.5,
-            mb: 0.5,
-            borderRadius: isCollapsed ? 0 : '0 20px 20px 0',
-            mr: 1,
-            bgcolor: active ? 'rgba(144, 202, 249, 0.16)' : 'transparent',
-            '&:hover': {
-              bgcolor: active ? 'rgba(144, 202, 249, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-            },
-            '&:focus-visible': {
-              outline: '2px solid',
-              outlineColor: 'primary.main',
-              outlineOffset: '2px',
-            },
-            '& .MuiListItemIcon-root': {
-              color: active ? 'primary.main' : 'text.secondary',
-              minWidth: isCollapsed ? 'auto' : 40,
-            },
-            '& .MuiListItemText-primary': {
-              color: active ? 'primary.main' : 'text.primary',
-              fontWeight: active ? 600 : 400,
-              fontSize: '0.875rem',
-            },
-          }}
-        >
-          <ListItemIcon>
-            {isCollapsed && badge ? (
-              <Badge badgeContent={badge} color="error">
-                {icon}
-              </Badge>
-            ) : (
-              icon
-            )}
-          </ListItemIcon>
-          {!isCollapsed && (
-            <>
-              {badge ? (
-                <Badge badgeContent={badge} color="error" sx={{ flexGrow: 1 }}>
-                  <ListItemText primary={primary} />
-                </Badge>
-              ) : (
-                <ListItemText primary={primary} sx={{ flexGrow: 1 }} />
-              )}
-              {children && (open ? <ExpandLess /> : <ExpandMore />)}
-            </>
-          )}
-        </ListItemButton>
-        {children && !isCollapsed && (
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding>
-              {children}
-            </List>
-          </Collapse>
-        )}
-      </React.Fragment>
-    );
+  const closeLogoutDialog = () => {
+    setLogoutDialogOpen(false);
+    setLogoutError('');
   };
 
-  const drawerWidth = isCollapsed ? 64 : 240;
+  const navContext = useMemo(
+    () => ({ isCollapsed, pathname: location.pathname }),
+    [isCollapsed, location.pathname]
+  );
+
+  const drawerWidth = drawerWidthFor(isCollapsed);
 
   const drawerContent = (
     <>
@@ -293,7 +274,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
           justifyContent: 'space-between',
           borderBottom: '1px solid',
           borderColor: 'divider',
-          minHeight: 64
+          minHeight: APP_BAR_HEIGHT.md
         }}
       >
         {!isCollapsed && (
@@ -302,7 +283,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
           </Typography>
         )}
         <IconButton 
-          onClick={toggleSidebar} 
+          onClick={() => setIsCollapsed(!isCollapsed)}
           color="primary"
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!isCollapsed}
@@ -312,6 +293,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
       </Box>
 
       <Box sx={{ flexGrow: 1, overflow: 'auto', px: 1, py: 2 }}>
+        <NavContext.Provider value={navContext}>
         <List component="nav" disablePadding role="navigation" aria-label="Main navigation">
           <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} isCategory />
 
@@ -402,10 +384,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
             </MenuItem>
           )}
 
-          {isSuperadmin && (
-            <MenuItem to="/system-admin" primary="System Admin" icon={<AdminPanelSettingsIcon />} isCategory />
-          )}
         </List>
+        </NavContext.Provider>
       </Box>
 
       <Divider />
@@ -427,7 +407,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
               fontSize: '0.75rem',
               fontWeight: 500
             }}>
-            v{versionInfo.fullVersion}
+            {versionInfo.fullVersion === 'unknown' ? 'version unknown' : `v${versionInfo.fullVersion}`}
           </Typography>
         </Box>
       )}
@@ -439,19 +419,40 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
         justifyContent: isCollapsed ? 'center' : 'space-between',
         flexDirection: isCollapsed ? 'row' : 'column',
       }}>
-        {!isCollapsed && (
+        {/* Account & Settings: the user's own pages (account, characters in
+            every campaign, System Admin for the superadmin), outside the
+            campaign navigation above. The app bar's account menu leads to
+            the same place. */}
+        {isCollapsed ? (
+          <Tooltip title="Account & settings" placement="right">
+            <IconButton
+              component={Link}
+              to="/user-settings"
+              size="small"
+              color="inherit"
+              aria-label="Account & settings"
+              sx={{ mb: 1 }}
+            >
+              <ManageAccountsIcon />
+            </IconButton>
+          </Tooltip>
+        ) : (
           <Box
             component={Link}
             to="/user-settings"
+            aria-label="Account & settings"
             sx={{
               display: 'flex',
               alignItems: 'center',
               textDecoration: 'none',
               color: 'inherit',
               mb: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
               '&:hover': {
                 backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: 1,
+                borderColor: 'primary.main',
               },
               p: 1,
               width: '100%',
@@ -469,24 +470,21 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
             >
               {username.charAt(0).toUpperCase()}
             </Avatar>
-            <Box sx={{ overflow: 'hidden' }}>
+            <Box sx={{ overflow: 'hidden', flexGrow: 1 }}>
               <Typography variant="body2" noWrap>
                 {username}
               </Typography>
-              {activeCharacter && (
-                <Typography variant="caption" noWrap sx={{
-                  color: "text.secondary"
-                }}>
-                  {activeCharacter.name}
-                </Typography>
-              )}
+              <Typography variant="caption" noWrap sx={{ color: "text.secondary", display: 'block' }}>
+                {activeCharacter ? `${activeCharacter.name} · ` : ''}Account & settings
+              </Typography>
             </Box>
+            <ManageAccountsIcon fontSize="small" sx={{ color: 'text.secondary', ml: 1 }} />
           </Box>
         )}
 
         <Tooltip title="Logout">
           <IconButton
-            onClick={handleLogoutClick}
+            onClick={() => setLogoutDialogOpen(true)}
             color="inherit"
             size="small"
             aria-label="Logout"
@@ -507,7 +505,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
       {/* Logout Confirmation Dialog */}
       <Dialog
         open={logoutDialogOpen}
-        onClose={handleLogoutCancel}
+        onClose={closeLogoutDialog}
         aria-labelledby="logout-dialog-title"
         aria-describedby="logout-dialog-description"
       >
@@ -518,9 +516,14 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
           <DialogContentText id="logout-dialog-description">
             Are you sure you want to logout? You will need to login again to access the application.
           </DialogContentText>
+          {logoutError && (
+            <DialogContentText id="logout-dialog-error" color="error" role="alert" sx={{ mt: 1 }}>
+              {logoutError}
+            </DialogContentText>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleLogoutCancel} color="primary">
+          <Button onClick={closeLogoutDialog} color="primary">
             Cancel
           </Button>
           <Button onClick={handleLogoutConfirm} color="primary" variant="contained">
@@ -540,7 +543,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
         ModalProps={{ keepMounted: true }}
         sx={{
           '& .MuiDrawer-paper': {
-            width: 240,
+            width: DRAWER_WIDTH,
             boxSizing: 'border-box',
             display: 'flex',
             flexDirection: 'column',

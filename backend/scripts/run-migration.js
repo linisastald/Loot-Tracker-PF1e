@@ -18,7 +18,6 @@ const runMigrations = async () => {
         console.log('\nChecking migration status...');
         const status = await migrationRunner.getMigrationStatus();
 
-        console.log(`Database Type: ${status.isProductionDatabase ? 'Production' : 'Development'}`);
         console.log(`Migration System Version: ${status.migrationSystemVersion}`);
         console.log(`Total Migrations: ${status.total}`);
         console.log(`Applied Migrations: ${status.applied}`);

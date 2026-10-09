@@ -1,7 +1,7 @@
 /**
  * Unit tests for itemCreationController
- * Tests loot creation, bulk creation, item parsing, value calculation,
- * batch lookups, mod filtering, and autocomplete suggestions.
+ * Tests loot creation, item parsing, value calculation, batch lookups,
+ * mod filtering, and autocomplete suggestions.
  */
 
 // Mock dependencies before requiring the controller
@@ -24,9 +24,11 @@ jest.mock('../../services/itemParsingService', () => ({
   getItemsByIds: jest.fn(),
   getModsByIds: jest.fn(),
   getAllMods: jest.fn(),
-  searchItems: jest.fn(),
   suggestItems: jest.fn(),
-  suggestMods: jest.fn(),
+}));
+
+jest.mock('../../utils/campaignSettings', () => ({
+  getCampaignSetting: jest.fn(),
 }));
 
 jest.mock('../../services/calculateFinalValue', () => ({
@@ -34,6 +36,7 @@ jest.mock('../../services/calculateFinalValue', () => ({
 }));
 
 const dbUtils = require('../../utils/dbUtils');
+const { getCampaignSetting } = require('../../utils/campaignSettings');
 const ItemParsingService = require('../../services/itemParsingService');
 const { calculateFinalValue } = require('../../services/calculateFinalValue');
 const itemCreationController = require('../itemCreationController');
@@ -73,265 +76,320 @@ describe('itemCreationController', () => {
   // createLoot
   // ---------------------------------------------------------------
   describe('createLoot', () => {
-    it('should create a loot item with a known item ID and calculated value', async () => {
-      const req = createMockReq({
-        body: {
-          name: 'Longsword +1',
-          quantity: 1,
-          itemId: 42,
-          modIds: [],
-          masterwork: false,
-          cursed: false,
-          unidentified: false,
-        },
-      });
-      const res = createMockRes();
+    const runWithClient = (clientQuery) => {
+      const client = { query: clientQuery };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      return client;
+    };
+    const rowOf = (id, extra = {}) => ({ rows: [{ id, name: 'Row', quantity: 1, ...extra }] });
+    const insertParams = (client, callIndex = 0) => {
+      const [sql, params] = client.query.mock.calls[callIndex];
+      const cols = sql.match(/\(([^)]*)\)\s+VALUES/)[1].split(',').map((c) => c.trim().replace(/"/g, ''));
+      return Object.fromEntries(cols.map((c, i) => [c, params[i]]));
+    };
+    const mockItem = { id: 42, name: 'Longsword', value: 15, type: 'weapon', subtype: 'melee', weight: 4 };
 
-      const mockItem = { id: 42, name: 'Longsword', value: 15, type: 'weapon', subtype: 'melee', weight: 4 };
-      const mockCreatedLoot = { id: 100, name: 'Longsword +1', quantity: 1, value: 15 };
-
-      // executeTransaction calls the callback with a mock client
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = {
-          query: jest.fn()
-            // First call: validate item exists
-            .mockResolvedValueOnce({ rows: [mockItem] })
-            // Second call: fetch item for value calculation (no mods)
-            .mockResolvedValueOnce({ rows: [mockItem] }),
-        };
-        return cb(mockClient);
-      });
-      dbUtils.insert.mockResolvedValue(mockCreatedLoot);
-
-      await itemCreationController.createLoot(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        mockCreatedLoot,
-        'Loot item created successfully'
-      );
+    beforeEach(() => {
+      getCampaignSetting.mockResolvedValue('0');
     });
 
-    it('should create a loot item with custom value (skips item lookup for value)', async () => {
-      const req = createMockReq({
-        body: {
-          name: 'Mystery Ring',
-          quantity: 2,
-          customValue: 500,
-          cursed: false,
-          unidentified: true,
-        },
-      });
+    it('prices a catalog item through calculateFinalValue and stores the full row', async () => {
+      calculateFinalValue.mockReturnValue(315);
+      const client = runWithClient(jest.fn()
+        .mockResolvedValueOnce({ rows: [mockItem] })
+        .mockResolvedValueOnce(rowOf(100)));
       const res = createMockRes();
 
-      const mockCreatedLoot = { id: 101, name: 'Mystery Ring', quantity: 2, value: 500 };
+      await itemCreationController.createLoot(createMockReq({
+        body: {
+          name: 'Longsword', quantity: 1, itemId: 42, masterwork: true, size: 'Large',
+          type: 'Weapon', cursed: false, unidentified: false, notes: 'found'
+        },
+      }), res);
 
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = { query: jest.fn() };
-        return cb(mockClient);
-      });
-      dbUtils.insert.mockResolvedValue(mockCreatedLoot);
-
-      await itemCreationController.createLoot(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        mockCreatedLoot,
-        'Loot item created successfully'
-      );
+      // masterwork, size and the catalog name/weight reach the price calculation (F-0359)
+      expect(calculateFinalValue).toHaveBeenCalledWith(15, 'weapon', 'melee', [], true, 'Longsword', null, 'Large', 4);
+      expect(client.query).toHaveBeenCalledTimes(2); // item looked up once, no mod query
+      expect(insertParams(client, 1)).toEqual(expect.objectContaining({
+        name: 'Longsword', quantity: 1, itemid: 42, modids: [], value: 315, masterwork: true,
+        size: 'Large', type: 'weapon', status: null, unidentified: false, cursed: false,
+        notes: 'found', whoupdated: 1,
+      }));
+      expect(dbUtils.insert).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ id: 100 }), 'Loot item created successfully');
     });
 
-    it('should create a loot item with item ID and mods, using calculateFinalValue', async () => {
-      const req = createMockReq({
-        body: {
-          name: 'Flaming Longsword',
-          quantity: 1,
-          itemId: 42,
-          modIds: [10, 20],
-          cursed: false,
-          unidentified: false,
-        },
+    describe('item type at entry (owner decision 2026-10-06)', () => {
+      it.each(['consumable', 'shield', 'item', 'wondrous'])('rejects the non-canonical type %s', async (type) => {
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({ body: { name: 'Thing', quantity: 1, type } }), res);
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/weapon, armor, magic, gear, trade good, other/);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
       });
+
+      it.each([['trade good', 'trade good'], ['Weapon', 'weapon'], ['magic', 'magic']])('stores %s as %s', async (type, stored) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        await itemCreationController.createLoot(createMockReq({ body: { name: 'Thing', quantity: 1, type } }), createMockRes());
+        expect(insertParams(client, 0).type).toBe(stored);
+      });
+
+      it.each([undefined, null, ''])('still allows a blank type (%p)', async (type) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        await itemCreationController.createLoot(createMockReq({ body: { name: 'Thing', quantity: 1, type } }), createMockRes());
+        expect(insertParams(client, 0).type).toBeNull();
+      });
+    });
+
+    // Owner decision (2026-10-06): a wand enters the ledger with 1 to 50 charges;
+    // 0 is rejected (an empty wand is trashed by use, never entered). Blank stays allowed.
+    describe('wand charges at entry', () => {
+      it.each([0, '0', -1, '-3', 51, '100', 2.5, 'abc', NaN])('rejects charges %p', async (charges) => {
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/charges.*whole number.*1.*50/i);
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it.each([undefined, null, ''])('still allows blank charges (%p)', async (charges) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(insertParams(client, 0)).toEqual(expect.objectContaining({ charges: null }));
+      });
+
+      it.each([[1, 1], ['50', 50], [25, 25]])('accepts charges %p', async (charges, stored) => {
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(1)));
+        const res = createMockRes();
+        await itemCreationController.createLoot(createMockReq({
+          body: { name: 'Wand of Magic Missile', quantity: 1, charges },
+        }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(insertParams(client, 0)).toEqual(expect.objectContaining({ charges: stored }));
+      });
+    });
+
+    it('passes wand charges to the price calculation', async () => {
+      const wand = { id: 7, name: 'Wand of Cure Light Wounds', value: 15, type: 'wand', subtype: null, weight: 1 };
+      calculateFinalValue.mockReturnValue(300);
+      const client = runWithClient(jest.fn()
+        .mockResolvedValueOnce({ rows: [wand] })
+        .mockResolvedValueOnce(rowOf(1)));
+
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Wand', quantity: 1, itemId: 7, charges: '20' },
+      }), createMockRes());
+
+      expect(calculateFinalValue).toHaveBeenCalledWith(15, 'wand', null, [], false, 'Wand of Cure Light Wounds', 20, null, 1);
+      expect(insertParams(client, 1)).toEqual(expect.objectContaining({ value: 300, charges: 20 }));
+    });
+
+    it('uses a custom value as typed and skips the price calculation', async () => {
+      const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(101)));
       const res = createMockRes();
 
-      const mockItem = { id: 42, name: 'Longsword', value: 15, type: 'weapon', subtype: 'melee', weight: 4 };
-      const mockMods = [
-        { id: 10, name: 'Flaming', value: 8000 },
-        { id: 20, name: '+1', value: 2000 },
-      ];
-      const mockCreatedLoot = { id: 102, name: 'Flaming Longsword', quantity: 1, value: 8315 };
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Mystery Ring', quantity: 2, customValue: 500, unidentified: true },
+      }), res);
 
+      expect(calculateFinalValue).not.toHaveBeenCalled();
+      expect(insertParams(client)).toEqual(expect.objectContaining({
+        name: 'Mystery Ring', quantity: 2, value: 500, unidentified: true, itemid: null, modids: [],
+      }));
+    });
+
+    it('stores a custom value of 0 as 0 instead of recalculating it', async () => {
+      const client = runWithClient(jest.fn()
+        .mockResolvedValueOnce({ rows: [mockItem] })
+        .mockResolvedValueOnce(rowOf(1)));
+
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Free Sword', quantity: 1, itemId: 42, customValue: 0 },
+      }), createMockRes());
+
+      expect(calculateFinalValue).not.toHaveBeenCalled();
+      expect(insertParams(client, 1).value).toBe(0);
+    });
+
+    it('fetches item and mods once and prices them together', async () => {
+      const mods = [{ id: 10, name: 'Flaming' }, { id: 20, name: '+1' }];
       calculateFinalValue.mockReturnValue(8315);
+      const client = runWithClient(jest.fn()
+        .mockResolvedValueOnce({ rows: [mockItem] })
+        .mockResolvedValueOnce({ rows: mods })
+        .mockResolvedValueOnce(rowOf(102)));
 
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = {
-          query: jest.fn()
-            // validate item exists
-            .mockResolvedValueOnce({ rows: [mockItem] })
-            // validate mod IDs exist (returns 2 rows matching 2 IDs)
-            .mockResolvedValueOnce({ rows: mockMods })
-            // fetch item for value calc
-            .mockResolvedValueOnce({ rows: [mockItem] })
-            // fetch mods for value calc
-            .mockResolvedValueOnce({ rows: mockMods }),
-        };
-        return cb(mockClient);
-      });
-      dbUtils.insert.mockResolvedValue(mockCreatedLoot);
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Flaming Longsword', quantity: 1, itemId: 42, modIds: [10, 20] },
+      }), createMockRes());
 
-      await itemCreationController.createLoot(req, res);
+      expect(client.query).toHaveBeenCalledTimes(3);
+      expect(calculateFinalValue).toHaveBeenCalledWith(15, 'weapon', 'melee', mods, false, 'Longsword', null, null, 4);
+      expect(insertParams(client, 2)).toEqual(expect.objectContaining({ modids: [10, 20], value: 8315 }));
+    });
 
-      expect(calculateFinalValue).toHaveBeenCalledWith(
-        15, 'weapon', 'melee', mockMods, false, null, null, null, 4
-      );
-      expect(res.success).toHaveBeenCalled();
+    it('stores the session date sent by the client and falls back to today', async () => {
+      const client = runWithClient(jest.fn().mockResolvedValue(rowOf(1)));
+
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Gem', quantity: 1, customValue: 10, session_date: '2024-03-09' },
+      }), createMockRes());
+      expect(insertParams(client, 0).session_date).toBe('2024-03-09');
+
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Gem', quantity: 1, customValue: 10 },
+      }), createMockRes());
+      expect(insertParams(client, 1).session_date).toBeInstanceOf(Date);
+    });
+
+    it('rejects an invalid session date', async () => {
+      const client = runWithClient(jest.fn());
+      const res = createMockRes();
+
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Gem', quantity: 1, session_date: 'not-a-date' },
+      }), res);
+
+      expect(res.validationError).toHaveBeenCalled();
+      expect(client.query).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed modIds value', async () => {
+      const res = createMockRes();
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Gem', quantity: 1, modIds: '1,2' },
+      }), res);
+      expect(res.validationError).toHaveBeenCalledWith('modIds must be an array of mod IDs');
     });
 
     it('should return validation error when name is missing', async () => {
-      const req = createMockReq({
-        body: { quantity: 1 },
-      });
       const res = createMockRes();
-
-      await itemCreationController.createLoot(req, res);
-
-      // controllerFactory.createHandler catches ValidationError and calls res.validationError
+      await itemCreationController.createLoot(createMockReq({ body: { quantity: 1 } }), res);
       expect(res.validationError).toHaveBeenCalled();
     });
 
-    it('should return validation error when quantity is missing', async () => {
-      const req = createMockReq({
-        body: { name: 'Dagger' },
+    describe('auto-split stacks (per-campaign setting)', () => {
+      const splitReq = (body) => createMockReq({
+        body: { name: 'Arrow', quantity: 3, customValue: 1, charges: 7, ...body },
       });
+
+      it('creates N rows of quantity 1 in one transaction when the setting is on', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn()
+          .mockResolvedValueOnce(rowOf(1)).mockResolvedValueOnce(rowOf(2)).mockResolvedValueOnce(rowOf(3)));
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({}), res);
+
+        expect(getCampaignSetting).toHaveBeenCalledWith('auto_split_stacks_enabled', { defaultValue: '0' });
+        expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
+        expect(client.query).toHaveBeenCalledTimes(3);
+        expect(client.query.mock.calls[0][0]).toContain('INSERT INTO "loot"');
+        // quantity is 1 on every row; charges stay as entered on each wand
+        for (let i = 0; i < 3; i++) {
+          expect(insertParams(client, i)).toEqual(expect.objectContaining({ quantity: 1, charges: 7 }));
+        }
+        expect(dbUtils.insert).not.toHaveBeenCalled();
+        expect(res.success).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 1 }),
+          '3 loot items created successfully'
+        );
+      });
+
+      it('leaves a single row alone when the setting is on but quantity is 1', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(9)));
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 1 }), res);
+
+        expect(getCampaignSetting).not.toHaveBeenCalled();
+        expect(client.query).toHaveBeenCalledTimes(1);
+        expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ id: 9 }), 'Loot item created successfully');
+      });
+
+      it.each([['0'], [undefined], ['']])('keeps one stacked row when the setting is %p', async (value) => {
+        getCampaignSetting.mockResolvedValue(value);
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(5, { quantity: 3 })));
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({}), res);
+
+        expect(client.query).toHaveBeenCalledTimes(1);
+        expect(insertParams(client).quantity).toBe(3);
+        expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ id: 5 }), 'Loot item created successfully');
+      });
+
+      it('rejects a split above the upper bound instead of creating hundreds of rows', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn());
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 101 }), res);
+
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('100'));
+        expect(client.query).not.toHaveBeenCalled();
+      });
+
+      it('splits exactly at the upper bound', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn().mockResolvedValue(rowOf(1)));
+
+        await itemCreationController.createLoot(splitReq({ quantity: 100 }), createMockRes());
+
+        expect(client.query).toHaveBeenCalledTimes(100);
+      });
+
+      it('does not apply the upper bound when the setting is off', async () => {
+        getCampaignSetting.mockResolvedValue('0');
+        const client = runWithClient(jest.fn().mockResolvedValueOnce(rowOf(5, { quantity: 500 })));
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 500 }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(client.query).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should return validation error when quantity is missing', async () => {
       const res = createMockRes();
-
-      await itemCreationController.createLoot(req, res);
-
+      await itemCreationController.createLoot(createMockReq({ body: { name: 'Dagger' } }), res);
       expect(res.validationError).toHaveBeenCalled();
     });
 
     it('should return validation error when item ID does not exist in database', async () => {
-      const req = createMockReq({
-        body: {
-          name: 'Nonexistent Sword',
-          quantity: 1,
-          itemId: 9999,
-        },
-      });
+      runWithClient(jest.fn().mockResolvedValueOnce({ rows: [] }));
       const res = createMockRes();
 
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [] }), // item not found
-        };
-        return cb(mockClient);
-      });
-
-      await itemCreationController.createLoot(req, res);
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Nonexistent Sword', quantity: 1, itemId: 9999 },
+      }), res);
 
       expect(res.validationError).toHaveBeenCalledWith('Invalid item ID provided');
     });
 
     it('should return validation error when some mod IDs are invalid', async () => {
-      const req = createMockReq({
-        body: {
-          name: 'Modded Sword',
-          quantity: 1,
-          itemId: 42,
-          modIds: [10, 999],
-        },
-      });
+      const client = runWithClient(jest.fn()
+        .mockResolvedValueOnce({ rows: [mockItem] })
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] })); // only 1 of 2 mods found
       const res = createMockRes();
 
-      const mockItem = { id: 42, name: 'Longsword', value: 15, type: 'weapon', subtype: 'melee', weight: 4 };
-
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [mockItem] }) // item found
-            .mockResolvedValueOnce({ rows: [{ id: 10 }] }), // only 1 of 2 mods found
-        };
-        return cb(mockClient);
-      });
-
-      await itemCreationController.createLoot(req, res);
+      await itemCreationController.createLoot(createMockReq({
+        body: { name: 'Modded Sword', quantity: 1, itemId: 42, modIds: [10, 999] },
+      }), res);
 
       expect(res.validationError).toHaveBeenCalledWith('One or more invalid mod IDs provided');
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // bulkCreateLoot
-  // ---------------------------------------------------------------
-  describe('bulkCreateLoot', () => {
-    it('should bulk create multiple loot items successfully', async () => {
-      const req = createMockReq({
-        body: {
-          items: [
-            { name: 'Potion of Healing', quantity: 3, customValue: 50 },
-            { name: 'Scroll of Fireball', quantity: 1, customValue: 375 },
-          ],
-        },
-      });
-      const res = createMockRes();
-
-      const createdItem1 = { id: 200, name: 'Potion of Healing', quantity: 3, value: 50 };
-      const createdItem2 = { id: 201, name: 'Scroll of Fireball', quantity: 1, value: 375 };
-
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = { query: jest.fn() };
-        return cb(mockClient);
-      });
-      dbUtils.insert
-        .mockResolvedValueOnce(createdItem1)
-        .mockResolvedValueOnce(createdItem2);
-
-      await itemCreationController.bulkCreateLoot(req, res);
-
-      expect(res.success).toHaveBeenCalled();
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.summary.successful).toBe(2);
-      expect(responseData.summary.failed).toBe(0);
-      expect(responseData.created).toHaveLength(2);
-    });
-
-    it('should return validation error when items array is empty or missing', async () => {
-      const req = createMockReq({
-        body: { items: [] },
-      });
-      const res = createMockRes();
-
-      await itemCreationController.bulkCreateLoot(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
-    });
-
-    it('should report partial failures in bulk creation', async () => {
-      const req = createMockReq({
-        body: {
-          items: [
-            { name: 'Valid Item', quantity: 1, customValue: 100 },
-            { name: '', quantity: 1, customValue: 50 }, // invalid: empty name
-          ],
-        },
-      });
-      const res = createMockRes();
-
-      const createdItem = { id: 300, name: 'Valid Item', quantity: 1, value: 100 };
-
-      dbUtils.executeTransaction.mockImplementation(async (cb) => {
-        const mockClient = { query: jest.fn() };
-        return cb(mockClient);
-      });
-      dbUtils.insert.mockResolvedValueOnce(createdItem);
-
-      await itemCreationController.bulkCreateLoot(req, res);
-
-      expect(res.success).toHaveBeenCalled();
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.summary.successful).toBe(1);
-      expect(responseData.summary.failed).toBe(1);
-      expect(responseData.errors).toHaveLength(1);
-      expect(responseData.errors[0].index).toBe(1);
+      expect(client.query).toHaveBeenCalledTimes(2); // nothing inserted
     });
   });
 
@@ -360,6 +418,43 @@ describe('itemCreationController', () => {
         1 // req.user.id
       );
       expect(res.success).toHaveBeenCalledWith(parsedData, 'Item description parsed successfully');
+    });
+
+    it('answers a parser outage (timeout, upstream failure) with its own status and message', async () => {
+      const outage = new Error('The item parser timed out. Try again or enter the item manually.');
+      outage.name = 'ItemParsingUnavailableError';
+      outage.status = 504;
+      ItemParsingService.parseItemDescription.mockRejectedValue(outage);
+      const res = createMockRes();
+
+      await itemCreationController.parseItemDescription(createMockReq({
+        body: { description: '+1 Sword' },
+      }), res);
+
+      expect(res.error).toHaveBeenCalledTimes(1);
+      expect(res.error).toHaveBeenCalledWith(outage.message, 504);
+    });
+
+    it('rejects an over-long description before calling OpenAI', async () => {
+      const res = createMockRes();
+
+      await itemCreationController.parseItemDescription(createMockReq({
+        body: { description: 'x'.repeat(501) },
+      }), res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('500'));
+      expect(ItemParsingService.parseItemDescription).not.toHaveBeenCalled();
+    });
+
+    it('accepts a description at the length limit', async () => {
+      ItemParsingService.parseItemDescription.mockResolvedValue({});
+      const res = createMockRes();
+
+      await itemCreationController.parseItemDescription(createMockReq({
+        body: { description: 'x'.repeat(500) },
+      }), res);
+
+      expect(ItemParsingService.parseItemDescription).toHaveBeenCalledTimes(1);
     });
 
     it('should propagate errors from the parsing service', async () => {
@@ -516,56 +611,6 @@ describe('itemCreationController', () => {
   });
 
   // ---------------------------------------------------------------
-  // searchItems
-  // ---------------------------------------------------------------
-  describe('searchItems', () => {
-    it('should return search results with pagination', async () => {
-      const req = createMockReq({
-        query: { name: 'sword', type: 'weapon', limit: '20', offset: '0' },
-      });
-      const res = createMockRes();
-
-      const mockResult = {
-        items: [{ id: 1, name: 'Longsword', value: 15 }],
-        total: 1,
-        limit: 20,
-        offset: 0,
-      };
-      ItemParsingService.searchItems.mockResolvedValue(mockResult);
-
-      await itemCreationController.searchItems(req, res);
-
-      expect(ItemParsingService.searchItems).toHaveBeenCalledWith(req.query);
-      expect(res.success).toHaveBeenCalled();
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.items).toHaveLength(1);
-      expect(responseData.pagination.total).toBe(1);
-      expect(responseData.pagination.hasMore).toBe(false);
-    });
-
-    it('should indicate hasMore when results exceed current page', async () => {
-      const req = createMockReq({
-        query: { name: 'a' },
-      });
-      const res = createMockRes();
-
-      const mockResult = {
-        items: Array(20).fill({ id: 1, name: 'Item' }),
-        total: 50,
-        limit: 20,
-        offset: 0,
-      };
-      ItemParsingService.searchItems.mockResolvedValue(mockResult);
-
-      await itemCreationController.searchItems(req, res);
-
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.pagination.hasMore).toBe(true);
-      expect(responseData.pagination.total).toBe(50);
-    });
-  });
-
-  // ---------------------------------------------------------------
   // suggestItems
   // ---------------------------------------------------------------
   describe('suggestItems', () => {
@@ -625,43 +670,6 @@ describe('itemCreationController', () => {
       await itemCreationController.suggestItems(req, res);
 
       expect(ItemParsingService.suggestItems).toHaveBeenCalledWith('sword', 10);
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // suggestMods
-  // ---------------------------------------------------------------
-  describe('suggestMods', () => {
-    it('should return mod suggestions with item type context', async () => {
-      const req = createMockReq({
-        query: { query: 'flam', itemType: 'weapon', itemSubtype: 'melee', limit: '5' },
-      });
-      const res = createMockRes();
-
-      const mockSuggestions = [{ id: 10, name: 'Flaming' }];
-      ItemParsingService.suggestMods.mockResolvedValue(mockSuggestions);
-
-      await itemCreationController.suggestMods(req, res);
-
-      expect(ItemParsingService.suggestMods).toHaveBeenCalledWith('flam', 'weapon', 'melee', 5);
-      expect(res.success).toHaveBeenCalled();
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.suggestions).toHaveLength(1);
-      expect(responseData.context).toEqual({ itemType: 'weapon', itemSubtype: 'melee' });
-    });
-
-    it('should return empty suggestions for queries shorter than 2 characters', async () => {
-      const req = createMockReq({
-        query: { query: 'f' },
-      });
-      const res = createMockRes();
-
-      await itemCreationController.suggestMods(req, res);
-
-      expect(ItemParsingService.suggestMods).not.toHaveBeenCalled();
-      expect(res.success).toHaveBeenCalled();
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.suggestions).toEqual([]);
     });
   });
 });

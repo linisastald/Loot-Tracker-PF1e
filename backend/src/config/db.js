@@ -5,6 +5,7 @@
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
 const { DATABASE } = require('./constants');
+const { buildPoolConfig, usesAppRole } = require('./poolConfig');
 require('dotenv').config();
 
 // Application credentials: prefer the dedicated (non-owner) app role when both
@@ -13,41 +14,33 @@ require('dotenv').config();
 // existing single-campaign deployments — behavior is unchanged, but RLS is
 // bypassed for table owners. The migration runner always uses the owner
 // credentials via config/adminDb.js.
-const useAppRole = Boolean(process.env.DB_APP_USER && process.env.DB_APP_PASSWORD);
+const useAppRole = usesAppRole(process.env);
 const appUser = useAppRole ? process.env.DB_APP_USER : process.env.DB_USER;
 const appPassword = useAppRole ? process.env.DB_APP_PASSWORD : process.env.DB_PASSWORD;
 
 if (useAppRole) {
     logger.info(`Database pool using dedicated app role: ${appUser}`);
 } else {
-    logger.info('Database pool using owner credentials (RLS not enforced)');
+    logger.warn('Database pool using owner credentials: RLS is NOT enforced. Set DB_APP_USER and DB_APP_PASSWORD to run as the restricted app role.');
 }
 
 // Create a new PostgreSQL connection pool with configuration from environment variables
-const pool = new Pool({
+const pool = new Pool(buildPoolConfig({
     user: appUser,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
     password: appPassword,
-    port: process.env.DB_PORT,
-    // Connection timeout in milliseconds
-    connectionTimeoutMillis: DATABASE.CONNECTION_TIMEOUT,
-    // Maximum number of clients in the pool
-    max: DATABASE.MAX_CONNECTIONS,
-    // Idle timeout in milliseconds
-    idleTimeoutMillis: DATABASE.IDLE_TIMEOUT
-});
+    max: DATABASE.MAX_CONNECTIONS
+}));
 
 // Log connection events for debugging
-pool.on('connect', (client) => {
+pool.on('connect', () => {
     logger.debug('New client connected to PostgreSQL pool');
 });
 
-pool.on('acquire', (client) => {
+pool.on('acquire', () => {
     logger.debug('Client acquired from PostgreSQL pool');
 });
 
-pool.on('remove', (client) => {
+pool.on('remove', () => {
     logger.debug('Client removed from PostgreSQL pool');
 });
 
@@ -93,10 +86,3 @@ testConnection().catch((error) => {
 });
 
 module.exports = pool;
-
-// Export pool methods for monitoring
-module.exports.getPoolStatus = () => ({
-    totalCount: pool.totalCount,
-    idleCount: pool.idleCount,
-    waitingCount: pool.waitingCount
-});

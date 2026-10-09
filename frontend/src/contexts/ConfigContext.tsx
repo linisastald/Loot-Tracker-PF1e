@@ -1,10 +1,14 @@
-// src/contexts/ConfigContext.js
+// src/contexts/ConfigContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import configService from '../services/config.service';
+import configService, { DEFAULT_CONFIG } from '../services/config.service';
+
+interface AppConfig {
+  groupName: string;
+  [key: string]: unknown;
+}
 
 interface ConfigContextType {
-  config: any;
-  loading: boolean;
+  config: AppConfig;
 }
 
 interface ConfigProviderProps {
@@ -22,29 +26,15 @@ export const useConfig = () => {
 };
 
 export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
-  const [config, setConfig] = useState({
-    groupName: 'Pathfinder Loot Tracker'
-  });
-  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
 
   useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const fetchedConfig = await configService.getConfig();
-        setConfig(fetchedConfig);
-      } catch (error) {
-        console.error('Failed to fetch config:', error);
-        // Keep default config on error
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchConfig();
+    // getConfig never rejects: it resolves to the defaults on failure
+    configService.getConfig().then(setConfig);
   }, []);
 
   return (
-    <ConfigContext.Provider value={{ config, loading }}>
+    <ConfigContext.Provider value={{ config }}>
       {children}
     </ConfigContext.Provider>
   );

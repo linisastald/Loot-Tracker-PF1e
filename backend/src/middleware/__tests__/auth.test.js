@@ -20,11 +20,12 @@ jest.mock('../../utils/dbUtils', () => ({
 process.env.JWT_SECRET = 'test-secret-key';
 
 /** Build a membership-query result row. */
-const row = (campaignId, role, isSuperadmin = false, userRole = 'Player') => ({
+const row = (campaignId, role, isSuperadmin = false, userRole = 'Player', passwordChangedAt = null) => ({
   is_superadmin: isSuperadmin,
   user_role: userRole,
   campaign_id: campaignId,
   role,
+  password_changed_at: passwordChangedAt,
 });
 
 describe('verifyToken middleware', () => {
@@ -133,6 +134,41 @@ describe('verifyToken middleware', () => {
         message: 'Invalid token',
       });
     });
+
+    it('should not leak internal error details for a non-JWT verification failure', async () => {
+      req.headers.authorization = 'Bearer some-token';
+      const spy = jest.spyOn(jwt, 'verify').mockImplementation(() => {
+        throw new Error('Database connection failed');
+      });
+
+      try {
+        await verifyToken(req, res, next);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid token' });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should log authentication failures for monitoring', async () => {
+      const logger = require('../../utils/logger');
+      req.headers.authorization = 'Bearer invalid.token.here';
+
+      await verifyToken(req, res, next);
+
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Authentication failed'));
+    });
+
+    it('should return 401 when the cookie jar is empty', async () => {
+      req.cookies = {};
+
+      await verifyToken(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Authentication required' });
+    });
   });
 
   describe('expired token', () => {
@@ -216,7 +252,7 @@ describe('verifyToken middleware', () => {
         expect(next).toHaveBeenCalled();
         expect(contextInsideHandler).toBe('3');
         // Context does not leak outside the chain
-        expect(campaignContext.getCampaignId()).toBe('1');
+        expect(campaignContext.getCampaignId()).toBe('');
       });
 
       it('propagates the context across async continuations of the handler', async () => {
@@ -238,18 +274,92 @@ describe('verifyToken middleware', () => {
         expect(contextAfterAwait).toBe('4');
       });
 
-      it('falls back to campaign 1 with the JWT role when the user has no memberships', async () => {
-        authedRequest({ id: 7, role: 'DM' });
-        dbUtils.executeQuery.mockResolvedValue({
-          rows: [{ is_superadmin: false, user_role: 'DM', campaign_id: null, role: null }],
+      describe('user with zero memberships', () => {
+        const noMembership = (userRole = 'Player', isSuperadmin = false) => ({
+          rows: [{ is_superadmin: isSuperadmin, user_role: userRole, campaign_id: null, role: null }],
         });
 
-        await verifyToken(req, res, next);
+        it('gets 403 with a readable message and no campaign context (stale JWT role DM is ignored)', async () => {
+          authedRequest({ id: 7, role: 'DM' });
+          dbUtils.executeQuery.mockResolvedValue(noMembership('DM'));
 
-        expect(next).toHaveBeenCalled();
-        expect(req.campaignId).toBe(1);
-        expect(req.campaignRole).toBe('DM');
-        expect(req.isSuperadmin).toBe(false);
+          await verifyToken(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+          expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: false,
+            code: 'NO_CAMPAIGN',
+            message: expect.stringContaining('Redeem an invite code'),
+          }));
+        });
+
+        it('loses access after being removed from the only campaign (membership rows gone)', async () => {
+          authedRequest({ id: 7, role: 'Player' });
+          dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row(1, 'Player')] });
+          await verifyToken(req, res, next);
+          expect(next).toHaveBeenCalledTimes(1);
+
+          next = jest.fn();
+          res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+          dbUtils.executeQuery.mockResolvedValueOnce(noMembership());
+          await verifyToken(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('still gets 403 when sending an X-Campaign-Id header', async () => {
+          authedRequest();
+          req.headers['x-campaign-id'] = '1';
+          dbUtils.executeQuery.mockResolvedValue(noMembership());
+
+          await verifyToken(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('is let through membership-free routes (allowNoCampaign) with null campaign and an empty scope (campaign 0)', async () => {
+          authedRequest({ id: 7, role: 'DM' });
+          dbUtils.executeQuery.mockResolvedValue(noMembership('DM'));
+
+          let contextInsideHandler;
+          next = jest.fn(() => {
+            contextInsideHandler = campaignContext.getCampaignId();
+          });
+
+          await verifyToken.allowNoCampaign(req, res, next);
+
+          expect(next).toHaveBeenCalled();
+          expect(req.campaignId).toBeNull();
+          expect(req.campaignRole).toBeNull();
+          expect(req.isSuperadmin).toBe(false);
+          expect(contextInsideHandler).toBe('0');
+        });
+
+        it('allowNoCampaign does not relax the X-Campaign-Id membership check', async () => {
+          authedRequest();
+          req.headers['x-campaign-id'] = '1';
+          dbUtils.executeQuery.mockResolvedValue(noMembership());
+
+          await verifyToken.allowNoCampaign(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('keeps a superadmin without memberships working: campaign 1 as DM', async () => {
+          authedRequest({ id: 7, role: 'Player' });
+          dbUtils.executeQuery.mockResolvedValue(noMembership('Player', true));
+
+          await verifyToken(req, res, next);
+
+          expect(next).toHaveBeenCalled();
+          expect(req.campaignId).toBe(1);
+          expect(req.campaignRole).toBe('DM');
+          expect(req.isSuperadmin).toBe(true);
+        });
       });
     });
 
@@ -399,6 +509,64 @@ describe('verifyToken middleware', () => {
           success: false,
           message: 'Failed to resolve campaign context',
         });
+      });
+    });
+
+    describe('sessions end when the password changes (F-0244)', () => {
+      const CHANGED_AT = new Date('2026-10-05T12:00:00.500Z');
+      const changedSec = Math.floor(CHANGED_AT.getTime() / 1000);
+
+      const requestWithIat = (iat) => {
+        req.cookies.authToken = jwt.sign({ id: 1, role: 'Player', iat }, process.env.JWT_SECRET);
+      };
+      const changedRow = () => row(1, 'Player', false, 'Player', CHANGED_AT);
+
+      it('rejects a token issued before the password change (401, same body as an invalid token)', async () => {
+        requestWithIat(changedSec - 60);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid token' });
+      });
+
+      it('accepts a token issued in the same second as the change', async () => {
+        requestWithIat(changedSec);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('accepts a token issued after the change', async () => {
+        requestWithIat(changedSec + 5);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('accepts every token when password_changed_at is NULL', async () => {
+        requestWithIat(1000);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [row(1, 'Player')] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('carries the column in the one existing membership query (no extra query)', async () => {
+        requestWithIat(changedSec + 5);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+        expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('password_changed_at');
       });
     });
   });

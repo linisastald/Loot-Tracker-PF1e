@@ -5,10 +5,6 @@ module.exports = {
     '<rootDir>/src/**/__tests__/**/*.js',
     '<rootDir>/src/**/?(*.)(spec|test).js'
   ],
-  testPathIgnorePatterns: [
-    '<rootDir>/tests/integration/',
-    '<rootDir>/tests/api/'
-  ],
   collectCoverageFrom: [
     'src/**/*.js',
     '!src/**/*.test.js',
@@ -31,10 +27,5 @@ module.exports = {
   restoreMocks: true,
   
   // Force mock database for unit tests
-  setupFiles: ['<rootDir>/tests/setupMocks.js'],
-  
-  // Mock external dependencies for unit tests
-  moduleNameMapper: {
-    '^pg$': '<rootDir>/tests/utils/mockDatabase.js'
-  }
+  setupFiles: ['<rootDir>/tests/setupMocks.js']
 };

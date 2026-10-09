@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
@@ -61,12 +61,25 @@ vi.mock('../../../../contexts/AuthContext', () => ({
   useAuth: () => useAuthMock(),
 }));
 
+// DM routing follows the role in the CURRENT campaign (or superadmin)
+let mockIsDM = false;
+// The active character of the SELECTED campaign (the auth user's is not used)
+let mockActiveCharacterId: number | null = null;
+vi.mock('../../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
+  useActiveCharacterId: () => mockActiveCharacterId,
+}));
+
 // CustomLootTable pulls in lots of unrelated state; stub it out.
 vi.mock('../../../common/CustomLootTable', () => ({
   default: () => <div data-testid="loot-table" />,
 }));
 
 import BaseLootManagement from '../BaseLootManagement';
+
+beforeEach(() => {
+  mockActiveCharacterId = null;
+});
 import lootService from '../../../../services/lootService';
 
 const config: any = {
@@ -80,6 +93,7 @@ const config: any = {
 describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsDM = false;
   });
 
   const submitDialog = async () => {
@@ -91,6 +105,7 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
   };
 
   it('routes to the DM endpoint when caller is a DM', async () => {
+    mockIsDM = true;
     useAuthMock.mockReturnValue({ user: { id: 1, role: 'DM' } });
 
     await submitDialog();
@@ -108,6 +123,16 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
     expect(lootService.updateLootItem).not.toHaveBeenCalled();
     expect(setOpenUpdateDialog).toHaveBeenCalledWith(false);
     expect(setSelectedItems).toHaveBeenCalledWith([]);
+  });
+
+  it('uses the player endpoint for a player in this campaign even when the account role is DM', async () => {
+    mockIsDM = false;
+    useAuthMock.mockReturnValue({ user: { id: 1, role: 'DM' } });
+
+    await submitDialog();
+
+    expect(lootService.updateLootItem).toHaveBeenCalledTimes(1);
+    expect(lootService.updateLootItemAsDM).not.toHaveBeenCalled();
   });
 
   it('routes to the player endpoint for non-DM users', async () => {
@@ -158,5 +183,112 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
     expect(
       await screen.findByText('Failed to update item. Please try again.')
     ).toBeInTheDocument();
+  });
+});
+
+describe('BaseLootManagement status actions (F-1577)', () => {
+  const actionConfig: any = {
+    ...config,
+    actions: [{ actionKey: 'keepParty', label: 'Keep Party', variant: 'contained', color: 'primary' }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsDM = false;
+    mockHookReturn.openUpdateDialog = false; // an open modal hides the action bar from the accessibility tree
+  });
+
+  it('sends the active character id when there is one', async () => {
+    mockActiveCharacterId = 21; // campaign context, not the auth user
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'Player', activeCharacterId: 99 } });
+    render(<BaseLootManagement config={actionConfig} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Party' }));
+
+    await waitFor(() => expect(lootService.updateLootStatus).toHaveBeenCalledTimes(1));
+    expect(lootService.updateLootStatus).toHaveBeenCalledWith({
+      lootIds: [42],
+      status: 'Kept Party',
+      characterId: 21,
+    });
+  });
+
+  it('omits characterId instead of sending the user id when there is no active character', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'DM' } });
+    render(<BaseLootManagement config={actionConfig} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Party' }));
+
+    await waitFor(() => expect(lootService.updateLootStatus).toHaveBeenCalledTimes(1));
+    expect(lootService.updateLootStatus).toHaveBeenCalledWith({ lootIds: [42], status: 'Kept Party' });
+  });
+});
+
+
+describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
+  const actionConfig: any = {
+    ...config,
+    actions: [
+      { label: 'Sell', color: 'primary', variant: 'contained', actionKey: 'sell' },
+      { label: 'Keep Self', color: 'primary', variant: 'contained', actionKey: 'keepSelf' },
+      { label: 'Appraise', color: 'primary', variant: 'contained', actionKey: 'appraise' },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsDM = false;
+    mockHookReturn.openUpdateDialog = false;
+    mockHookReturn.handleAppraise = vi.fn().mockResolvedValue(undefined);
+  });
+
+  it('shows the server message when a status change fails and keeps the selection', async () => {
+    mockActiveCharacterId = 7;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 99 } });
+    (lootService.updateLootStatus as any).mockRejectedValueOnce({
+      response: { data: { message: 'Cannot change status of sold loot' } },
+    });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sell' }));
+
+    expect(await screen.findByText('Cannot change status of sold loot')).toBeInTheDocument();
+    expect(setSelectedItems).not.toHaveBeenCalledWith([]);
+  });
+
+  it('blocks Keep Self without an active character instead of sending a status change', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player' } });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Self' }));
+
+    expect(await screen.findByText(/active character/i)).toBeInTheDocument();
+    expect(lootService.updateLootStatus).not.toHaveBeenCalled();
+  });
+
+  it('sends the active character with Keep Self', async () => {
+    mockActiveCharacterId = 7;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 99 } });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Self' }));
+
+    await waitFor(() => expect(lootService.updateLootStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'Kept Character', characterId: 7 }),
+    ));
+  });
+
+  it('shows why an appraisal failed and keeps the selection', async () => {
+    mockActiveCharacterId = 7;
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 99 } });
+    mockHookReturn.handleAppraise = vi.fn().mockRejectedValue({
+      response: { data: { message: 'You can only appraise as your own character' } },
+    });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Appraise' }));
+
+    expect(await screen.findByText('You can only appraise as your own character')).toBeInTheDocument();
+    expect(setSelectedItems).not.toHaveBeenCalledWith([]);
   });
 });

@@ -1,8 +1,9 @@
-// frontend/src/components/pages/ForgotPassword.js
+// frontend/src/components/pages/ForgotPassword.tsx
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import {
     Box,
     Button,
@@ -14,7 +15,7 @@ import {
     Alert
 } from '@mui/material';
 
-const ForgotPassword = () => {
+const ForgotPassword: React.FC = () => {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
@@ -22,7 +23,8 @@ const ForgotPassword = () => {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
         try {
             setError('');
             setSuccess('');
@@ -39,22 +41,21 @@ const ForgotPassword = () => {
                 email
             });
 
-            setSuccess(response.data.message);
+            // The api interceptor already unwraps the axios response, so the body
+            // ({ success, message, data: null }) is the response itself.
+            const body = response as { message?: string; data?: { message?: string } | null };
+            setSuccess(
+                body?.message ??
+                body?.data?.message ??
+                'If an account matches those details, a password reset link has been sent.'
+            );
             setUsername('');
             setEmail('');
 
-        } catch (err) {
-            setError(err.response?.data?.error || 
-                    err.response?.data?.message || 
-                    'Failed to process password reset request');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Failed to process password reset request'));
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleSubmit();
         }
     };
 
@@ -70,6 +71,7 @@ const ForgotPassword = () => {
                     Enter your username and email address to receive a password reset link.
                 </Typography>
 
+                <form onSubmit={handleSubmit} noValidate>
                 <TextField
                     variant="outlined"
                     margin="normal"
@@ -79,7 +81,6 @@ const ForgotPassword = () => {
                     autoFocus
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    onKeyDown={handleKeyDown}
                     disabled={loading}
                 />
 
@@ -92,7 +93,6 @@ const ForgotPassword = () => {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onKeyDown={handleKeyDown}
                     disabled={loading}
                 />
 
@@ -109,15 +109,16 @@ const ForgotPassword = () => {
                 )}
 
                 <Button
+                    type="submit"
                     fullWidth
                     variant="outlined"
                     color="primary"
                     sx={{ mt: 3, mb: 2 }}
-                    onClick={handleSubmit}
                     disabled={loading}
                 >
                     {loading ? 'Sending...' : 'Send Reset Link'}
                 </Button>
+                </form>
 
                 <Box
                     sx={{

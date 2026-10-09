@@ -1,34 +1,13 @@
 {
   "name": "loot-tracker-pf1e",
   "version": "0.15.2",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Pathfinder 1e loot and campaign management (version holder and convenience scripts; the app lives in backend/ and frontend/)",
   "scripts": {
-    "test": "node test-runner.js",
-    "test:coverage": "node test-runner.js --coverage",
-    "test:frontend": "node test-runner.js --frontend-only",
-    "test:backend": "node test-runner.js --backend-only",
-    "test:frontend:coverage": "node test-runner.js --frontend-only --coverage",
-    "test:backend:coverage": "node test-runner.js --backend-only --coverage",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
-    "setup:test": "cd backend && npm run test:setup",
-    "teardown:test": "cd backend && npm run test:teardown",
-    "validate-migrations": "bash scripts/validate-migrations.sh",
-    "migration-status": "node backend/scripts/migration-status.js",
-    "pre-commit": "npm run validate-migrations",
-    "prepare": "husky"
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && npm run test:unit",
+    "test:frontend": "cd frontend && npx vitest run",
+    "install:all": "cd frontend && npm install && cd ../backend && npm install"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "@emotion/react": "^11.11.4",
-    "@emotion/styled": "^11.11.5",
-    "@mui/icons-material": "^5.16.0",
-    "@mui/lab": "^5.0.0-alpha.171",
-    "@mui/material": "^5.16.0",
-    "@mui/x-date-pickers": "^7.9.0",
-    "date-fns": "^3.6.0",
-    "react-router-dom": "^6.24.1"
-  }
+  "license": "ISC"
 }

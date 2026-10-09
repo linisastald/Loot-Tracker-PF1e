@@ -2,9 +2,23 @@
 const Gold = require('../models/Gold');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
-const logger = require('../utils/logger');
 const GoldDistributionService = require('../services/goldDistributionService');
 const { hasDmRights } = require('../utils/roleUtils');
+
+const CURRENCIES = ['platinum', 'gold', 'silver', 'copper'];
+const DEBIT_TYPES = ['Withdrawal', 'Purchase', 'Party Loot Purchase'];
+
+/**
+ * Parse one denomination of a request entry into an integer (missing = 0).
+ * @throws {Error} ValidationError when the value is not a whole number
+ */
+const parseAmount = (value, currency) => {
+    const amount = Number(value ?? 0);
+    if (!Number.isInteger(amount)) {
+        throw controllerFactory.createValidationError(`${currency} must be a whole number`);
+    }
+    return amount;
+};
 
 /**
  * Create a new gold entry
@@ -30,12 +44,9 @@ const createGoldEntry = async (req, res) => {
         playerCharacterId = charResult.rows.length > 0 ? charResult.rows[0].id : null;
     }
 
-    const createdEntries = [];
-
+    // Validate and normalise every entry before touching the ledger.
+    const preparedEntries = [];
     for (const entry of goldEntries) {
-        const {transactionType, platinum, gold, silver, copper} = entry;
-
-        // Determine the attributed character id
         let characterId;
         if (dmRights) {
             characterId = entry.character_id || null;
@@ -52,43 +63,38 @@ const createGoldEntry = async (req, res) => {
             characterId = playerCharacterId;
         }
 
-        // Adjust values based on transaction type
-        const adjustedEntry = {
-            ...entry,
-            character_id: characterId,
-            platinum: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(platinum || 0) : (platinum || 0),
-            gold: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(gold || 0) : (gold || 0),
-            silver: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(silver || 0) : (silver || 0),
-            copper: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(copper || 0) : (copper || 0)
-        };
-
-        // Check if this transaction would cause negative totals
-        const totalResult = await dbUtils.executeQuery(
-            'SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold'
-        );
-
-        const currentPlatinum = parseFloat(totalResult.rows[0].total_platinum) || 0;
-        const currentGold = parseFloat(totalResult.rows[0].total_gold) || 0;
-        const currentSilver = parseFloat(totalResult.rows[0].total_silver) || 0;
-        const currentCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
-
-        const newPlatinum = currentPlatinum + adjustedEntry.platinum;
-        const newGold = currentGold + adjustedEntry.gold;
-        const newSilver = currentSilver + adjustedEntry.silver;
-        const newCopper = currentCopper + adjustedEntry.copper;
-
-        if (newPlatinum < 0 || newGold < 0 || newSilver < 0 || newCopper < 0) {
-            throw controllerFactory.createValidationError('Transaction would result in negative currency balance');
+        // Debits are stored as negative amounts regardless of the sign sent
+        const isDebit = DEBIT_TYPES.includes(entry.transactionType);
+        // who is the acting user, never a client-supplied value
+        const adjustedEntry = {...entry, character_id: characterId, who: req.user.id};
+        for (const currency of CURRENCIES) {
+            const amount = parseAmount(entry[currency], currency);
+            adjustedEntry[currency] = isDebit ? -Math.abs(amount) : amount;
         }
-
-        try {
-            const createdEntry = await Gold.create(adjustedEntry);
-            createdEntries.push(createdEntry);
-        } catch (error) {
-            logger.error('Error creating gold entry:', error);
-            return res.error('Error creating gold entry', 500);
-        }
+        preparedEntries.push(adjustedEntry);
     }
+
+    // One transaction under a ledger lock: the balance is read once and tracked
+    // as a running total, so concurrent requests cannot both overdraw and a
+    // failure part-way leaves no earlier entry committed.
+    const createdEntries = await dbUtils.executeTransaction(async (client) => {
+        await Gold.lockLedger(client);
+
+        const running = await Gold.getBalance(client);
+        const created = [];
+
+        for (const adjustedEntry of preparedEntries) {
+            for (const currency of CURRENCIES) {
+                running[currency] += adjustedEntry[currency];
+                if (running[currency] < 0) {
+                    throw controllerFactory.createValidationError('Transaction would result in negative currency balance');
+                }
+            }
+            created.push(await Gold.create(adjustedEntry, client));
+        }
+
+        return created;
+    }, 'Error creating gold entries');
 
     return res.created(createdEntries, 'Gold entries created successfully');
 };
@@ -101,7 +107,7 @@ const getAllGoldEntries = async (req, res) => {
     // This allows the overview to get all data when no dates are specified
     let startDate = req.query.startDate;
     let endDate = req.query.endDate;
-    
+
     // Pagination parameters with defaults
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 50, 500); // Cap at 500 for performance
@@ -114,152 +120,95 @@ const getAllGoldEntries = async (req, res) => {
         startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    try {
-        const result = await Gold.findAll({ startDate, endDate, page, limit });
-        
-        // Return paginated response with metadata
-        return res.success({
-            data: result.transactions,
-            pagination: result.pagination
-        }, 'Gold entries retrieved successfully');
-    } catch (error) {
-        logger.error('Error fetching gold entries:', error);
-        return res.error('Error fetching gold entries', 500);
-    }
+    const result = await Gold.findAll({ startDate, endDate, page, limit });
+
+    // Return paginated response with metadata
+    return res.success({
+        data: result.transactions,
+        pagination: result.pagination
+    }, 'Gold entries retrieved successfully');
 };
 
 /**
  * Get gold overview totals using the database view for efficiency
  */
 const getGoldOverviewTotals = async (req, res) => {
-    try {
-        const result = await dbUtils.executeQuery('SELECT * FROM gold_totals_view');
-        const totals = result.rows[0];
+    const result = await dbUtils.executeQuery('SELECT * FROM gold_totals_view');
+    const totals = result.rows[0];
 
-        return res.success({
-            platinum: parseInt(totals.total_platinum) || 0,
-            gold: parseInt(totals.total_gold) || 0,
-            silver: parseInt(totals.total_silver) || 0,
-            copper: parseInt(totals.total_copper) || 0,
-            fullTotal: parseFloat(totals.total_value_in_gold) || 0,
-            totalTransactions: parseInt(totals.total_transactions) || 0,
-            lastTransactionDate: totals.last_transaction_date
-        }, 'Gold overview totals retrieved successfully');
-    } catch (error) {
-        logger.error('Error fetching gold overview totals:', error);
-        return res.error('Error fetching gold overview totals', 500);
-    }
+    return res.success({
+        platinum: parseInt(totals.total_platinum) || 0,
+        gold: parseInt(totals.total_gold) || 0,
+        silver: parseInt(totals.total_silver) || 0,
+        copper: parseInt(totals.total_copper) || 0,
+        fullTotal: parseFloat(totals.total_value_in_gold) || 0,
+        totalTransactions: parseInt(totals.total_transactions) || 0,
+        lastTransactionDate: totals.last_transaction_date
+    }, 'Gold overview totals retrieved successfully');
 };
 
 /**
- * Helper function to distribute gold
- * Refactored to use GoldDistributionService for better maintainability
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {boolean} includePartyShare - Whether to include a share for party loot
- * @returns {Promise<Object>} - Express response
+ * Distribute gold evenly among active characters (GoldDistributionService does
+ * the work). Errors propagate to controllerFactory.
+ * @param {boolean} includePartyShare - Whether to reserve one share for party loot
  */
-const distributeGold = async (req, res, includePartyShare) => {
-    try {
-        const userId = req.user.id;
-        
-        // Use GoldDistributionService to handle the complex distribution logic
-        const result = await GoldDistributionService.executeDistribution(userId, includePartyShare);
-        
-        return res.success(result.entries, result.message);
-    } catch (error) {
-        logger.error(`Error distributing gold${includePartyShare ? ' plus party loot' : ''}:`, error);
-        throw error; // Let controllerFactory handle the error response
-    }
-};
-
-/**
- * Distribute all gold evenly among active characters
- */
-const distributeAllGold = async (req, res) => {
-    return distributeGold(req, res, false);
-};
-
-/**
- * Distribute gold plus party loot (reserves one share for party loot)
- */
-const distributePlusPartyLoot = async (req, res) => {
-    return distributeGold(req, res, true);
+const distribute = (includePartyShare) => async (req, res) => {
+    const result = await GoldDistributionService.executeDistribution(req.user.id, includePartyShare);
+    return res.success(result.entries, result.message);
 };
 
 /**
  * Balance currencies by converting coppers to silvers, silvers to gold
  */
 const balance = async (req, res) => {
-    try {
-        // Get user ID from req.user
-        const userId = req.user.id;
+    // Read the totals and insert the balancing row under the ledger lock so two
+    // concurrent calls (or a balance racing a withdrawal) cannot both apply.
+    const created = await dbUtils.executeTransaction(async (client) => {
+        await Gold.lockLedger(client);
 
-        // Get total copper and silver
-        const totalResult = await dbUtils.executeQuery(
-            'SELECT SUM(copper) AS total_copper, SUM(silver) AS total_silver, SUM(gold) AS total_gold FROM gold'
-        );
-
-        const totalCopper = parseInt(totalResult.rows[0].total_copper, 10) || 0;
-        const totalSilver = parseInt(totalResult.rows[0].total_silver, 10) || 0;
-        const totalGold = parseInt(totalResult.rows[0].total_gold, 10) || 0;
+        const totals = await Gold.getBalance(client);
+        const totalCopper = totals.copper;
+        const totalSilver = totals.silver;
+        const totalGold = totals.gold;
 
         // Check if totals are already negative - we can't balance negative amounts
         if (totalCopper < 0 || totalSilver < 0 || totalGold < 0) {
-            return res.validationError('Cannot balance currencies when any denomination is negative');
+            throw controllerFactory.createValidationError('Cannot balance currencies when any denomination is negative');
         }
 
-        // Calculate the balancing transaction values
-        // First convert copper to silver
+        // Convert copper to silver, then silver (including the converted copper) to gold
         const copperToSilver = Math.floor(totalCopper / 10);
         const newCopper = totalCopper % 10;
-
-        // Then convert silver (including newly converted from copper) to gold
         const totalSilverAfterConversion = totalSilver + copperToSilver;
         const silverToGold = Math.floor(totalSilverAfterConversion / 10);
         const newSilver = totalSilverAfterConversion % 10;
 
-        const newGold = totalGold + silverToGold;
+        // The balancing entry holds the differences that reach the new values
+        const goldChange = silverToGold;
+        const silverChange = newSilver - totalSilver;
+        const copperChange = newCopper - totalCopper;
 
-        // Create a balancing entry that sets the final values to what they should be
-        const balanceEntry = {
+        // Only create a balance entry if there are actual changes
+        if (goldChange === 0 && silverChange === 0 && copperChange === 0) {
+            return null;
+        }
+
+        return Gold.create({
             sessionDate: new Date(),
             transactionType: 'Balance',
             platinum: 0,
-            gold: silverToGold,  // Add the converted gold
-            silver: newSilver - totalSilver,  // The difference to reach the new silver value
-            copper: newCopper - totalCopper,  // The difference to reach the new copper value
+            gold: goldChange,
+            silver: silverChange,
+            copper: copperChange,
             notes: 'Balanced currencies',
-            userId,
-        };
+            who: req.user.id
+        }, client);
+    }, 'Error balancing currencies');
 
-        // Only create a balance entry if there are actual changes
-        if (balanceEntry.gold === 0 && balanceEntry.silver === 0 && balanceEntry.copper === 0) {
-            return res.success(null, 'No balancing needed');
-        }
-
-        // Insert the balance entry
-        const query = `
-            INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
-        `;
-
-        const result = await dbUtils.executeQuery(query, [
-            balanceEntry.sessionDate,
-            balanceEntry.transactionType,
-            balanceEntry.platinum,
-            balanceEntry.gold,
-            balanceEntry.silver,
-            balanceEntry.copper,
-            balanceEntry.notes
-        ]);
-
-        return res.success(result.rows[0], 'Currencies balanced successfully');
-    } catch (error) {
-        logger.error('Error balancing currencies:', error);
-        return res.error('Error balancing currencies', 500);
+    if (!created) {
+        return res.success(null, 'No balancing needed');
     }
+    return res.success(created, 'Currencies balanced successfully');
 };
 
 // Define validation for each endpoint
@@ -280,10 +229,10 @@ module.exports = {
     getGoldOverviewTotals: controllerFactory.createHandler(getGoldOverviewTotals, {
         errorMessage: 'Error fetching gold overview totals'
     }),
-    distributeAllGold: controllerFactory.createHandler(distributeAllGold, {
+    distributeAllGold: controllerFactory.createHandler(distribute(false), {
         errorMessage: 'Error distributing gold'
     }),
-    distributePlusPartyLoot: controllerFactory.createHandler(distributePlusPartyLoot, {
+    distributePlusPartyLoot: controllerFactory.createHandler(distribute(true), {
         errorMessage: 'Error distributing gold with party loot share'
     }),
     balance: controllerFactory.createHandler(balance, {

@@ -1,9 +1,9 @@
 /**
  * Unit tests for the auth route validation chains (Phase 3b invite overhaul)
  *
- * Covers the /register inviteCode length rule: new codes are 8 characters,
- * but unused legacy 6-character codes must remain redeemable, so the
- * validator accepts 6-8 characters. Also pins that the four old invite
+ * Covers the /register inviteCode length rule: invite codes are exactly 8
+ * characters (legacy 6- and 7-character codes were retired by migration 067).
+ * Also pins that the four old invite
  * management endpoints are gone from the /api/auth mount (they moved to
  * /api/invites).
  *
@@ -13,9 +13,13 @@
  */
 
 // Mock auth middleware to pass through
-jest.mock('../../../middleware/auth', () => (req, res, next) => {
-  req.user = { id: 1, role: 'DM', username: 'testdm' };
-  next();
+jest.mock('../../../middleware/auth', () => {
+  const mw = (req, res, next) => {
+    req.user = { id: 1, role: 'DM', username: 'testdm' };
+    next();
+  };
+  mw.allowNoCampaign = mw;
+  return mw;
 });
 
 // Mock the controller: every handler reports which endpoint was reached
@@ -28,7 +32,6 @@ jest.mock('../../../controllers/authController', () => {
     logoutUser: handler('logoutUser'),
     checkForDm: handler('checkForDm'),
     checkRegistrationStatus: handler('checkRegistrationStatus'),
-    checkInviteRequired: handler('checkInviteRequired'),
     refreshToken: handler('refreshToken'),
     forgotPassword: handler('forgotPassword'),
     resetPassword: handler('resetPassword'),
@@ -77,22 +80,17 @@ describe('auth routes', () => {
       expect(res.body.handler).toBe('registerUser');
     });
 
-    it('should accept a legacy 6-character invite code', async () => {
+    it.each([
+      ['6-character legacy', 'ABC123'],
+      ['7-character legacy', 'ABC1234'],
+      ['4-character', 'AB12'],
+    ])('should reject a %s invite code with a clear message (F-0582)', async (_label, inviteCode) => {
       const res = await request(app)
         .post('/api/auth/register')
-        .send({ ...validRegistration, inviteCode: 'ABC123' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.handler).toBe('registerUser');
-    });
-
-    it('should reject an invite code shorter than 6 characters', async () => {
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send({ ...validRegistration, inviteCode: 'AB12' });
+        .send({ ...validRegistration, inviteCode });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors).toBeDefined();
+      expect(JSON.stringify(res.body.errors)).toContain('Invite code must be exactly 8 characters long');
     });
 
     it('should reject an invite code longer than 8 characters', async () => {

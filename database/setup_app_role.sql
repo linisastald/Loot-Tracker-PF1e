@@ -16,8 +16,10 @@
 --   purpose: it contains a password and the timing of the role switch is a
 --   deployment decision, not a schema change.
 --
---   Example:
---     psql -U <owner> -d <database> -f database/setup_app_role.sql
+--   Example (psql 13 or newer; the password is passed as a variable so it is
+--   not stored in this file or in the shell history of a typed literal):
+--     psql -U <owner> -d <database> -v ON_ERROR_STOP=1 \
+--          -v app_password="$LOOT_APP_PASSWORD" -f database/setup_app_role.sql
 --
 -- WHEN TO RUN IT
 --   Any time after migration 045 has been applied and BEFORE setting the
@@ -35,23 +37,37 @@
 --   not be granted to the app role automatically.
 --
 -- SECURITY
---   *** Replace CHANGE_ME with a strong generated password before running.***
---   Never commit a real credential to this file. Then set the same value in
---   the deployment environment as DB_APP_PASSWORD.
+--   The password comes from the psql variable app_password (see the example
+--   above). The script stops without changing anything if the variable is not
+--   set, is empty, or is the placeholder CHANGE_ME. Use a strong generated
+--   value and set the same value in the deployment environment as
+--   DB_APP_PASSWORD. Never commit a real credential to this file. (With
+--   log_statement = 'all' the CREATE ROLE statement, including the password,
+--   reaches the server log; turn that off or rotate the password afterwards.)
 --
 -- Re-runnable: the CREATE ROLE is skipped if the role already exists, and
---   GRANT / ALTER DEFAULT PRIVILEGES statements are idempotent.
+--   GRANT / REVOKE / ALTER DEFAULT PRIVILEGES statements are idempotent.
 -- ============================================================================
+
+-- 0. Refuse to run without a real password (psql meta-commands, so this must
+--    stay outside any DO block). On a psql older than 13 the :{?...} test is
+--    not understood and the script also stops here.
+\if :{?app_password}
+\else
+  \echo 'ERROR: pass the password with -v app_password=... (see the header of this file). Nothing was changed.'
+  \quit
+\endif
+SELECT (:'app_password' = '' OR upper(:'app_password') = 'CHANGE_ME') AS bad_password \gset
+\if :bad_password
+  \echo 'ERROR: app_password must be a real, non-empty password (not CHANGE_ME). Nothing was changed.'
+  \quit
+\endif
 
 -- 1. Create the application role (skipped if it already exists).
 --    NOTE: if the role already exists, its password is NOT changed here; use
 --    ALTER ROLE loot_app PASSWORD '...' to rotate it.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'loot_app') THEN
-        CREATE ROLE loot_app LOGIN PASSWORD 'CHANGE_ME';  -- CHANGE_ME: replace before running
-    END IF;
-END $$;
+SELECT format('CREATE ROLE loot_app LOGIN PASSWORD %L', :'app_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'loot_app') \gexec
 
 -- 2. Connection and schema access. (CONNECT is granted to PUBLIC by default
 --    on most databases; granting it explicitly keeps this script valid even
@@ -68,6 +84,38 @@ GRANT USAGE ON SCHEMA public TO loot_app;
 --    rows this role can actually see/write on tenant tables. Deliberately no
 --    TRUNCATE, no REFERENCES, no TRIGGER, and no DDL.
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO loot_app;
+
+-- 3b. The migration bookkeeping tables belong to the owner-privileged runner
+--     only (it uses the admin pool); the application never reads or writes
+--     them. Without this a query bug or injection in the app role could
+--     rewrite migration state that the runner trusts at the next start. The
+--     DO block skips tables that do not exist (e.g. no legacy
+--     schema_migrations on a fresh install).
+DO $$
+DECLARE
+    t text;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['schema_migrations', 'schema_migrations_v2', 'migration_history',
+                             'migration_locks', 'migration_config']
+    LOOP
+        IF to_regclass('public.' || t) IS NOT NULL THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.%I FROM loot_app', t);
+        END IF;
+    END LOOP;
+END $$;
+
+-- 3c. Rights the application never uses on the account tables (same statements
+--     as migration 079; they are repeated here because step 3 hands the rights
+--     back on every run). The app never deletes a user or a campaign, and it
+--     writes only these columns of users, so it cannot change is_superadmin
+--     (last_active_at was added by migration 085).
+--     When the app starts writing another users column, add it here AND in a
+--     new migration, or that write fails with "permission denied".
+REVOKE DELETE ON TABLE public.users FROM loot_app;
+REVOKE DELETE ON TABLE public.campaigns FROM loot_app;
+REVOKE UPDATE ON TABLE public.users FROM loot_app;
+GRANT UPDATE (email, password, password_changed_at, login_attempts, locked_until, discord_id, role, last_active_at)
+    ON TABLE public.users TO loot_app;
 
 -- 4. Sequences (SERIAL/BIGSERIAL columns call nextval on insert).
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO loot_app;

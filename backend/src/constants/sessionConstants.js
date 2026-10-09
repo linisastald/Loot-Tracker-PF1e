@@ -67,10 +67,12 @@ const DEFAULT_VALUES = {
     MAXIMUM_PLAYERS: 6,
     AUTO_ANNOUNCE_HOURS: 168, // 1 week
     REMINDER_HOURS: 24,
-    AUTO_CANCEL_HOURS: 48,
-    CONFIRMATION_DAYS_BEFORE: 2,
-    ANNOUNCEMENT_DAYS_BEFORE: 7
+    CONFIRMATION_HOURS: 48 // 2 days before
 };
+
+// The scheduler may only auto-cancel an under-attended session once the newest
+// reminder is at least this old, so players have a real chance to answer.
+const CANCEL_REMINDER_MIN_AGE_HOURS = 12;
 
 module.exports = {
     SESSION_STATUS,
@@ -80,7 +82,7 @@ module.exports = {
     RESPONSE_TYPE_MAP,
     STATUS_TO_RESPONSE_MAP,
     RESPONSE_EMOJI_MAP,
-    RECURRING_PATTERN,
     VALID_RECURRING_PATTERNS,
-    DEFAULT_VALUES
+    DEFAULT_VALUES,
+    CANCEL_REMINDER_MIN_AGE_HOURS
 };

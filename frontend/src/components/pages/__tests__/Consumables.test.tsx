@@ -13,6 +13,12 @@ vi.mock('../../../utils/api', () => ({
   },
 }));
 
+// DM gating comes from the current campaign, not the account
+const mockIsDM = vi.hoisted(() => ({ value: true }));
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM.value,
+}));
+
 import api from '../../../utils/api';
 import Consumables from '../Consumables';
 
@@ -171,6 +177,118 @@ describe('Consumables', () => {
       expect(screen.getByText(/no wands available/i)).toBeInTheDocument();
       expect(screen.getByText(/no potions available/i)).toBeInTheDocument();
       expect(screen.getByText(/no scrolls available/i)).toBeInTheDocument();
+    });
+  });
+
+  it('sends the type of the section a row is in, not one guessed from its name (F-1114)', async () => {
+    (api.get as any).mockResolvedValue({
+      data: {
+        wands: [{ id: 9, name: 'Wand of Scroll of Doom', quantity: 1, charges: 5 }],
+        potionsScrolls: [],
+      },
+    });
+    (api.post as any).mockResolvedValue({ data: {} });
+    renderConsumables();
+
+    await waitFor(() => expect(screen.getByText('Wand of Scroll of Doom')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Use' })[0]);
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/consumables/use', { itemid: 9, type: 'wand' });
+    });
+  });
+
+  it('shows the server message when using a consumable fails (F-1116)', async () => {
+    (api.post as any).mockRejectedValue({ response: { data: { message: 'Consumable not found or no uses left' } } });
+    renderConsumables();
+
+    await waitFor(() => expect(screen.getByText('Potion of Healing')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Use' })[0]);
+
+    expect(await screen.findByText('Consumable not found or no uses left')).toBeInTheDocument();
+  });
+
+  it('shows an error when the consumables cannot be loaded (F-1116)', async () => {
+    (api.get as any).mockRejectedValue(new Error('network'));
+    renderConsumables();
+
+    expect(await screen.findByText('Failed to load consumables')).toBeInTheDocument();
+  });
+
+  it('keeps the charges dialog open and explains a failed update (F-1116)', async () => {
+    (api.get as any).mockResolvedValue({
+      data: { wands: [{ id: 3, name: 'Wand of Fireball', quantity: 1, charges: null }], potionsScrolls: [] },
+    });
+    (api.put as any).mockRejectedValue({ response: { data: { message: 'Charges must be between 1 and 50' } } });
+    renderConsumables();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Enter Charges' }));
+    fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    expect(await screen.findByText('Charges must be between 1 and 50')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+  });
+
+  describe('wand charges (owner decision 2026-10-06)', () => {
+    const noChargesWand = { data: { wands: [{ id: 3, name: 'Wand of Fireball', quantity: 1, charges: null }], potionsScrolls: [] } };
+
+    beforeEach(() => {
+      mockIsDM.value = true;
+    });
+
+    it('hides the charge-entry control from non-DMs', async () => {
+      mockIsDM.value = false;
+      (api.get as any).mockResolvedValue(noChargesWand);
+      renderConsumables();
+
+      expect(await screen.findByText('Wand of Fireball')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enter Charges' })).not.toBeInTheDocument();
+    });
+
+    it('still lets a non-DM use a wand', async () => {
+      mockIsDM.value = false;
+      (api.get as any).mockResolvedValue({ data: mockConsumablesData });
+      (api.post as any).mockResolvedValue({ data: { id: 1, charges: 34, status: 'Kept Party' }, message: 'Wand charge used successfully' });
+      renderConsumables();
+
+      fireEvent.click((await screen.findAllByRole('button', { name: 'Use' }))[0]);
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/consumables/use', { itemid: expect.any(Number), type: 'wand' }));
+    });
+
+    it('lets a DM enter 0 charges, with a hint that it trashes the wand', async () => {
+      (api.get as any).mockResolvedValue(noChargesWand);
+      (api.put as any).mockResolvedValue({ data: { id: 3, charges: 0, status: 'Trashed' } });
+      renderConsumables();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Enter Charges' }));
+      expect(screen.getByText(/0 trashes the wand/i)).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '0' } });
+      const update = screen.getByRole('button', { name: 'Update' });
+      expect(update).toBeEnabled();
+      fireEvent.click(update);
+      await waitFor(() => expect(api.put).toHaveBeenCalledWith('/consumables/wandcharges', { id: 3, charges: 0 }));
+    });
+
+    it('rejects charges above 50 in the DM dialog', async () => {
+      (api.get as any).mockResolvedValue(noChargesWand);
+      renderConsumables();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Enter Charges' }));
+      fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '51' } });
+      expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
+    });
+
+    it('tells the user when using the last charge trashed the wand', async () => {
+      (api.get as any).mockResolvedValue({ data: mockConsumablesData });
+      (api.post as any).mockResolvedValue({
+        data: { id: 1, charges: 0, status: 'Trashed' },
+        message: 'Wand charge used successfully; the wand is now empty and was moved to trash',
+      });
+      renderConsumables();
+
+      fireEvent.click((await screen.findAllByRole('button', { name: 'Use' }))[0]);
+      expect(await screen.findByText(/the wand is now empty and was moved to trash/i)).toBeInTheDocument();
     });
   });
 });

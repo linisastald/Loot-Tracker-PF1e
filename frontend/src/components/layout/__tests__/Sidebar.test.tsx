@@ -21,13 +21,15 @@ vi.mock('../../../services/versionService', () => ({
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { username: 'dm-user' }, isDM: true }),
+  useAuth: () => ({ user: { username: 'dm-user', role: 'DM' } }),
 }));
 
 let campaignContextValue: any;
 
 vi.mock('../../../contexts/CampaignContext', () => ({
   useCampaign: () => campaignContextValue,
+  // same rule as CampaignContext: DM of the current campaign, or superadmin
+  useIsDM: () => campaignContextValue.campaignRole === 'DM' || campaignContextValue.isSuperadmin,
 }));
 
 import Sidebar from '../Sidebar';
@@ -111,22 +113,45 @@ describe('Sidebar (campaign context integration)', () => {
     expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
   });
 
-  it('shows the System Admin entry only for superadmins', async () => {
+  it('keeps System Admin out of the campaign navigation even for a superadmin (it is a tab of Account & Settings)', async () => {
     campaignContextValue = makeContext({}, undefined, true);
 
-    renderSidebar();
-
-    await waitFor(() => {
-      expect(screen.getAllByText('System Admin').length).toBeGreaterThan(0);
-    });
-  });
-
-  it('hides the System Admin entry for plain DMs', async () => {
     renderSidebar();
 
     await waitFor(() => {
       expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0);
     });
     expect(screen.queryByText('System Admin')).not.toBeInTheDocument();
+  });
+
+  it('links the footer account block to Account & Settings', async () => {
+    renderSidebar();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0);
+    });
+    const links = screen.getAllByRole('link', { name: /account & settings/i });
+    expect(links.length).toBeGreaterThan(0);
+    expect(links[0]).toHaveAttribute('href', '/user-settings');
+  });
+
+  describe('DM Settings entry follows the campaign role, not the account role', () => {
+    it('is shown to the DM of the current campaign', async () => {
+      renderSidebar();
+      await waitFor(() => expect(screen.getAllByText('DM Settings').length).toBeGreaterThan(0));
+    });
+
+    it('is hidden from a player in this campaign even if the account is DM elsewhere', async () => {
+      campaignContextValue = { ...makeContext(), campaignRole: 'Player' as const };
+      renderSidebar();
+      await waitFor(() => expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0));
+      expect(screen.queryByText('DM Settings')).not.toBeInTheDocument();
+    });
+
+    it('is shown to a superadmin who is only a player here', async () => {
+      campaignContextValue = { ...makeContext({}, undefined, true), campaignRole: 'Player' as const };
+      renderSidebar();
+      await waitFor(() => expect(screen.getAllByText('DM Settings').length).toBeGreaterThan(0));
+    });
   });
 });

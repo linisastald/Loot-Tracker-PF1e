@@ -1,7 +1,8 @@
 // backend/src/controllers/sessionTaskController.js
 //
 // DM-editable session task definitions: the pre/during/post-session task
-// pools the Tasks page deals out to attending characters.
+// pools the Tasks page deals out to attending characters, plus the per-task
+// options (eligibility, rotation, priority, announcement) that drive the deal.
 //
 // Authorization: reading the list is open to every campaign member (the Tasks
 // page needs it); create/update/delete/reorder/reset are gated by
@@ -9,11 +10,18 @@
 
 const SessionTask = require('../models/SessionTask');
 const controllerFactory = require('../utils/controllerFactory');
-const { TASK_PHASES, DEFAULT_SESSION_TASKS } = require('../constants/sessionTaskDefaults');
+const {
+  TASK_PHASES,
+  DEFAULT_SESSION_TASKS,
+} = require('../constants/sessionTaskDefaults');
 
 const MAX_NAME_LENGTH = 255;
 const MAX_QUANTITY = 20;
-const MAX_MIN_CHARACTERS = 50;
+const MAX_CHARACTER_LIMIT = 50;
+const MAX_LABEL_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 300; // goes into a Discord embed field
+const PRIORITIES = [0, 1, 2];
+const MAX_PG_INTEGER = 2147483647;
 
 /** The active campaign id resolved by verifyToken; every query is scoped to it. */
 const requireCampaignId = (req) => {
@@ -24,17 +32,64 @@ const requireCampaignId = (req) => {
   return campaignId;
 };
 
-/**
- * Validate and normalise a task payload. Throws a validation error on bad
- * input; returns the clean fields ready for the model.
- */
-const parseTaskInput = (body = {}) => {
-  const phase = typeof body.phase === 'string' ? body.phase.trim() : '';
+const isBlank = (value) => value === undefined || value === null || value === '';
+
+const parseBool = (value) => value === true || value === 'true';
+
+/** Optional integer in [min, max]; blank -> null. */
+const parseOptionalInt = (value, field, min, max) => {
+  if (isBlank(value)) return null;
+  const parsed = parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw controllerFactory.createValidationError(
+      `${field} must be an integer between ${min} and ${max}, or empty`
+    );
+  }
+  return parsed;
+};
+
+/** Optional trimmed text up to maxLength; blank -> null. */
+const parseOptionalText = (value, field, maxLength) => {
+  if (isBlank(value)) return null;
+  if (typeof value !== 'string') {
+    throw controllerFactory.createValidationError(`${field} must be text`);
+  }
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  if (trimmed.length > maxLength) {
+    throw controllerFactory.createValidationError(
+      `${field} must be at most ${maxLength} characters`
+    );
+  }
+  return trimmed;
+};
+
+/** A trimmed phase that must be one of TASK_PHASES. */
+const parsePhase = (value) => {
+  const phase = typeof value === 'string' ? value.trim() : '';
   if (!TASK_PHASES.includes(phase)) {
     throw controllerFactory.createValidationError(
       `phase must be one of: ${TASK_PHASES.join(', ')}`
     );
   }
+  return phase;
+};
+
+/** The :id route parameter as a positive integer. */
+const parseTaskId = (req) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    throw controllerFactory.createValidationError('Invalid task id');
+  }
+  return id;
+};
+
+/**
+ * Validate and normalise a task payload. Throws a validation error on bad
+ * input; returns the clean fields ready for the model.
+ */
+const parseTaskInput = (body = {}) => {
+  const phase = parsePhase(body.phase);
 
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) {
@@ -46,28 +101,70 @@ const parseTaskInput = (body = {}) => {
     );
   }
 
-  const quantity = body.quantity === undefined || body.quantity === null || body.quantity === ''
-    ? 1
-    : parseInt(body.quantity, 10);
+  const quantity = isBlank(body.quantity) ? 1 : parseInt(body.quantity, 10);
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
     throw controllerFactory.createValidationError(
       `quantity must be an integer between 1 and ${MAX_QUANTITY}`
     );
   }
 
-  let minCharacters = null;
-  if (body.min_characters !== undefined && body.min_characters !== null && body.min_characters !== '') {
-    minCharacters = parseInt(body.min_characters, 10);
-    if (!Number.isInteger(minCharacters) || minCharacters < 1 || minCharacters > MAX_MIN_CHARACTERS) {
-      throw controllerFactory.createValidationError(
-        `min_characters must be an integer between 1 and ${MAX_MIN_CHARACTERS}, or empty`
-      );
-    }
+  const minCharacters = parseOptionalInt(body.min_characters, 'min_characters', 1, MAX_CHARACTER_LIMIT);
+  const maxCharacters = parseOptionalInt(body.max_characters, 'max_characters', 1, MAX_CHARACTER_LIMIT);
+  if (minCharacters !== null && maxCharacters !== null && maxCharacters < minCharacters) {
+    throw controllerFactory.createValidationError(
+      'max_characters must be at least min_characters'
+    );
   }
 
-  const isSnackMaster = body.is_snack_master === true || body.is_snack_master === 'true';
+  const priority = isBlank(body.priority) ? 0 : parseInt(body.priority, 10);
+  if (!PRIORITIES.includes(priority)) {
+    throw controllerFactory.createValidationError('priority must be 0, 1 or 2');
+  }
 
-  return { phase, name, quantity, min_characters: minCharacters, is_snack_master: isSnackMaster };
+  const sticky = parseBool(body.sticky);
+  const avoidRepeat = parseBool(body.avoid_repeat);
+  if (sticky && avoidRepeat) {
+    throw controllerFactory.createValidationError(
+      'A task cannot be both sticky and avoid-repeat'
+    );
+  }
+
+  const fixedCharacterId = parseOptionalInt(
+    body.fixed_character_id, 'fixed_character_id', 1, MAX_PG_INTEGER
+  );
+
+  const announceLabel = parseOptionalText(body.announce_label, 'announce_label', MAX_LABEL_LENGTH);
+
+  return {
+    phase,
+    name,
+    quantity,
+    min_characters: minCharacters,
+    max_characters: maxCharacters,
+    requires_previous_attendance: parseBool(body.requires_previous_attendance),
+    exclude_late: parseBool(body.exclude_late),
+    exclude_early: parseBool(body.exclude_early),
+    dm_eligible: parseBool(body.dm_eligible),
+    announce_label: announceLabel,
+    sticky,
+    avoid_repeat: avoidRepeat,
+    priority,
+    // Defaults to active unless explicitly switched off.
+    is_active: isBlank(body.is_active) ? true : parseBool(body.is_active),
+    description: parseOptionalText(body.description, 'description', MAX_DESCRIPTION_LENGTH),
+    fixed_character_id: fixedCharacterId,
+  };
+};
+
+/** A fixed assignee must be a character visible in this campaign. */
+const assertFixedCharacter = async (input) => {
+  if (input.fixed_character_id === null) return;
+  const exists = await SessionTask.characterExists(input.fixed_character_id);
+  if (!exists) {
+    throw controllerFactory.createValidationError(
+      'fixed_character_id must be a character in this campaign'
+    );
+  }
 };
 
 /** List every task definition for the active campaign (all members). */
@@ -76,41 +173,42 @@ const getAll = async (req, res) => {
   controllerFactory.sendSuccessResponse(res, tasks, 'Session tasks retrieved');
 };
 
+/** Refuse a name already used by another task in the same phase (owner decision, round 4). */
+const assertNameFree = async (campaignId, input, excludeId) => {
+  if (await SessionTask.nameExists(campaignId, input.phase, input.name, excludeId)) {
+    throw controllerFactory.createValidationError(
+      `A task named "${input.name}" already exists in this phase`
+    );
+  }
+};
+
 /** Create a task at the end of its phase (DM only). */
 const create = async (req, res) => {
   const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
+  await assertFixedCharacter(input);
+  await assertNameFree(campaignId, input, null);
   const task = await SessionTask.create(campaignId, input);
-  if (task.is_snack_master) {
-    await SessionTask.clearSnackMasterExcept(campaignId, task.id);
-  }
   controllerFactory.sendCreatedResponse(res, task, 'Session task created');
 };
 
 /** Update a task's fields (DM only). */
 const update = async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isInteger(id) || id < 1) {
-    throw controllerFactory.createValidationError('Invalid task id');
-  }
+  const id = parseTaskId(req);
   const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
+  await assertFixedCharacter(input);
+  await assertNameFree(campaignId, input, id);
   const task = await SessionTask.update(campaignId, id, input);
   if (!task) {
     throw controllerFactory.createNotFoundError('Session task not found');
-  }
-  if (task.is_snack_master) {
-    await SessionTask.clearSnackMasterExcept(campaignId, task.id);
   }
   controllerFactory.sendSuccessResponse(res, task, 'Session task updated');
 };
 
 /** Delete a task (DM only). */
 const remove = async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isInteger(id) || id < 1) {
-    throw controllerFactory.createValidationError('Invalid task id');
-  }
+  const id = parseTaskId(req);
   const deleted = await SessionTask.remove(requireCampaignId(req), id);
   if (!deleted) {
     throw controllerFactory.createNotFoundError('Session task not found');
@@ -123,12 +221,7 @@ const remove = async (req, res) => {
  * Body: { phase, ids: [taskId, ...] } in the desired order.
  */
 const reorder = async (req, res) => {
-  const phase = typeof req.body.phase === 'string' ? req.body.phase.trim() : '';
-  if (!TASK_PHASES.includes(phase)) {
-    throw controllerFactory.createValidationError(
-      `phase must be one of: ${TASK_PHASES.join(', ')}`
-    );
-  }
+  const phase = parsePhase(req.body.phase);
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) {
     throw controllerFactory.createValidationError('ids must be a non-empty array');

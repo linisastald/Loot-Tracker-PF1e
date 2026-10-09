@@ -60,8 +60,22 @@ describe('resolveClass / bookValue / targetCount', () => {
     expect(service.resolveClass('arcanist')).toBe('arcanist');
     expect(service.resolveClass('bogus')).toBe('wizard');
   });
-  it('bookValue = 15 + scribe cost (level*10, cantrips 5)', () => {
-    expect(service.bookValue([{ level: 0 }, { level: 1 }, { level: 3 }])).toBe(15 + 5 + 10 + 30);
+  it('bookValue = 15 + CRB writing cost (cantrip 5, level^2 x 10 gp)', () => {
+    // coreRulebook/magic.html, "Writing a New Spell into a Spellbook": 5/10/40/90/160/250/360/490/640/810
+    expect(service.bookValue([{ level: 0 }, { level: 1 }, { level: 3 }])).toBe(15 + 5 + 10 + 90);
+    const costs = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => service.bookValue([{ level }]) - 15);
+    expect(costs).toEqual([10, 40, 90, 160, 250, 360, 490, 640, 810]);
+  });
+  it('clampCasterLevel bounds to 1-20 and defaults junk to 1', () => {
+    expect(service.clampCasterLevel(0)).toBe(1);
+    expect(service.clampCasterLevel('abc')).toBe(1);
+    expect(service.clampCasterLevel(99)).toBe(20);
+    expect(service.clampCasterLevel('7')).toBe(7);
+  });
+  it('resolveFullness falls back to standard', () => {
+    expect(service.resolveFullness('full')).toBe('full');
+    expect(service.resolveFullness('silly')).toBe('standard');
+    expect(service.resolveFullness(undefined)).toBe('standard');
   });
   it('targetCount falls off for higher spell levels', () => {
     expect(service.targetCount(service.FULLNESS.standard, 0)).toBe(12);

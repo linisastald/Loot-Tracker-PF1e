@@ -4,6 +4,10 @@ const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const timezoneUtils = require('../utils/timezoneUtils');
+const ValidationService = require('../services/validationService');
+const { hasDmRights } = require('../utils/roleUtils');
+const { calculateFinalValue, isWandName, WAND_FULL_CHARGES } = require('../services/calculateFinalValue');
 
 /**
  * Check item availability in a city
@@ -19,12 +23,35 @@ const checkItemAvailability = async (req, res) => {
   } = req.body;
 
   // Validation
-  if (!city_name || !city_name.trim()) {
+  if (typeof city_name !== 'string' || !city_name.trim()) {
     throw controllerFactory.createValidationError('City name is required');
   }
 
   if (!city_size) {
     throw controllerFactory.createValidationError('City size is required');
+  }
+
+  // Ids are stored with the search record, so they must be well-formed and the
+  // character must be one of this campaign (and the caller's own, for a player).
+  const validatedItemId = item_id ? ValidationService.validateItemId(item_id) : null;
+  if (mod_ids !== undefined && mod_ids !== null && !Array.isArray(mod_ids)) {
+    throw controllerFactory.createValidationError('mod_ids must be an array of mod IDs');
+  }
+  const validatedModIds = mod_ids ? mod_ids.map((id) => ValidationService.validateItemId(id)) : [];
+  let validatedCharacterId = null;
+  if (character_id) {
+    validatedCharacterId = ValidationService.validateCharacterId(character_id);
+    const characterResult = await dbUtils.executeQuery(
+      'SELECT id, user_id FROM characters WHERE id = $1 AND campaign_id = $2',
+      [validatedCharacterId, req.campaignId]
+    );
+    const character = characterResult.rows[0];
+    if (!character) {
+      throw controllerFactory.createValidationError('Character not found in the current campaign');
+    }
+    if (!hasDmRights(req) && character.user_id !== req.user.id) {
+      throw controllerFactory.createAuthorizationError('You can only search as your own character');
+    }
   }
 
   // Get current Golarion date
@@ -34,18 +61,22 @@ const checkItemAvailability = async (req, res) => {
     : null;
 
   // Get or create the city
-  let city = await City.getOrCreate(city_name.trim(), city_size);
+  const city = await City.getOrCreate(city_name.trim(), city_size);
 
-  // Calculate item value
+  // Calculate item value (base catalog value; mods are priced below with the
+  // shared calculateFinalValue so availability uses the full market price)
   let itemValue = 0;
+  let itemType = null;
+  let itemSubtype = null;
+  let itemWeight = null;
   let itemName = 'Custom Item';
   let baseItemCasterLevel = 0;
   let totalEnhancementPlus = 0;
 
-  if (item_id) {
+  if (validatedItemId) {
     // Get base item value and caster level
-    const itemQuery = 'SELECT name, value, casterlevel FROM item WHERE id = $1';
-    const itemResult = await dbUtils.executeQuery(itemQuery, [item_id]);
+    const itemQuery = 'SELECT name, value, casterlevel, type, subtype, weight FROM item WHERE id = $1';
+    const itemResult = await dbUtils.executeQuery(itemQuery, [validatedItemId]);
 
     if (itemResult.rows.length === 0) {
       throw controllerFactory.createNotFoundError('Item not found');
@@ -55,27 +86,40 @@ const checkItemAvailability = async (req, res) => {
     itemName = item.name;
     itemValue = parseFloat(item.value) || 0;
     baseItemCasterLevel = parseInt(item.casterlevel) || 0;
+    itemType = item.type || null;
+    itemSubtype = item.subtype || null;
+    itemWeight = item.weight === null || item.weight === undefined ? null : Number(item.weight);
   }
 
+  // The catalog stores a wand's value per charge. An availability check is for
+  // buying a new wand, so price it at full charges.
+  const isWand = isWandName(itemName);
+
   // Add mod values if any (batch fetch all mods at once)
-  if (mod_ids && Array.isArray(mod_ids) && mod_ids.length > 0) {
+  let modRows = [];
+  if (validatedModIds.length > 0) {
     const modResult = await dbUtils.executeQuery(
       'SELECT name, valuecalc, plus, target FROM mod WHERE id = ANY($1)',
-      [mod_ids]
+      [validatedModIds]
     );
+    modRows = modResult.rows;
 
-    for (const mod of modResult.rows) {
-      if (mod.valuecalc && mod.valuecalc.includes('PLUS')) {
-        const plus = mod.plus || 0;
-        // Weapon enhancement: bonus² × 2000, Armor enhancement: bonus² × 1000 (CRB)
-        const multiplier = mod.target === 'armor' ? 1000 : 2000;
-        const enhancementCost = plus * plus * multiplier;
-        itemValue += enhancementCost;
-        totalEnhancementPlus += plus;
-      } else if (mod.valuecalc && !isNaN(parseFloat(mod.valuecalc))) {
-        itemValue += parseFloat(mod.valuecalc);
-      }
+    // Enhancement mods carry their bonus in `plus` (valuecalc is NULL for them),
+    // so price through the shared calculateFinalValue: plus table (weapon/armor),
+    // masterwork, and valuecalc operators. A search with no base item takes its
+    // weapon/armor type from the mods' target.
+    if (!itemType) {
+      const target = modRows.find((mod) => mod.target === 'weapon' || mod.target === 'armor');
+      itemType = target ? target.target : null;
     }
+    totalEnhancementPlus = modRows.reduce((sum, mod) => sum + (Number(mod.plus) || 0), 0);
+  }
+
+  if (modRows.length > 0 || isWand) {
+    itemValue = calculateFinalValue(
+      itemValue, itemType, itemSubtype, modRows, false, itemName,
+      isWand ? WAND_FULL_CHARGES : undefined, undefined, itemWeight
+    );
   }
 
   // Effective caster level of the item: the higher of the item's intrinsic caster level
@@ -131,15 +175,15 @@ const checkItemAvailability = async (req, res) => {
 
   // Save the search
   const searchRecord = await ItemSearch.create({
-    item_id: item_id || null,
-    mod_ids: mod_ids || null,
+    item_id: validatedItemId,
+    mod_ids: validatedModIds.length > 0 ? validatedModIds : null,
     city_id: city.id,
     golarion_date: golarionDate,
     found,
     roll_result: rollResult,
     availability_threshold: threshold,
     item_value: itemValue,
-    character_id: character_id || null,
+    character_id: validatedCharacterId,
     notes: notes || null
   });
 
@@ -174,40 +218,17 @@ const getAllSearches = async (req, res) => {
   if (character_id) options.character_id = parseInt(character_id);
   if (found !== undefined) options.found = found === 'true';
   if (limit) options.limit = parseInt(limit);
-  if (date) options.date = date; // YYYY-MM-DD format
+  if (date) {
+    // "date" is a calendar day in the campaign's timezone (YYYY-MM-DD)
+    const dateRange = timezoneUtils.getUtcRangeForLocalDate(date, await timezoneUtils.getCampaignTimezone());
+    if (!dateRange) {
+      throw controllerFactory.createValidationError('date must be a valid YYYY-MM-DD date');
+    }
+    options.dateRange = dateRange;
+  }
 
   const searches = await ItemSearch.getAll(options);
   controllerFactory.sendSuccessResponse(res, searches, 'Searches retrieved');
-};
-
-/**
- * Get item search by ID
- */
-const getSearchById = async (req, res) => {
-  const { id } = req.params;
-  const search = await ItemSearch.findById(id);
-
-  if (!search) {
-    throw controllerFactory.createNotFoundError('Search record not found');
-  }
-
-  controllerFactory.sendSuccessResponse(res, search, 'Search retrieved');
-};
-
-/**
- * Delete an item search
- */
-const deleteSearch = async (req, res) => {
-  const { id } = req.params;
-
-  const search = await ItemSearch.findById(id);
-  if (!search) {
-    throw controllerFactory.createNotFoundError('Search record not found');
-  }
-
-  await ItemSearch.delete(id);
-  logger.info(`Item search deleted: ID ${id}`);
-  controllerFactory.sendSuccessResponse(res, null, 'Search record deleted successfully');
 };
 
 // Export wrapped controllers
@@ -217,12 +238,4 @@ exports.checkItemAvailability = controllerFactory.createHandler(checkItemAvailab
 
 exports.getAllSearches = controllerFactory.createHandler(getAllSearches, {
   errorMessage: 'Error fetching item searches'
-});
-
-exports.getSearchById = controllerFactory.createHandler(getSearchById, {
-  errorMessage: 'Error fetching item search'
-});
-
-exports.deleteSearch = controllerFactory.createHandler(deleteSearch, {
-  errorMessage: 'Error deleting item search'
 });

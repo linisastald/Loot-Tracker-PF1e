@@ -1,6 +1,5 @@
 // src/utils/controllerFactory.js
 const logger = require('./logger');
-const ApiResponse = require('./apiResponse');
 
 /**
  * Factory for creating controller handlers with standardized error handling,
@@ -29,7 +28,24 @@ const controllerFactory = {
         // Call the handler function
         await handlerFn(req, res);
       } catch (error) {
-        logger.error(`${errorMessage}: ${error.message}`);
+        // The handler already answered (or the connection is gone): there is
+        // nobody left to respond to, and a second send would throw
+        // ERR_HTTP_HEADERS_SENT from inside this catch.
+        const typed = ['ValidationError', 'NotFoundError', 'AuthorizationError'].includes(error.name);
+        const context = {
+          method: req && req.method,
+          path: req && req.originalUrl ? String(req.originalUrl).split('?')[0] : req && req.path
+        };
+
+        if (typed) {
+          logger.warn(`${errorMessage}: ${error.message}`, context);
+        } else {
+          logger.error(`${errorMessage}: ${error.message}`, { ...context, stack: error.stack });
+        }
+
+        if (res.headersSent) {
+          return;
+        }
 
         // Return appropriate status code based on error type
         if (error.name === 'ValidationError') {
@@ -48,99 +64,6 @@ const controllerFactory = {
         res.error('Internal server error');
       }
     };
-  },
-
-  /**
-   * Create a standard CRUD controller with common operations
-   * @param {Object} model - Model object with methods like create, findAll, etc.
-   * @param {Object} options - Options for the CRUD controller
-   * @returns {Object} - Object with CRUD handler functions
-   */
-  createCrudController(model, options = {}) {
-    const {
-      createValidation = null,
-      updateValidation = null,
-      entityName = 'resource',
-      includeOperations = ['create', 'findAll', 'findById', 'update', 'delete'],
-    } = options;
-
-    const handlers = {};
-
-    if (includeOperations.includes('create')) {
-      handlers.create = this.createHandler(
-        async (req, res) => {
-          const entity = await model.create(req.body);
-          this.sendCreatedResponse(res, entity, `${entityName} created successfully`);
-        },
-        {
-          errorMessage: `Error creating ${entityName}`,
-          validation: createValidation
-        }
-      );
-    }
-
-    if (includeOperations.includes('findAll')) {
-      handlers.findAll = this.createHandler(
-        async (req, res) => {
-          const entities = await model.findAll(req.query);
-          this.sendSuccessResponse(res, entities);
-        },
-        { errorMessage: `Error finding all ${entityName}s` }
-      );
-    }
-
-    if (includeOperations.includes('findById')) {
-      handlers.findById = this.createHandler(
-        async (req, res) => {
-          const { id } = req.params;
-          const entity = await model.findById(id);
-
-          if (!entity) {
-            throw this.createNotFoundError(`${entityName} not found`);
-          }
-
-          this.sendSuccessResponse(res, entity);
-        },
-        { errorMessage: `Error finding ${entityName} by ID` }
-      );
-    }
-
-    if (includeOperations.includes('update')) {
-      handlers.update = this.createHandler(
-        async (req, res) => {
-          const { id } = req.params;
-          const updated = await model.update(id, req.body);
-
-          if (!updated) {
-            throw this.createNotFoundError(`${entityName} not found`);
-          }
-
-          this.sendSuccessResponse(res, updated, `${entityName} updated successfully`);
-        },
-        {
-          errorMessage: `Error updating ${entityName}`,
-          validation: updateValidation
-        }
-      );
-    }
-
-    if (includeOperations.includes('delete')) {
-      handlers.delete = this.createHandler(
-        async (req, res) => {
-          const { id } = req.params;
-          const deleted = await model.delete(id);
-
-          if (!deleted) {
-            throw this.createNotFoundError(`${entityName} not found`);
-          }
-
-          this.sendSuccessMessage(res, `${entityName} deleted successfully`);
-        },
-        { errorMessage: `Error deleting ${entityName}` }
-      );
-    }
-
-    return handlers;
   },
 
   /**

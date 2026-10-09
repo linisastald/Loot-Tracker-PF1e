@@ -1,6 +1,8 @@
-// frontend/src/components/pages/DMSettings/CharacterManagement.js
-import React, {useEffect, useState} from 'react';
+// frontend/src/components/pages/DMSettings/CharacterManagement.jsx
+import React, {useEffect, useMemo, useState} from 'react';
+import {format, isValid, parseISO} from 'date-fns';
 import api from '../../../utils/api';
+import {getErrorMessage} from '../../../utils/apiErrors';
 import {
   Alert,
   Button,
@@ -25,26 +27,61 @@ import {
   TextField,
   Typography
 } from '@mui/material';
-import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
-import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+
+const COLUMNS = [
+    {key: 'name', label: 'Name'},
+    {key: 'username', label: 'User'},
+    {key: 'active', label: 'Active'},
+    {key: 'appraisal_bonus', label: 'Appraisal Bonus'},
+    {key: 'birthday', label: 'Birthday'},
+    {key: 'deathday', label: 'Deathday'},
+];
+
+const EMPTY_FORM = {
+    name: '',
+    appraisal_bonus: '',
+    birthday: '',
+    deathday: '',
+    active: true,
+    user_id: '',
+};
+
+// birthday/deathday are calendar dates (DATE columns, serialised as ISO
+// timestamps at midnight): keep the YYYY-MM-DD part and never convert time zones
+const calendarDate = (value) => {
+    const match = typeof value === 'string' ? value.match(/^\d{4}-\d{2}-\d{2}/) : null;
+    return match ? match[0] : '';
+};
+
+const formatDate = (value) => {
+    const ymd = calendarDate(value);
+    const date = ymd ? parseISO(ymd) : null;
+    return date && isValid(date) ? format(date, 'PP') : '';
+};
+
+const compareValues = (a, b) => {
+    const aValue = a ?? '';
+    const bValue = b ?? '';
+    if (aValue < bValue) return -1;
+    if (aValue > bValue) return 1;
+    return 0;
+};
 
 const CharacterManagement = () => {
-    const { timezone } = useCampaignTimezone();
     const [characters, setCharacters] = useState([]);
     const [users, setUsers] = useState([]);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [dialogError, setDialogError] = useState('');
     const [updateCharacterDialogOpen, setUpdateCharacterDialogOpen] = useState(false);
     const [selectedCharacter, setSelectedCharacter] = useState(null);
-    const [updateCharacter, setUpdateCharacter] = useState({
-        name: '',
-        appraisal_bonus: '',
-        birthday: '',
-        deathday: '',
-        active: true,
-        user_id: '',
-    });
+    const [updateCharacter, setUpdateCharacter] = useState(EMPTY_FORM);
     const [sortConfig, setSortConfig] = useState({key: 'name', direction: 'asc'});
+
+    const setField = (key) => (e) => {
+        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        setUpdateCharacter((prev) => ({...prev, [key]: value}));
+    };
 
     useEffect(() => {
         fetchData();
@@ -52,23 +89,31 @@ const CharacterManagement = () => {
 
     const fetchData = async () => {
         try {
-            const [charactersResponse, usersResponse] = await Promise.all([
-                api.get(`/user/all-characters`),
-                api.get(`/user/all`)
-            ]);
+            const charactersResponse = await api.get(`/user/all-characters`);
             setCharacters(charactersResponse.data);
-            setUsers(usersResponse.data);
-        } catch (error) {
-            console.error('Error fetching data', error);
+            setError('');
+        } catch {
             setError('Error loading data. Please try again.');
+        }
+
+        // The owner dropdown comes from the DM-scoped campaign roster. /user/all is
+        // superadmin-only, so an ordinary campaign DM would be rejected there. A
+        // roster failure must not stop the character list from rendering.
+        try {
+            const membersResponse = await api.get(`/campaigns/current/members`);
+            const members = membersResponse?.data?.members || [];
+            setUsers(members.map((member) => ({
+                id: member.user_id,
+                username: member.username,
+                role: member.role
+            })));
+        } catch {
+            // keep the previous roster
         }
     };
 
     const handleSort = (columnKey) => {
-        let direction = 'asc';
-        if (sortConfig.key === columnKey && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
+        const direction = sortConfig.key === columnKey && sortConfig.direction === 'asc' ? 'desc' : 'asc';
         setSortConfig({key: columnKey, direction});
     };
 
@@ -77,22 +122,32 @@ const CharacterManagement = () => {
         setUpdateCharacter({
             name: char.name,
             appraisal_bonus: char.appraisal_bonus,
-            birthday: formatDateForInput(char.birthday),
-            deathday: formatDateForInput(char.deathday),
+            birthday: calendarDate(char.birthday),
+            deathday: calendarDate(char.deathday),
             active: char.active,
             user_id: char.user_id,
         });
+        setDialogError('');
         setUpdateCharacterDialogOpen(true);
     };
 
+    const closeDialog = () => setUpdateCharacterDialogOpen(false);
+
     const handleCharacterUpdateSubmit = async () => {
         try {
-            // Use the DM-specific endpoint for updating any character
-            await api.put(
-                `/user/update-any-character`,
-                {...selectedCharacter, ...updateCharacter}
-            );
-            setUpdateCharacterDialogOpen(false);
+            // DM-specific endpoint for updating any character; only the editable
+            // fields are sent. appraisal_bonus is an INTEGER NOT NULL column, so a
+            // cleared field means 0.
+            await api.put(`/user/update-any-character`, {
+                id: selectedCharacter.id,
+                name: updateCharacter.name,
+                appraisal_bonus: Number.parseInt(updateCharacter.appraisal_bonus, 10) || 0,
+                birthday: updateCharacter.birthday,
+                deathday: updateCharacter.deathday,
+                active: updateCharacter.active,
+                user_id: updateCharacter.user_id,
+            });
+            closeDialog();
             setSuccess('Character updated successfully');
             setError('');
             setSelectedCharacter(null);
@@ -100,61 +155,30 @@ const CharacterManagement = () => {
             // Refresh characters list
             fetchData();
         } catch (err) {
-            setError('Error updating character');
+            setDialogError(getErrorMessage(err, 'Error updating character'));
             setSuccess('');
         }
     };
 
-    const formatDateForInput = (dateString) => {
-        if (!dateString) return '';
-        try {
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return '';
-
-            // Convert to YYYY-MM-DD format for HTML date input
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        } catch (error) {
-            console.error('Error formatting date for input:', error);
-            return '';
+    // Owner choices: everyone in this campaign (any campaign role), plus the
+    // current owner if they are no longer a member, so the select is never blank
+    const ownerOptions = useMemo(() => {
+        const options = users.map((user) => ({id: user.id, label: user.username}));
+        if (selectedCharacter && !options.some((option) => option.id === selectedCharacter.user_id)) {
+            options.push({
+                id: selectedCharacter.user_id,
+                label: `${selectedCharacter.username || 'Unknown user'} (not a member)`
+            });
         }
-    };
+        return options;
+    }, [users, selectedCharacter]);
 
-    const formatDate = (dateString) => {
-        if (!dateString) return '';
-        return timezone ? formatInCampaignTimezone(dateString, timezone, 'PP') : '';
-    };
-
-    // Sort characters based on current sort configuration
-    const sortedCharacters = [...characters].sort((a, b) => {
-        let aValue = a[sortConfig.key];
-        let bValue = b[sortConfig.key];
-
-        // Handle special cases
-        if (sortConfig.key === 'username') {
-            aValue = a.username || '';
-            bValue = b.username || '';
-        } else if (sortConfig.key === 'active') {
-            return sortConfig.direction === 'asc'
-                ? (a.active === b.active ? 0 : a.active ? -1 : 1)
-                : (a.active === b.active ? 0 : a.active ? 1 : -1);
-        }
-
-        // Null checks
-        if (aValue === null) aValue = '';
-        if (bValue === null) bValue = '';
-
-        // Compare the values
-        if (aValue < bValue) {
-            return sortConfig.direction === 'asc' ? -1 : 1;
-        }
-        if (aValue > bValue) {
-            return sortConfig.direction === 'asc' ? 1 : -1;
-        }
-        return 0;
-    });
+    // Sort by the current column (for the boolean "Active" column, true sorts first when ascending)
+    const sortedCharacters = useMemo(() => {
+        const sign = sortConfig.direction === 'asc' ? 1 : -1;
+        const valueOf = (char) => (sortConfig.key === 'active' ? !char.active : char[sortConfig.key]);
+        return [...characters].sort((a, b) => sign * compareValues(valueOf(a), valueOf(b)));
+    }, [characters, sortConfig]);
 
     return (
         <div>
@@ -167,60 +191,17 @@ const CharacterManagement = () => {
                 <Table>
                     <TableHead>
                         <TableRow>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={sortConfig.key === 'name'}
-                                    direction={sortConfig.direction}
-                                    onClick={() => handleSort('name')}
-                                >
-                                    Name
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={sortConfig.key === 'username'}
-                                    direction={sortConfig.direction}
-                                    onClick={() => handleSort('username')}
-                                >
-                                    User
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={sortConfig.key === 'active'}
-                                    direction={sortConfig.direction}
-                                    onClick={() => handleSort('active')}
-                                >
-                                    Active
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={sortConfig.key === 'appraisal_bonus'}
-                                    direction={sortConfig.direction}
-                                    onClick={() => handleSort('appraisal_bonus')}
-                                >
-                                    Appraisal Bonus
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={sortConfig.key === 'birthday'}
-                                    direction={sortConfig.direction}
-                                    onClick={() => handleSort('birthday')}
-                                >
-                                    Birthday
-                                </TableSortLabel>
-                            </TableCell>
-                            <TableCell>
-                                <TableSortLabel
-                                    active={sortConfig.key === 'deathday'}
-                                    direction={sortConfig.direction}
-                                    onClick={() => handleSort('deathday')}
-                                >
-                                    Deathday
-                                </TableSortLabel>
-                            </TableCell>
+                            {COLUMNS.map((column) => (
+                                <TableCell key={column.key}>
+                                    <TableSortLabel
+                                        active={sortConfig.key === column.key}
+                                        direction={sortConfig.direction}
+                                        onClick={() => handleSort(column.key)}
+                                    >
+                                        {column.label}
+                                    </TableSortLabel>
+                                </TableCell>
+                            ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -251,14 +232,15 @@ const CharacterManagement = () => {
             <Typography variant="body2" sx={{mt: 2}}>Click on a character to edit</Typography>
 
             {/* Edit Character Dialog */}
-            <Dialog open={updateCharacterDialogOpen} onClose={() => setUpdateCharacterDialogOpen(false)}>
+            <Dialog open={updateCharacterDialogOpen} onClose={closeDialog}>
                 <DialogTitle>Update Character</DialogTitle>
                 <DialogContent>
+                    {dialogError && <Alert severity="error" sx={{mb: 1}}>{dialogError}</Alert>}
                     <TextField
                         label="Name"
                         fullWidth
                         value={updateCharacter.name}
-                        onChange={(e) => setUpdateCharacter({...updateCharacter, name: e.target.value})}
+                        onChange={setField('name')}
                         margin="normal"
                     />
                     <TextField
@@ -266,7 +248,7 @@ const CharacterManagement = () => {
                         type="number"
                         fullWidth
                         value={updateCharacter.appraisal_bonus}
-                        onChange={(e) => setUpdateCharacter({...updateCharacter, appraisal_bonus: e.target.value})}
+                        onChange={setField('appraisal_bonus')}
                         margin="normal"
                     />
                     <TextField
@@ -274,7 +256,7 @@ const CharacterManagement = () => {
                         type="date"
                         fullWidth
                         value={updateCharacter.birthday || ''}
-                        onChange={(e) => setUpdateCharacter({...updateCharacter, birthday: e.target.value})}
+                        onChange={setField('birthday')}
                         margin="normal"
                         slotProps={{ inputLabel: {shrink: true} }}
                     />
@@ -283,7 +265,7 @@ const CharacterManagement = () => {
                         type="date"
                         fullWidth
                         value={updateCharacter.deathday || ''}
-                        onChange={(e) => setUpdateCharacter({...updateCharacter, deathday: e.target.value})}
+                        onChange={setField('deathday')}
                         margin="normal"
                         slotProps={{ inputLabel: {shrink: true} }}
                     />
@@ -292,30 +274,27 @@ const CharacterManagement = () => {
                         <Select
                             labelId="user-select-label"
                             value={updateCharacter.user_id}
-                            onChange={(e) => setUpdateCharacter({...updateCharacter, user_id: e.target.value})}
+                            onChange={setField('user_id')}
                         >
-                            {users
-                                .filter((user) => user.role === 'Player')
-                                .map((user) => (
-                                    <MenuItem key={user.id} value={user.id}>
-                                        {user.username}
-                                    </MenuItem>
-                                ))}
+                            {ownerOptions.map((option) => (
+                                <MenuItem key={option.id} value={option.id}>
+                                    {option.label}
+                                </MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
                     <FormControlLabel
                         control={
                             <Checkbox
                                 checked={updateCharacter.active}
-                                onChange={(e) => setUpdateCharacter({...updateCharacter, active: e.target.checked})}
+                                onChange={setField('active')}
                             />
                         }
                         label="Active Character"
-                        margin="normal"
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setUpdateCharacterDialogOpen(false)} color="secondary" variant="outlined">
+                    <Button onClick={closeDialog} color="secondary" variant="outlined">
                         Cancel
                     </Button>
                     <Button onClick={handleCharacterUpdateSubmit} color="primary" variant="outlined">

@@ -1,46 +1,30 @@
-// src/services/shipService.js
+// src/services/shipService.jsx
 import api from '../utils/api';
 
 const shipService = {
   // Get all ship types
-  getShipTypes: async () => {
-    return await api.get('/ships/types');
-  },
+  getShipTypes: () => api.get('/ships/types'),
 
   // Get ship type data for auto-filling
-  getShipTypeData: async (type) => {
-    return await api.get(`/ships/types/${type}`);
-  },
+  getShipTypeData: (type) => api.get(`/ships/types/${type}`),
 
   // Get all ships with crew count
-  getAllShips: async () => {
-    return await api.get('/ships');
-  },
+  getAllShips: () => api.get('/ships'),
 
   // Create new ship
-  createShip: async (shipData) => {
-    return await api.post('/ships', shipData);
-  },
+  createShip: (shipData) => api.post('/ships', shipData),
 
-  // Update ship
-  updateShip: async (id, shipData) => {
-    return await api.put(`/ships/${id}`, shipData);
-  },
+  // Update ship (only the fields sent are changed)
+  updateShip: (id, shipData) => api.put(`/ships/${id}`, shipData),
 
   // Delete ship
-  deleteShip: async (id) => {
-    return await api.delete(`/ships/${id}`);
-  },
+  deleteShip: (id) => api.delete(`/ships/${id}`),
 
   // Apply damage to ship
-  applyDamage: async (id, damage) => {
-    return await api.post(`/ships/${id}/damage`, { damage });
-  },
+  applyDamage: (id, damage) => api.post(`/ships/${id}/damage`, { damage }),
 
   // Repair ship
-  repairShip: async (id, repair) => {
-    return await api.post(`/ships/${id}/repair`, { repair });
-  }
+  repairShip: (id, repair) => api.post(`/ships/${id}/repair`, { repair })
 };
 
 export default shipService;

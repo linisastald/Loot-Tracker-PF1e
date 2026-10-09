@@ -11,10 +11,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Switch,
   Table,
   TableBody,
@@ -28,8 +32,21 @@ import {
 } from '@mui/material';
 import {Add as AddIcon, Edit as EditIcon, Star as StarIcon, StarBorder as StarBorderIcon} from '@mui/icons-material';
 import HeartBrokenIcon from '@mui/icons-material/HeartBroken';
+import { useAuth } from '../../../contexts/AuthContext';
+import { useCampaign } from '../../../contexts/CampaignContext';
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+
+const EMPTY_CHARACTER = {
+    name: '',
+    appraisal_bonus: 0,
+    birthday: '',
+    deathday: '',
+    active: false
+};
+
+// The API serialises DATE columns as ISO timestamps; keep the calendar date part
+const toDateInput = (value) => (value ? new Date(value).toISOString().split('T')[0] : '');
 
 const CharacterTab = () => {
     const [characters, setCharacters] = useState([]);
@@ -40,16 +57,20 @@ const CharacterTab = () => {
     const [success, setSuccess] = useState('');
 
     // Campaign timezone hook
-    const { timezone, loading: timezoneLoading } = useCampaignTimezone();
+    const { timezone } = useCampaignTimezone();
+    // AuthContext caches the active character id, so refresh it after changes
+    const { refreshUser } = useAuth();
+    // ...and so does the campaign context, which serves the active character of the
+    // SELECTED campaign (what the loot pages read). This tab is campaign-agnostic:
+    // it lists the user's characters in every campaign they belong to, and a new
+    // character can be created in any of them (default: the open campaign).
+    const { refresh: refreshCampaign, campaigns: memberCampaigns, currentCampaign } = useCampaign();
+    const campaigns = Array.isArray(memberCampaigns) ? memberCampaigns : [];
+    const multiCampaign = campaigns.length > 1;
 
-    // Form state
-    const [characterForm, setCharacterForm] = useState({
-        name: '',
-        appraisal_bonus: 0,
-        birthday: '',
-        deathday: '',
-        active: false
-    });
+    const [characterForm, setCharacterForm] = useState(EMPTY_CHARACTER);
+    // Campaign for a NEW character ('' = the open campaign, i.e. no campaignId sent)
+    const [newCharacterCampaignId, setNewCharacterCampaignId] = useState('');
 
     // Delete confirmation dialog
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -61,23 +82,41 @@ const CharacterTab = () => {
 
     const fetchCharacters = async () => {
         try {
-            const response = await api.get('/user/characters');
+            // Every campaign the user belongs to, each row with its campaign
+            const response = await api.get('/user/characters', { params: { scope: 'all' } });
             setCharacters(response.data);
-        } catch (error) {
-            console.error('Error fetching characters:', error);
+        } catch {
             setError('Failed to load characters');
+        }
+    };
+
+    /**
+     * Send a character change, then report, reload the list and refresh the
+     * cached user (a changed active character must reach the rest of the app).
+     * Returns true on success so callers can close their dialogs.
+     */
+    const saveCharacter = async (request, successMessage, errorMessage) => {
+        try {
+            await request();
+            setSuccess(successMessage);
+            setError('');
+            await Promise.all([
+                fetchCharacters(),
+                refreshUser().catch(() => {}),
+                refreshCampaign().catch(() => {}),
+            ]);
+            return true;
+        } catch {
+            setError(errorMessage);
+            setSuccess('');
+            return false;
         }
     };
 
     const handleOpenAddDialog = () => {
         setDialogMode('add');
-        setCharacterForm({
-            name: '',
-            appraisal_bonus: 0,
-            birthday: '',
-            deathday: '',
-            active: false
-        });
+        setCharacterForm(EMPTY_CHARACTER);
+        setNewCharacterCampaignId(currentCampaign?.id ? String(currentCampaign.id) : '');
         setOpenDialog(true);
     };
 
@@ -87,8 +126,8 @@ const CharacterTab = () => {
         setCharacterForm({
             name: character.name,
             appraisal_bonus: character.appraisal_bonus || 0,
-            birthday: character.birthday ? new Date(character.birthday).toISOString().split('T')[0] : '',
-            deathday: character.deathday ? new Date(character.deathday).toISOString().split('T')[0] : '',
+            birthday: toDateInput(character.birthday),
+            deathday: toDateInput(character.deathday),
             active: character.active || false
         });
         setOpenDialog(true);
@@ -108,30 +147,15 @@ const CharacterTab = () => {
     };
 
     const handleSetActive = async (characterId) => {
-        try {
-            const character = characters.find(c => c.id === characterId);
-            if (!character) return;
+        const character = characters.find(c => c.id === characterId);
+        // Nothing to do when unknown or already active
+        if (!character || character.active) return;
 
-            // No need to update if already active
-            if (character.active) return;
-
-            // Prepare update data
-            const updateData = {
-                id: characterId,
-                active: true
-            };
-
-            await api.put('/user/characters', updateData);
-            setSuccess(`${character.name} is now your active character`);
-            setError('');
-
-            // Refresh character list
-            fetchCharacters();
-        } catch (error) {
-            console.error('Error setting active character:', error);
-            setError('Failed to set active character');
-            setSuccess('');
-        }
+        await saveCharacter(
+            () => api.put('/user/characters', {id: characterId, active: true}),
+            `${character.name} is now your active character`,
+            'Failed to set active character'
+        );
     };
 
     const handleKillCharacter = (character) => {
@@ -140,57 +164,39 @@ const CharacterTab = () => {
     };
 
     const confirmKillCharacter = async () => {
-        try {
-            // Create today's date in ISO format
-            const today = new Date().toISOString().split('T')[0];
+        // "Today" in the campaign's timezone, not UTC (evening sessions west of UTC)
+        const today = formatInCampaignTimezone(new Date(), timezone || 'UTC', 'yyyy-MM-dd');
 
-            // Update character to mark as deceased
-            const updateData = {
-                id: characterToDelete.id,
-                deathday: today,
-                active: false // If they die, they're no longer active
-            };
-
-            await api.put('/user/characters', updateData);
-            setSuccess(`${characterToDelete.name} has fallen in battle. RIP.`);
-            setError('');
-            fetchCharacters();
+        // A dead character is no longer active
+        const saved = await saveCharacter(
+            () => api.put('/user/characters', {id: characterToDelete.id, deathday: today, active: false}),
+            `${characterToDelete.name} has fallen in battle. RIP.`,
+            'Failed to update character death status'
+        );
+        if (saved) {
             setDeleteDialogOpen(false);
             setCharacterToDelete(null);
-        } catch (error) {
-            console.error('Error updating character death:', error);
-            setError('Failed to update character death status');
-            setSuccess('');
         }
     };
 
     const handleSubmit = async () => {
-        try {
-            if (dialogMode === 'add') {
-                // Add new character
-                await api.post('/user/characters', characterForm);
-                setSuccess('Character created successfully');
-            } else {
-                // Edit existing character
-                const updateData = {
-                    ...characterForm,
-                    id: selectedCharacter.id
-                };
-                await api.put('/user/characters', updateData);
-                setSuccess('Character updated successfully');
-            }
-
-            setError('');
+        const isAdd = dialogMode === 'add';
+        // Only name a campaign when the user could choose one; otherwise the
+        // server creates the character in the open campaign.
+        const addPayload = multiCampaign && newCharacterCampaignId
+            ? {...characterForm, campaignId: Number(newCharacterCampaignId)}
+            : characterForm;
+        const saved = await saveCharacter(
+            () => isAdd
+                ? api.post('/user/characters', addPayload)
+                : api.put('/user/characters', {...characterForm, id: selectedCharacter.id}),
+            isAdd ? 'Character created successfully' : 'Character updated successfully',
+            'Failed to save character'
+        );
+        if (saved) {
             handleCloseDialog();
-            fetchCharacters();
-        } catch (error) {
-            console.error('Error saving character:', error);
-            setError('Failed to save character');
-            setSuccess('');
         }
     };
-
-    // Format date for display is now handled by formatInCampaignTimezone
 
     return (
         <div>
@@ -223,6 +229,7 @@ const CharacterTab = () => {
                         <TableHead>
                             <TableRow>
                                 <TableCell>Name</TableCell>
+                                <TableCell>Campaign</TableCell>
                                 <TableCell>Status</TableCell>
                                 <TableCell>Appraisal Bonus</TableCell>
                                 <TableCell>Birthday</TableCell>
@@ -243,6 +250,14 @@ const CharacterTab = () => {
                                                     label="Active"
                                                     sx={{ml: 1}}
                                                 />
+                                            )}
+                                        </Box>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Box sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5}}>
+                                            {character.campaign_name || '—'}
+                                            {character.campaign_active === false && (
+                                                <Chip size="small" variant="outlined" label="Inactive campaign"/>
                                             )}
                                         </Box>
                                     </TableCell>
@@ -311,6 +326,30 @@ const CharacterTab = () => {
                 </DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} sx={{mt: 1}}>
+                        {dialogMode === 'add' && multiCampaign && (
+                            <Grid size={12}>
+                                <FormControl fullWidth>
+                                    <InputLabel id="new-character-campaign-label">Campaign</InputLabel>
+                                    <Select
+                                        labelId="new-character-campaign-label"
+                                        label="Campaign"
+                                        value={newCharacterCampaignId}
+                                        onChange={(e) => setNewCharacterCampaignId(String(e.target.value))}
+                                    >
+                                        {campaigns.map((campaign) => (
+                                            <MenuItem key={campaign.id} value={String(campaign.id)}>{campaign.name}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                        )}
+                        {dialogMode === 'edit' && selectedCharacter?.campaign_name && (
+                            <Grid size={12}>
+                                <Typography variant="body2" sx={{color: 'text.secondary'}}>
+                                    Campaign: {selectedCharacter.campaign_name}
+                                </Typography>
+                            </Grid>
+                        )}
                         <Grid size={12}>
                             <TextField
                                 label="Character Name"

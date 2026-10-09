@@ -27,7 +27,6 @@ BUILD_START_SECONDS=$SECONDS
 # Default settings (builds unstable/dev image)
 BUILD_STABLE=false
 USE_CACHE=true
-OPTIMIZE_BUILD=true
 IMAGE_NAME="pathfinder-loot"
 TAG="dev"
 AUTO_VERSION=true
@@ -62,6 +61,9 @@ LOCK_FILE="/tmp/build_image_$(pwd | md5sum 2>/dev/null | cut -d' ' -f1 || echo '
 # Spinner PID (needs to exist for stop_spinner in trap)
 SPINNER_PID=""
 
+# Set once this process has written the lock file (only the owner may remove it)
+LOCK_OWNED=false
+
 # Backup tracking
 BACKUP_FILES_CREATED=false
 
@@ -90,16 +92,8 @@ while [ $# -gt 0 ]; do
             TAG="latest"
             shift
             ;;
-        --keep-cache)
-            USE_CACHE=true
-            shift
-            ;;
         --no-cache)
             USE_CACHE=false
-            shift
-            ;;
-        --no-optimize)
-            OPTIMIZE_BUILD=false
             shift
             ;;
         --security-scan)
@@ -182,9 +176,7 @@ while [ $# -gt 0 ]; do
             echo "                      - Does NOT pull from git (uses current local code)"
             echo "                      - Archives previous 'latest' to versioned image"
             echo "                      - Updates dev image to match stable version"
-            echo "    --keep-cache      Use Docker build cache (default)"
             echo "    --no-cache        Force fresh build without Docker cache"
-            echo "    --no-optimize     Disable production optimizations"
             echo "    --security-scan   Enable container security scanning"
             echo "    --no-buildkit     Disable Docker BuildKit (use legacy builder)"
             echo "    --tag TAG         Override default tag (disables auto-versioning)"
@@ -227,7 +219,7 @@ while [ $# -gt 0 ]; do
             echo "  EXAMPLES:"
             echo "    bash $0                        # Build dev image with cache and auto-versioning"
             echo "    bash $0 dev                    # Same as above (shorthand)"
-            echo "    bash $0 latest                 # Build latest image with auto-versioning"
+            echo "    bash $0 latest                 # Build with tag 'latest' (a positional tag disables auto-versioning, like --tag)"
             echo "    bash $0 --stable               # Build stable release from current code"
             echo "    bash $0 --stable --tag v2.1.0  # Build and tag as specific version"
             echo "    bash $0 --stable --version-type minor  # Increment minor version"
@@ -242,8 +234,13 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             if [[ ! "$1" =~ ^- ]]; then
-                TAG="$1"
-                echo "Using positional argument as tag: $TAG"
+                # "dev" is the default tag; any other positional tag behaves like --tag
+                # (auto-versioning would otherwise overwrite it with "dev").
+                if [ "$1" != "dev" ]; then
+                    TAG="$1"
+                    AUTO_VERSION=false
+                    echo "Using positional argument as tag: $TAG (auto-versioning disabled, like --tag)"
+                fi
                 shift
             else
                 echo "Unknown option: $1"
@@ -255,9 +252,13 @@ while [ $# -gt 0 ]; do
 done
 
 # Resolve discord-broker flags after full parse (order-independent)
+# BUILD_MAIN_APP is false for a broker-only run: the app version bump, release
+# commit and git tags must only happen when the main app image is actually built.
+BUILD_MAIN_APP=true
 if [ "$BUILD_DISCORD_BROKER" = true ] && [ "$BUILD_ALL" = false ]; then
     IMAGE_NAME="$DISCORD_IMAGE_NAME"
     TAG="$DISCORD_TAG"
+    BUILD_MAIN_APP=false
 fi
 
 # Get the script directory to ensure we're in the right place
@@ -303,6 +304,21 @@ sed_inplace() {
     sed -i.bak "$expression" "$file" && rm -f "${file}.bak"
 }
 
+utc_now() {
+    date -u +'%Y-%m-%dT%H:%M:%SZ'
+}
+
+# Read VERSION, LAST_BUILD and BUILD_NUMBER from the version file WITHOUT executing
+# it (a branch's .docker-version must never be able to run code, often as root).
+# Values that do not match the expected format are left empty.
+load_version_file() {
+    local file="${1:-$VERSION_FILE}"
+    VERSION=$(sed -n 's/^VERSION=\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[[:space:]]*$/\1/p' "$file" | head -n1)
+    LAST_BUILD=$(sed -n 's/^LAST_BUILD=\([0-9TZ:-]*\)[[:space:]]*$/\1/p' "$file" | head -n1)
+    BUILD_NUMBER=$(sed -n 's/^BUILD_NUMBER=\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$file" | head -n1)
+    BUILD_NUMBER="${BUILD_NUMBER:-0}"
+}
+
 sanitize_branch_path() {
     echo "$1" | tr '/' '--'
 }
@@ -340,7 +356,10 @@ stop_spinner() {
 if [ "$PULL_ONLY" = true ]; then
     echo "Pulling latest from remote ($GIT_BRANCH)..."
     # --ff-only so the pull can never open an interactive merge-commit editor.
-    git pull --ff-only origin "$GIT_BRANCH"
+    if ! git pull --ff-only origin "$GIT_BRANCH"; then
+        echo "ERROR: git pull --ff-only origin $GIT_BRANCH failed (diverged branch or no network?); nothing was updated" >&2
+        exit 1
+    fi
     echo "Pull complete"
     exit 0
 fi
@@ -364,7 +383,7 @@ if [ "$SHOW_STATUS" = true ]; then
 
     # Version info
     if [ -f "$VERSION_FILE" ]; then
-        . "$VERSION_FILE"
+        load_version_file
         echo "Current version: v${VERSION:-unknown}"
         echo "Last build:      ${LAST_BUILD:-unknown}"
         echo "Build number:    #${BUILD_NUMBER:-0}"
@@ -481,20 +500,28 @@ preflight_check_disk_space() {
 }
 
 preflight_check_dirty_tree() {
-    if [ "$BUILD_STABLE" = true ]; then
-        return
-    fi
     local dirty
     dirty=$(git status --porcelain 2>/dev/null || true)
     if [ -n "$dirty" ]; then
         echo "WARNING: Working tree has uncommitted changes."
-        echo "   These changes will be included in the build but NOT in the git pull."
-        echo "   Consider committing or stashing before building."
+        if [ "$BUILD_STABLE" = true ]; then
+            echo "   They will be baked into the image but are NOT part of the release"
+            echo "   commit/tag (only the version files are committed)."
+        else
+            echo "   These changes will be included in the build but NOT in the git pull."
+            echo "   Consider committing or stashing before building."
+        fi
         echo ""
     fi
 }
 
 preflight_check_lock() {
+    # A symlink at the (predictable /tmp) lock path could redirect the write below.
+    if [ -L "$LOCK_FILE" ]; then
+        echo "ERROR: $LOCK_FILE is a symbolic link; refusing to use it as a lock."
+        echo "   Remove it and re-run."
+        exit 1
+    fi
     if [ -f "$LOCK_FILE" ]; then
         local lock_pid
         lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
@@ -506,11 +533,23 @@ preflight_check_lock() {
             rm -f "$LOCK_FILE"
         fi
     fi
-    echo $$ > "$LOCK_FILE"
+    # noclobber makes the redirect fail (O_EXCL) instead of overwriting a lock another
+    # build just created, or following a symlink planted in the meantime.
+    if ( set -o noclobber; echo $$ > "$LOCK_FILE" ) 2>/dev/null; then
+        LOCK_OWNED=true
+    else
+        echo "ERROR: Could not create lock file $LOCK_FILE (another build starting?)."
+        exit 1
+    fi
 }
 
+# Only remove the lock if this process created it, so an aborted second
+# invocation never deletes a running build's lock.
 remove_lock() {
-    rm -f "$LOCK_FILE"
+    if [ "$LOCK_OWNED" = true ]; then
+        rm -f "$LOCK_FILE"
+        LOCK_OWNED=false
+    fi
 }
 
 # --- Worktree functions ---
@@ -523,6 +562,15 @@ setup_worktree() {
     if [ "$branch" = "$current_branch" ]; then
         echo "Building from current branch ($current_branch), no worktree needed"
         BUILD_PATH="$ORIGINAL_DIR"
+        # The worktree path builds origin/<branch>; this path must not silently
+        # build a stale local checkout instead. Fast-forward to the remote (a
+        # diverged branch aborts, exactly like the non-worktree pull below).
+        echo "Pulling latest from origin/$branch (fast-forward only)..."
+        if ! git pull --ff-only origin "$branch"; then
+            echo "ERROR: git pull --ff-only origin $branch failed: local '$branch' has diverged from origin or the network is unavailable." >&2
+            echo "   Resolve with: git pull --rebase origin $branch   (or push your local commits), then rebuild." >&2
+            return 1
+        fi
         return 0
     fi
 
@@ -545,14 +593,14 @@ setup_worktree() {
             echo "Updating worktree with latest changes..."
             (
                 cd "$worktree_path"
-                git fetch origin
+                git fetch origin || echo "Warning: could not fetch from remote; using the last known origin/$branch"
                 if ! git merge --ff-only "origin/$branch"; then
                     echo "ERROR: Worktree has diverged from origin/$branch"
                     echo "Resolve manually: cd $worktree_path && git status"
                     exit 1
                 fi
                 echo "Worktree updated to latest $branch"
-            )
+            ) || exit 1
         else
             echo "Cleaning up invalid worktree directory"
             rm -rf "$worktree_path"
@@ -589,13 +637,6 @@ create_new_worktree() {
     fi
 }
 
-cleanup_worktree() {
-    if [ -n "$WORKTREE_BRANCH" ] && [ -n "$BUILD_PATH" ] && [ "$BUILD_PATH" != "$ORIGINAL_DIR" ]; then
-        cd "$ORIGINAL_DIR"
-        echo "Worktree preserved at $BUILD_PATH for future builds"
-    fi
-}
-
 # --- Version file backup/restore ---
 
 BACKUP_TARGETS=(
@@ -603,7 +644,6 @@ BACKUP_TARGETS=(
     "package.json"
     "frontend/package.json"
     "backend/package.json"
-    "app-metadata.yaml"
 )
 
 create_version_backups() {
@@ -634,14 +674,13 @@ restore_version_backups() {
     BACKUP_FILES_CREATED=false
 }
 
-# Signal handler: stop spinner, restore backups, clean up worktree and lock
+# Signal handler: stop spinner, restore backups, release the lock
 handle_exit() {
     local exit_code=$?
     stop_spinner
     if [ $exit_code -ne 0 ] && [ "$BACKUP_FILES_CREATED" = true ]; then
         restore_version_backups
     fi
-    cleanup_worktree
     remove_lock
 }
 
@@ -658,7 +697,10 @@ preflight_check_lock
 # --- Handle worktree setup ---
 
 if [ -n "$WORKTREE_BRANCH" ]; then
-    setup_worktree "$WORKTREE_BRANCH"
+    if ! setup_worktree "$WORKTREE_BRANCH"; then
+        echo "ERROR: could not prepare branch '$WORKTREE_BRANCH' for the build; nothing was built." >&2
+        exit 1
+    fi
     cd "$BUILD_PATH"
 else
     BUILD_PATH="$SCRIPT_DIR"
@@ -720,7 +762,7 @@ update_version_file() {
     local new_version=$1
     local new_build_number=$2
     local timestamp
-    timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+    timestamp=$(utc_now)
 
     cat > "$VERSION_FILE" << EOF
 # Docker Image Version Tracking
@@ -738,18 +780,6 @@ BUILD_NUMBER=$new_build_number
 EOF
 
     echo "Updated version file: v$new_version (build #$new_build_number)"
-}
-
-update_truenas_metadata() {
-    local new_version=$1
-    local metadata_file="app-metadata.yaml"
-
-    if [ -f "$metadata_file" ]; then
-        echo "Updating local app-metadata.yaml reference..."
-        sed_inplace "s/version: \"[^\"]*\"/version: \"$new_version\"/g" "$metadata_file"
-        sed_inplace "s/app_version: \"[^\"]*\"/app_version: \"$new_version\"/g" "$metadata_file"
-        echo "Updated $metadata_file to v$new_version"
-    fi
 }
 
 update_package_json_files() {
@@ -916,22 +946,12 @@ run_build() {
         echo "   Building with cache (source file changes detected automatically)"
     fi
 
-    BUILD_ARGS+=(--build-arg "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')")
+    BUILD_ARGS+=(--build-arg "BUILD_DATE=$(utc_now)")
     BUILD_ARGS+=(--build-arg "GIT_COMMIT=$(get_git_commit)")
-    BUILD_ARGS+=(--build-arg "BUILD_TYPE=$([ "$BUILD_STABLE" = true ] && echo "stable" || echo "dev")")
     BUILD_ARGS+=(--build-arg "NODE_ENV=production")
-    BUILD_ARGS+=(--build-arg "OPTIMIZE_BUILD=$([ "$OPTIMIZE_BUILD" = true ] && echo "true" || echo "false")")
 
     local app_version_arg="${build_new_version:-${VERSION:-0.0.0}}"
     BUILD_ARGS+=(--build-arg "APP_VERSION=${app_version_arg}")
-    if [ -n "$build_version_tag" ]; then
-        BUILD_ARGS+=(--build-arg "VERSION=${build_version_tag}")
-    fi
-
-    if [ "$OPTIMIZE_BUILD" = true ]; then
-        BUILD_ARGS+=(--build-arg "NPM_CONFIG_PRODUCTION=true")
-        BUILD_ARGS+=(--build-arg "NODE_OPTIONS=--max-old-space-size=4096")
-    fi
 
     BUILD_ARGS+=(-f "$build_dockerfile" -t "${build_image_name}:${build_tag}" "$build_context")
 
@@ -1046,27 +1066,44 @@ run_build() {
         fi
     else
         echo ""
-        echo "BUILD WARNING: Image built but not properly tagged"
-        echo "Attempting to find and tag the latest untagged image..."
-
-        local LATEST_UNTAGGED
-        LATEST_UNTAGGED=$(docker images --filter "dangling=true" --format "{{.ID}}" | head -n1)
-        if [ -n "$LATEST_UNTAGGED" ]; then
-            echo "Found untagged image: $LATEST_UNTAGGED"
-            if docker tag "$LATEST_UNTAGGED" "${build_image_name}:${build_tag}"; then
-                echo "Successfully tagged image as ${build_image_name}:${build_tag}"
-            else
-                echo "ERROR: Failed to tag image"
-                return 1
-            fi
-        else
-            echo "ERROR: No untagged images found. Build may have failed."
-            return 1
-        fi
+        echo "ERROR: docker build reported success but ${build_image_name}:${build_tag} does not exist"
+        return 1
     fi
 
     return 0
 }
+
+# Handle git operations. This runs BEFORE the version file is read below, so a version
+# bump that arrives with the pull is the one the image is baked and tagged with.
+if [ "$BUILD_STABLE" = true ]; then
+    if [ "$TAG" = "latest" ]; then
+        if [ "$DRY_RUN" = true ]; then
+            echo "[DRY RUN] Would archive the current ${IMAGE_NAME}:latest image"
+        else
+            archive_latest_image
+        fi
+    fi
+elif [ -z "$WORKTREE_BRANCH" ] && [ "$DRY_RUN" = true ]; then
+    echo "[DRY RUN] Would pull latest from $GIT_BRANCH (fast-forward only)"
+elif [ -z "$WORKTREE_BRANCH" ]; then
+    echo "Pulling latest from $GIT_BRANCH..."
+    # Use --ff-only so the pull can never drop into an interactive merge-commit
+    # editor. The ONLY commits this script should ever create are the version
+    # bumps below. If local and remote have diverged (commonly because a
+    # previous auto-version commit could not be pushed), fail loudly with
+    # guidance instead of silently starting a merge.
+    if ! git pull --ff-only origin "$GIT_BRANCH" 2>&1; then
+        echo "ERROR: git pull (fast-forward only) failed."
+        echo "   Either the network is unavailable, or local '$GIT_BRANCH' has"
+        echo "   diverged from origin -- often an unpushed auto-version commit"
+        echo "   from a previous build (the push step warns but does not fail)."
+        echo ""
+        echo "   Resolve with one of:"
+        echo "     git push origin $GIT_BRANCH              # if local is simply ahead"
+        echo "     git pull --rebase origin $GIT_BRANCH     # replay local commits on top"
+        exit 1
+    fi
+fi
 
 # --- Handle auto-versioning ---
 
@@ -1076,7 +1113,11 @@ if [ "$AUTO_VERSION" = true ]; then
         BUILD_NUMBER=0
         echo "Syncing version with package.json: v${VERSION}"
     elif [ -f "$VERSION_FILE" ]; then
-        . "$VERSION_FILE"
+        load_version_file
+        if [ -z "$VERSION" ]; then
+            echo "ERROR: could not read a valid VERSION=X.Y.Z from $VERSION_FILE"
+            exit 1
+        fi
     else
         VERSION="0.1.0"
         BUILD_NUMBER=0
@@ -1105,37 +1146,21 @@ else
     ADDITIONAL_TAG=""
 fi
 
-# Handle git operations
-if [ "$BUILD_STABLE" = true ]; then
-    if [ "$TAG" = "latest" ]; then
-        archive_latest_image
-    fi
-elif [ -z "$WORKTREE_BRANCH" ]; then
-    echo "Pulling latest from $GIT_BRANCH..."
-    # Use --ff-only so the pull can never drop into an interactive merge-commit
-    # editor. The ONLY commits this script should ever create are the version
-    # bumps below. If local and remote have diverged (commonly because a
-    # previous auto-version commit could not be pushed), fail loudly with
-    # guidance instead of silently starting a merge.
-    if ! git pull --ff-only origin "$GIT_BRANCH" 2>&1; then
-        echo "ERROR: git pull (fast-forward only) failed."
-        echo "   Either the network is unavailable, or local '$GIT_BRANCH' has"
-        echo "   diverged from origin -- often an unpushed auto-version commit"
-        echo "   from a previous build (the push step warns but does not fail)."
-        echo ""
-        echo "   Resolve with one of:"
-        echo "     git push origin $GIT_BRANCH              # if local is simply ahead"
-        echo "     git pull --rebase origin $GIT_BRANCH     # replay local commits on top"
-        echo "   Or skip the pull entirely: --branch $(git branch --show-current)"
-        exit 1
-    fi
-fi
-
 # For non-worktree builds, warn if local is ahead of origin (an unpushed commit
 # would be tagged and would later diverge the branch). Skipped for worktree
 # builds, which don't record version state on the host branch.
 if [ -z "$WORKTREE_BRANCH" ] && [ "$DRY_RUN" = false ]; then
     warn_if_ahead_of_origin
+fi
+
+# Whether this build writes its version into the tree and records it in git.
+# A dev build always does, worktree or not: the files are bumped for the image,
+# restored afterwards, and the built commit is tagged vX.Y.Z-dev.N. A stable
+# build does so only from the main checkout, because it commits and pushes the
+# branch, which a detached worktree cannot do.
+RECORD_VERSION=false
+if [ "$BUILD_PATH" = "$ORIGINAL_DIR" ] || [ "$BUILD_STABLE" != true ]; then
+    RECORD_VERSION=true
 fi
 
 # Enable Docker BuildKit
@@ -1145,27 +1170,36 @@ if [ "$USE_BUILDKIT" = true ]; then
 fi
 
 # Update version files BEFORE build so they're included in the Docker image
-if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ]; then
-    if [ "$BUILD_PATH" = "$ORIGINAL_DIR" ]; then
+if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_MAIN_APP" = true ]; then
+    if [ "$RECORD_VERSION" = true ]; then
         if [ "$DRY_RUN" = true ]; then
             echo ""
             echo "[DRY RUN] Would update version files to v$NEW_VERSION"
-            echo "   .docker-version, package.json, frontend/package.json, backend/package.json, app-metadata.yaml"
+            echo "   ${BACKUP_TARGETS[*]}"
         else
             echo "Updating version files before build..."
             create_version_backups
             update_version_file "$NEW_VERSION" "$NEW_BUILD_NUMBER"
             update_package_json_files "$NEW_VERSION"
-            update_truenas_metadata "$NEW_VERSION"
         fi
     else
-        echo "Skipping version file updates (building from worktree)"
+        echo "Skipping version file updates (stable build from a worktree records nothing)"
     fi
 fi
 
 # --- Execute builds ---
 
 BUILD_FAILED=false
+
+build_main() {
+    run_build "$IMAGE_NAME" "$TAG" "docker/Dockerfile.backend" "." \
+        "${VERSION_TAG:-}" "${ADDITIONAL_TAG:-}" "${NEW_VERSION:-}" "${NEW_BUILD_NUMBER:-}"
+}
+
+build_broker() {
+    run_build "$DISCORD_IMAGE_NAME" "$DISCORD_TAG" "discord-handler/Dockerfile" "./discord-handler" \
+        "" "" "" ""
+}
 
 if [ "$BUILD_ALL" = true ]; then
     echo ""
@@ -1175,24 +1209,18 @@ if [ "$BUILD_ALL" = true ]; then
 
     echo ""
     echo "--- Main Application ---"
-    if ! run_build "$IMAGE_NAME" "$TAG" "docker/Dockerfile.backend" "." \
-        "${VERSION_TAG:-}" "${ADDITIONAL_TAG:-}" "${NEW_VERSION:-}" "${NEW_BUILD_NUMBER:-}"; then
+    if ! build_main; then
         BUILD_FAILED=true
         echo "Main app build failed, skipping Discord broker build"
     else
         echo ""
         echo "--- Discord Broker ---"
-        if ! run_build "$DISCORD_IMAGE_NAME" "$DISCORD_TAG" "discord-handler/Dockerfile" "./discord-handler" \
-            "" "" "" ""; then
-            BUILD_FAILED=true
-        fi
+        build_broker || BUILD_FAILED=true
     fi
 elif [ "$BUILD_DISCORD_BROKER" = true ]; then
-    run_build "$DISCORD_IMAGE_NAME" "$DISCORD_TAG" "discord-handler/Dockerfile" "./discord-handler" \
-        "" "" "" "" || BUILD_FAILED=true
+    build_broker || BUILD_FAILED=true
 else
-    run_build "$IMAGE_NAME" "$TAG" "docker/Dockerfile.backend" "." \
-        "${VERSION_TAG:-}" "${ADDITIONAL_TAG:-}" "${NEW_VERSION:-}" "${NEW_BUILD_NUMBER:-}" || BUILD_FAILED=true
+    build_main || BUILD_FAILED=true
 fi
 
 if [ "$BUILD_FAILED" = true ]; then
@@ -1211,7 +1239,7 @@ fi
 #                   then annotate-tag the built commit as vX.Y.Z-dev.N.
 #  - Stable builds: commit the real version bump, tag it vX.Y.Z, and push the
 #                   branch robustly (rebase-and-retry on a racing push).
-if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_PATH" = "$ORIGINAL_DIR" ]; then
+if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_MAIN_APP" = true ] && [ "$RECORD_VERSION" = true ]; then
     if [ "$DRY_RUN" = true ]; then
         echo ""
         if [ "$BUILD_STABLE" = true ]; then
@@ -1224,23 +1252,24 @@ if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_PATH" = "$OR
         remove_version_backups
         echo ""
         echo "Recording release v$NEW_VERSION in git..."
-        git add .docker-version package.json frontend/package.json backend/package.json app-metadata.yaml 2>/dev/null || true
+        git add "${BACKUP_TARGETS[@]}" 2>/dev/null || true
+        # Explicit pathspec: commit only the version files, never other staged changes.
         if git commit -m "build: release v$NEW_VERSION
 
-Generated by build_image.sh"; then
+Generated by build_image.sh" -- "${BACKUP_TARGETS[@]}"; then
             echo "Release commit created"
             robust_push_branch || true
         else
             echo "No version file changes to commit (tagging current HEAD)"
         fi
-        create_and_push_tag "$VERSION_TAG" "Release $VERSION_TAG (built $(date -u +'%Y-%m-%dT%H:%M:%SZ'))"
+        create_and_push_tag "$VERSION_TAG" "Release $VERSION_TAG (built $(utc_now))"
     else
         # Dev build: no commit. Restore the bumped files so the tree stays
         # clean, then tag the exact commit the image was built from.
         restore_version_backups
         echo ""
         echo "Recording dev build in git (tag only, no commit)..."
-        create_and_push_tag "$VERSION_TAG" "Dev build $VERSION_TAG (built $(date -u +'%Y-%m-%dT%H:%M:%SZ'), commit $(get_git_commit))"
+        create_and_push_tag "$VERSION_TAG" "Dev build $VERSION_TAG (built $(utc_now), commit $(get_git_commit))"
     fi
 fi
 

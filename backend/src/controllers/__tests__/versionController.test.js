@@ -19,6 +19,7 @@ jest.mock('fs', () => ({
   },
 }));
 
+const logger = require('../../utils/logger');
 const versionController = require('../versionController');
 
 // Helper to create a mock response object with all API response methods
@@ -52,6 +53,8 @@ describe('versionController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockReadFile.mockReset();
+    versionController.resetVersionCache();
     process.env.NODE_ENV = 'test';
   });
 
@@ -74,13 +77,11 @@ describe('versionController', () => {
       await versionController.getVersion(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
+        {
           version: '1.2.3',
           buildNumber: 42,
           fullVersion: '1.2.3-dev.42',
-          lastBuild: '2025-06-15T10:30:00Z',
-          environment: 'test',
-        }),
+        },
         'Version information retrieved'
       );
     });
@@ -101,7 +102,6 @@ describe('versionController', () => {
           version: '2.0.0',
           buildNumber: 0,
           fullVersion: '2.0.0',
-          environment: 'production',
         }),
         expect.any(String)
       );
@@ -123,7 +123,6 @@ describe('versionController', () => {
           version: '1.0.0',
           buildNumber: 0,
           fullVersion: '1.0.0-dev',
-          lastBuild: null,
         }),
         expect.any(String)
       );
@@ -149,7 +148,7 @@ describe('versionController', () => {
       );
     });
 
-    it('should use hardcoded fallback 0.8.1 when both files fail', async () => {
+    it('should report an unknown version when both files fail', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -161,8 +160,9 @@ describe('versionController', () => {
 
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({
-          version: '0.8.1',
+          version: 'unknown',
           buildNumber: 0,
+          fullVersion: 'unknown',
         }),
         expect.any(String)
       );
@@ -180,7 +180,6 @@ describe('versionController', () => {
         expect.objectContaining({
           version: '3.0.0',
           buildNumber: 0,
-          lastBuild: null,
         }),
         expect.any(String)
       );
@@ -205,58 +204,74 @@ describe('versionController', () => {
       );
     });
 
-    it('should handle empty .docker-version file', async () => {
+    it('should fall back to package.json for an empty .docker-version file', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      mockReadFile.mockResolvedValueOnce('');
+      mockReadFile
+        .mockResolvedValueOnce('')
+        .mockResolvedValueOnce(JSON.stringify({ version: '0.15.0' }));
 
       await versionController.getVersion(req, res);
 
-      // Falls through all line parsing with defaults
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({
-          version: '0.8.1', // default
+          version: '0.15.0',
           buildNumber: 0,
         }),
         expect.any(String)
       );
     });
 
-    it('should include environment field from NODE_ENV', async () => {
+    it('should not disclose environment or build timestamp to anonymous callers', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
       process.env.NODE_ENV = 'staging';
-      mockReadFile.mockResolvedValueOnce('VERSION=1.0.0\n');
+      mockReadFile.mockResolvedValueOnce('VERSION=1.0.0\nLAST_BUILD=2025-06-15T10:30:00Z\n');
 
       await versionController.getVersion(req, res);
 
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({ environment: 'staging' }),
+      const payload = res.success.mock.calls[0][0];
+      expect(Object.keys(payload).sort()).toEqual(['buildNumber', 'fullVersion', 'version']);
+    });
+
+    it('should read the version file once and serve later requests from memory', async () => {
+      mockReadFile.mockResolvedValueOnce('VERSION=1.0.0\nBUILD_NUMBER=3\n');
+
+      const res1 = createMockRes();
+      const res2 = createMockRes();
+      await versionController.getVersion(createMockReq(), res1);
+      await versionController.getVersion(createMockReq(), res2);
+
+      expect(mockReadFile).toHaveBeenCalledTimes(1);
+      expect(res2.success).toHaveBeenCalledWith(
+        expect.objectContaining({ version: '1.0.0', buildNumber: 3 }),
         expect.any(String)
       );
     });
 
-    it('should default environment to development when NODE_ENV is unset', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
+    it('should not write an info log line on every request', async () => {
+      mockReadFile.mockResolvedValueOnce('VERSION=1.0.0\n');
 
-      delete process.env.NODE_ENV;
+      await versionController.getVersion(createMockReq(), createMockRes());
+      await versionController.getVersion(createMockReq(), createMockRes());
+
+      expect(logger.info).not.toHaveBeenCalled();
+    });
+
+    it('should still apply NODE_ENV to the display version when served from memory', async () => {
       mockReadFile.mockResolvedValueOnce('VERSION=1.0.0\nBUILD_NUMBER=0\n');
 
-      await versionController.getVersion(req, res);
+      process.env.NODE_ENV = 'production';
+      const res1 = createMockRes();
+      await versionController.getVersion(createMockReq(), res1);
+      process.env.NODE_ENV = 'development';
+      const res2 = createMockRes();
+      await versionController.getVersion(createMockReq(), res2);
 
-      // NODE_ENV is undefined, so environment falls back to 'development' via || operator
-      // But isDevelopment checks NODE_ENV === 'development' which is false when undefined
-      // So fullVersion stays plain '1.0.0' without -dev suffix
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          environment: 'development',
-          fullVersion: '1.0.0',
-        }),
-        expect.any(String)
-      );
+      expect(res1.success.mock.calls[0][0].fullVersion).toBe('1.0.0');
+      expect(res2.success.mock.calls[0][0].fullVersion).toBe('1.0.0-dev');
     });
   });
 });

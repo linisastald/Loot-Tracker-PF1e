@@ -9,22 +9,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
-  Checkbox,
   Chip,
   CircularProgress,
   Collapse,
   Container,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
-  Drawer,
   FormControl,
-  FormControlLabel,
   Grid,
   IconButton,
   InputLabel,
@@ -41,7 +33,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -52,48 +43,28 @@ import HistoryIcon from '@mui/icons-material/History';
 import StyleIcon from '@mui/icons-material/Style';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import { useSnackbar } from 'notistack';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCampaign } from '../../contexts/CampaignContext';
-import { HARROW_CARDS, HARROW_CHAPTERS, getHarrowChapter } from '../../data/harrow';
-
-interface Choosing {
-  card_name: string | null;
-  is_chosen_boon: boolean;
-}
-
-interface RosterEntry {
-  character_id: number;
-  name: string;
-  user_id: number | null;
-  balance: number;
-  choosing: Choosing | null;
-}
-
-interface HarrowState {
-  currentChapter: number;
-  enabled: boolean;
-  balances: RosterEntry[];
-}
-
-interface LedgerEntry {
-  id: number;
-  chapter: number;
-  delta: number;
-  reason: string | null;
-  entry_type: string;
-  created_at: string;
-  created_by_name: string | null;
-}
+import { HARROW_CHAPTERS, getHarrowChapter } from '../../data/harrow';
+import type { HarrowState, RosterEntry } from './harrow/types';
+import { useHarrowApi } from './harrow/useHarrowApi';
+import {
+  AdjustDialog,
+  AwardDialog,
+  ChoosingDialog,
+  HistoryDrawer,
+  SpendDialog,
+} from './harrow/HarrowDialogs';
 
 const HarrowTracker: React.FC = () => {
-  const { enqueueSnackbar } = useSnackbar();
+  const { post } = useHarrowApi();
   const { user } = useAuth();
-  const { campaignRole, isSuperadmin } = useCampaign();
-  const isDM = campaignRole === 'DM' || isSuperadmin;
+  const { isDM } = useCampaign();
 
   const [state, setState] = useState<HarrowState | null>(null);
+  // Full-page spinner only for the first load; later refreshes happen silently
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [referenceOpen, setReferenceOpen] = useState(false);
@@ -101,44 +72,25 @@ const HarrowTracker: React.FC = () => {
   // Chapter advance control (DM)
   const [chapterDraft, setChapterDraft] = useState<number>(1);
 
-  // Spend dialog
+  // Which dialog is open, and for whom
   const [spendTarget, setSpendTarget] = useState<RosterEntry | null>(null);
-  const [spendPoints, setSpendPoints] = useState('1');
-  const [spendReason, setSpendReason] = useState('');
-
-  // Adjust dialog (DM)
   const [adjustTarget, setAdjustTarget] = useState<RosterEntry | null>(null);
-  const [adjustDelta, setAdjustDelta] = useState('1');
-  const [adjustReason, setAdjustReason] = useState('');
-
-  // Award helper dialog (DM)
-  const [awardOpen, setAwardOpen] = useState(false);
-  const [suitMatchCount, setSuitMatchCount] = useState('0');
-  const [choosingHits, setChoosingHits] = useState<Record<number, boolean>>({});
-
-  // Choosing editor dialog
   const [choosingTarget, setChoosingTarget] = useState<RosterEntry | null>(null);
-  const [choosingCard, setChoosingCard] = useState<string | null>(null);
-  const [choosingBoon, setChoosingBoon] = useState(false);
-
-  // History drawer
   const [historyTarget, setHistoryTarget] = useState<RosterEntry | null>(null);
-  const [historyEntries, setHistoryEntries] = useState<LedgerEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [awardOpen, setAwardOpen] = useState(false);
 
   const currentChapter = state?.currentChapter ?? 1;
   const chapterInfo = useMemo(() => getHarrowChapter(currentChapter), [currentChapter]);
 
   const fetchState = useCallback(async () => {
-    setLoading(true);
     try {
-      const response: any = await api.get('/harrow');
-      const data: HarrowState = response.data || response;
+      const response = (await api.get('/harrow')) as { data?: HarrowState } & Partial<HarrowState>;
+      const data = (response.data || response) as HarrowState;
       setState(data);
       setChapterDraft(data.currentChapter);
       setError('');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load Harrow data');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load Harrow data'));
     } finally {
       setLoading(false);
     }
@@ -148,150 +100,30 @@ const HarrowTracker: React.FC = () => {
     fetchState();
   }, [fetchState]);
 
-  const handleApiError = (err: any, fallback: string) => {
-    enqueueSnackbar(err.response?.data?.message || fallback, { variant: 'error' });
-  };
-
-  // ---- Chapter advance (DM) ------------------------------------------------
   const handleAdvanceChapter = async () => {
-    try {
-      await api.post('/harrow/chapter', { chapter: chapterDraft });
-      enqueueSnackbar(`Current chapter set to ${chapterDraft}`, { variant: 'success' });
-      await fetchState();
-    } catch (err: any) {
-      handleApiError(err, 'Failed to set chapter');
-    }
+    const ok = await post(
+      '/harrow/chapter',
+      { chapter: chapterDraft },
+      `Current chapter set to ${chapterDraft}`,
+      'Failed to set chapter'
+    );
+    if (ok) await fetchState();
   };
 
-  // ---- Spend ---------------------------------------------------------------
-  const openSpend = (entry: RosterEntry) => {
-    setSpendTarget(entry);
-    setSpendPoints('1');
-    setSpendReason('');
+  const handleAwardOne = async (entry: RosterEntry) => {
+    const ok = await post(
+      '/harrow/award',
+      { characterId: entry.character_id, points: 1 },
+      null,
+      'Failed to award point'
+    );
+    if (ok) await fetchState();
   };
 
-  const handleSpend = async () => {
-    if (!spendTarget) return;
-    const points = parseInt(spendPoints, 10);
-    if (!Number.isInteger(points) || points <= 0) {
-      enqueueSnackbar('Enter a positive number of points to spend', { variant: 'warning' });
-      return;
-    }
-    try {
-      await api.post('/harrow/spend', {
-        characterId: spendTarget.character_id,
-        points,
-        reason: spendReason || undefined,
-      });
-      enqueueSnackbar(`Spent points for ${spendTarget.name}`, { variant: 'success' });
-      setSpendTarget(null);
-      await fetchState();
-    } catch (err: any) {
-      handleApiError(err, 'Failed to spend points');
-    }
-  };
-
-  // ---- Adjust (DM) ---------------------------------------------------------
-  const openAdjust = (entry: RosterEntry) => {
-    setAdjustTarget(entry);
-    setAdjustDelta('1');
-    setAdjustReason('');
-  };
-
-  const handleAdjust = async () => {
-    if (!adjustTarget) return;
-    const delta = parseInt(adjustDelta, 10);
-    if (!Number.isInteger(delta) || delta === 0) {
-      enqueueSnackbar('Enter a non-zero adjustment', { variant: 'warning' });
-      return;
-    }
-    try {
-      await api.post('/harrow/adjust', {
-        characterId: adjustTarget.character_id,
-        delta,
-        reason: adjustReason,
-      });
-      enqueueSnackbar(`Adjusted points for ${adjustTarget.name}`, { variant: 'success' });
-      setAdjustTarget(null);
-      await fetchState();
-    } catch (err: any) {
-      handleApiError(err, 'Failed to adjust points');
-    }
-  };
-
-  // ---- Award helper (DM) ---------------------------------------------------
-  const openAward = () => {
-    setSuitMatchCount('0');
-    setChoosingHits({});
-    setAwardOpen(true);
-  };
-
-  const previewAward = (entry: RosterEntry): number => {
-    const matches = parseInt(suitMatchCount, 10);
-    const base = Number.isInteger(matches) ? matches : 0;
-    return base + 1 + (choosingHits[entry.character_id] ? 1 : 0);
-  };
-
-  const handleAwardBatch = async () => {
-    if (!state) return;
-    const matches = parseInt(suitMatchCount, 10);
-    if (!Number.isInteger(matches) || matches < 0 || matches > 9) {
-      enqueueSnackbar('Enter how many spread cards match the suit (0–9)', { variant: 'warning' });
-      return;
-    }
-    try {
-      await api.post('/harrow/award-batch', {
-        suitMatchCount: matches,
-        awards: state.balances.map((entry) => ({
-          characterId: entry.character_id,
-          choosingHit: !!choosingHits[entry.character_id],
-        })),
-      });
-      enqueueSnackbar('Awarded Harrow Points from the reading', { variant: 'success' });
-      setAwardOpen(false);
-      await fetchState();
-    } catch (err: any) {
-      handleApiError(err, 'Failed to award points');
-    }
-  };
-
-  // ---- Choosing editor -----------------------------------------------------
-  const openChoosing = (entry: RosterEntry) => {
-    setChoosingTarget(entry);
-    setChoosingCard(entry.choosing?.card_name ?? null);
-    setChoosingBoon(entry.choosing?.is_chosen_boon ?? false);
-  };
-
-  const handleSaveChoosing = async () => {
-    if (!choosingTarget) return;
-    try {
-      await api.post('/harrow/choosing', {
-        characterId: choosingTarget.character_id,
-        cardName: choosingCard || null,
-        isChosenBoon: choosingBoon,
-      });
-      enqueueSnackbar(`Choosing card saved for ${choosingTarget.name}`, { variant: 'success' });
-      setChoosingTarget(null);
-      await fetchState();
-    } catch (err: any) {
-      handleApiError(err, 'Failed to save Choosing card');
-    }
-  };
-
-  // ---- History drawer ------------------------------------------------------
-  const openHistory = async (entry: RosterEntry) => {
-    setHistoryTarget(entry);
-    setHistoryEntries([]);
-    setHistoryLoading(true);
-    try {
-      const response: any = await api.get(`/harrow/${entry.character_id}/ledger`);
-      const data = response.data || response;
-      setHistoryEntries(data.ledger || []);
-    } catch (err: any) {
-      handleApiError(err, 'Failed to load history');
-    } finally {
-      setHistoryLoading(false);
-    }
+  // Close a dialog and refresh the roster after a successful save
+  const done = (close: () => void) => () => {
+    close();
+    fetchState();
   };
 
   const canActOn = (entry: RosterEntry): boolean =>
@@ -430,7 +262,11 @@ const HarrowTracker: React.FC = () => {
           Roster
         </Typography>
         {isDM && (
-          <Button variant="contained" startIcon={<AutoAwesomeIcon />} onClick={openAward}>
+          <Button
+            variant="contained"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={() => setAwardOpen(true)}
+          >
             Award from reading
           </Button>
         )}
@@ -496,17 +332,8 @@ const HarrowTracker: React.FC = () => {
                           <IconButton
                             size="small"
                             color="primary"
-                            onClick={async () => {
-                              try {
-                                await api.post('/harrow/award', {
-                                  characterId: entry.character_id,
-                                  points: 1,
-                                });
-                                await fetchState();
-                              } catch (err: any) {
-                                handleApiError(err, 'Failed to award point');
-                              }
-                            }}
+                            aria-label={`Award 1 point to ${entry.name}`}
+                            onClick={() => handleAwardOne(entry)}
                           >
                             <AddIcon fontSize="small" />
                           </IconButton>
@@ -517,8 +344,9 @@ const HarrowTracker: React.FC = () => {
                       <span>
                         <IconButton
                           size="small"
+                          aria-label={`Spend points for ${entry.name}`}
                           disabled={!canActOn(entry) || entry.balance <= 0}
-                          onClick={() => openSpend(entry)}
+                          onClick={() => setSpendTarget(entry)}
                         >
                           <RemoveIcon fontSize="small" />
                         </IconButton>
@@ -527,7 +355,11 @@ const HarrowTracker: React.FC = () => {
                     {isDM && (
                       <Tooltip title="Adjust (correction)">
                         <span>
-                          <IconButton size="small" onClick={() => openAdjust(entry)}>
+                          <IconButton
+                            size="small"
+                            aria-label={`Adjust points for ${entry.name}`}
+                            onClick={() => setAdjustTarget(entry)}
+                          >
                             <TuneIcon fontSize="small" />
                           </IconButton>
                         </span>
@@ -537,8 +369,9 @@ const HarrowTracker: React.FC = () => {
                       <span>
                         <IconButton
                           size="small"
+                          aria-label={`Choosing card for ${entry.name}`}
                           disabled={!canActOn(entry)}
-                          onClick={() => openChoosing(entry)}
+                          onClick={() => setChoosingTarget(entry)}
                         >
                           <StyleIcon fontSize="small" />
                         </IconButton>
@@ -546,7 +379,11 @@ const HarrowTracker: React.FC = () => {
                     </Tooltip>
                     <Tooltip title="History">
                       <span>
-                        <IconButton size="small" onClick={() => openHistory(entry)}>
+                        <IconButton
+                          size="small"
+                          aria-label={`History for ${entry.name}`}
+                          onClick={() => setHistoryTarget(entry)}
+                        >
                           <HistoryIcon fontSize="small" />
                         </IconButton>
                       </span>
@@ -558,212 +395,40 @@ const HarrowTracker: React.FC = () => {
           </TableBody>
         </Table>
       </TableContainer>
-      {/* Spend dialog */}
-      <Dialog open={!!spendTarget} onClose={() => setSpendTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Spend Harrow Points — {spendTarget?.name}</DialogTitle>
-        <DialogContent>
-          <Typography
-            variant="body2"
-            sx={{
-              color: "text.secondary",
-              mb: 2
-            }}>
-            Available this chapter: {spendTarget?.balance ?? 0}
-          </Typography>
-          <TextField
-            label="Points to spend"
-            type="number"
-            fullWidth
-            margin="normal"
-            value={spendPoints}
-            onChange={(e) => setSpendPoints(e.target.value)}
-            slotProps={{ input: { inputProps: { min: 1, max: spendTarget?.balance ?? 1 } } }}
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="spend-reason-label">What for? (optional)</InputLabel>
-            <Select
-              labelId="spend-reason-label"
-              label="What for? (optional)"
-              value={spendReason}
-              onChange={(e) => setSpendReason(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              {chapterInfo.spendOptions.map((option, i) => (
-                <MenuItem key={i} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSpendTarget(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSpend}>
-            Spend
-          </Button>
-        </DialogActions>
-      </Dialog>
-      {/* Adjust dialog */}
-      <Dialog open={!!adjustTarget} onClose={() => setAdjustTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Adjust Harrow Points — {adjustTarget?.name}</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Delta (+/-)"
-            type="number"
-            fullWidth
-            margin="normal"
-            value={adjustDelta}
-            onChange={(e) => setAdjustDelta(e.target.value)}
-            helperText="Positive adds, negative removes"
-          />
-          <TextField
-            label="Reason"
-            fullWidth
-            margin="normal"
-            value={adjustReason}
-            onChange={(e) => setAdjustReason(e.target.value)}
-            required
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAdjustTarget(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdjust} disabled={!adjustReason.trim()}>
-            Apply
-          </Button>
-        </DialogActions>
-      </Dialog>
-      {/* Award helper dialog */}
-      <Dialog open={awardOpen} onClose={() => setAwardOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Award from reading — Chapter {currentChapter}</DialogTitle>
-        <DialogContent>
-          <Typography
-            variant="body2"
-            sx={{
-              color: "text.secondary",
-              mb: 2
-            }}>
-            Each PC earns (spread cards matching the {chapterInfo.suit} suit) + 1 guaranteed point
-            (the Choosing), plus 1 more if their own Choosing card appeared in the spread.
-          </Typography>
-          <TextField
-            label={`How many of the 9 spread cards match ${chapterInfo.suit}?`}
-            type="number"
-            fullWidth
-            margin="normal"
-            value={suitMatchCount}
-            onChange={(e) => setSuitMatchCount(e.target.value)}
-            slotProps={{ input: { inputProps: { min: 0, max: 9 } } }}
-          />
-          <Divider sx={{ my: 2 }} />
-          <Typography variant="subtitle2" gutterBottom>
-            Did each PC's Choosing card appear in the spread?
-          </Typography>
-          <List dense>
-            {state?.balances.map((entry) => (
-              <ListItem
-                key={entry.character_id}
-                secondaryAction={<Chip label={`+${previewAward(entry)}`} color="primary" size="small" />}
-              >
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={!!choosingHits[entry.character_id]}
-                      onChange={(e) =>
-                        setChoosingHits((prev) => ({
-                          ...prev,
-                          [entry.character_id]: e.target.checked,
-                        }))
-                      }
-                    />
-                  }
-                  label={
-                    entry.choosing?.card_name
-                      ? `${entry.name} — ${entry.choosing.card_name}`
-                      : entry.name
-                  }
-                />
-              </ListItem>
-            ))}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAwardOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAwardBatch}>
-            Award all
-          </Button>
-        </DialogActions>
-      </Dialog>
-      {/* Choosing editor dialog */}
-      <Dialog open={!!choosingTarget} onClose={() => setChoosingTarget(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Choosing card — {choosingTarget?.name}</DialogTitle>
-        <DialogContent>
-          <Autocomplete
-            options={HARROW_CARDS}
-            value={choosingCard}
-            onChange={(_, value) => setChoosingCard(value)}
-            renderInput={(params) => (
-              <TextField {...params} label="Choosing card" margin="normal" />
-            )}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox checked={choosingBoon} onChange={(e) => setChoosingBoon(e.target.checked)} />
-            }
-            label="Earned The Chosen boon this chapter"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setChoosingTarget(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveChoosing}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-      {/* History drawer */}
-      <Drawer anchor="right" open={!!historyTarget} onClose={() => setHistoryTarget(null)}>
-        <Box sx={{ width: 360, p: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            History — {historyTarget?.name}
-          </Typography>
-          {historyLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : historyEntries.length === 0 ? (
-            <Typography variant="body2" sx={{
-              color: "text.secondary"
-            }}>
-              No entries yet.
-            </Typography>
-          ) : (
-            <List dense>
-              {historyEntries.map((h) => (
-                <ListItem key={h.id} divider>
-                  <ListItemText
-                    primary={
-                      <Stack direction="row" spacing={1} sx={{
-                        alignItems: "center"
-                      }}>
-                        <Chip
-                          label={`${h.delta > 0 ? '+' : ''}${h.delta}`}
-                          size="small"
-                          color={h.delta > 0 ? 'success' : 'default'}
-                        />
-                        <Typography variant="body2">{h.reason || h.entry_type}</Typography>
-                      </Stack>
-                    }
-                    secondary={`Ch. ${h.chapter} · ${new Date(h.created_at).toLocaleString()}${
-                      h.created_by_name ? ` · ${h.created_by_name}` : ''
-                    }`}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </Box>
-      </Drawer>
+      {spendTarget && (
+        <SpendDialog
+          target={spendTarget}
+          spendOptions={chapterInfo.spendOptions}
+          onClose={() => setSpendTarget(null)}
+          onDone={done(() => setSpendTarget(null))}
+        />
+      )}
+      {adjustTarget && (
+        <AdjustDialog
+          target={adjustTarget}
+          onClose={() => setAdjustTarget(null)}
+          onDone={done(() => setAdjustTarget(null))}
+        />
+      )}
+      {awardOpen && state && (
+        <AwardDialog
+          roster={state.balances}
+          chapter={currentChapter}
+          suit={chapterInfo.suit}
+          onClose={() => setAwardOpen(false)}
+          onDone={done(() => setAwardOpen(false))}
+        />
+      )}
+      {choosingTarget && (
+        <ChoosingDialog
+          target={choosingTarget}
+          onClose={() => setChoosingTarget(null)}
+          onDone={done(() => setChoosingTarget(null))}
+        />
+      )}
+      {historyTarget && (
+        <HistoryDrawer target={historyTarget} onClose={() => setHistoryTarget(null)} />
+      )}
     </Container>
   );
 };

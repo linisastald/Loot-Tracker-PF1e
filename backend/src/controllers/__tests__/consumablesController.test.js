@@ -113,13 +113,15 @@ describe('consumablesController', () => {
   // ---------------------------------------------------------------
   describe('useConsumable', () => {
     it('should decrement wand charges and log usage', async () => {
+      // distinct ids (loot 5, user 7, character 42) so swapped parameters cannot pass
       const req = createMockReq({
-        body: { itemid: 1, type: 'wand' },
+        user: { id: 7 },
+        body: { itemid: 5, type: 'wand' },
       });
       const res = createMockRes();
 
       const updatedWand = {
-        id: 1,
+        id: 5,
         name: 'Wand of Cure Light Wounds',
         charges: 34,
         status: 'Kept Party',
@@ -129,6 +131,8 @@ describe('consumablesController', () => {
         query: jest.fn()
           // UPDATE wand charges
           .mockResolvedValueOnce({ rows: [updatedWand] })
+          // SELECT active character
+          .mockResolvedValueOnce({ rows: [{ id: 42 }] })
           // INSERT consumableuse
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
@@ -138,17 +142,46 @@ describe('consumablesController', () => {
 
       await consumablesController.useConsumable(req, res);
 
+      // F-0271: wand decrement is restricted to party-held wands
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/status = 'Kept Party'/);
       // Verify wand update query
       expect(mockClient.query.mock.calls[0][0]).toContain('charges = charges - 1');
-      expect(mockClient.query.mock.calls[0][1]).toEqual([1]);
+      expect(mockClient.query.mock.calls[0][1]).toEqual([5]); // loot id
+      // only wand rows can be used as wands
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%wand of%'/);
 
       // Verify usage log insert
-      expect(mockClient.query.mock.calls[1][0]).toContain('INSERT INTO consumableuse');
-      expect(mockClient.query.mock.calls[1][1]).toEqual([1, 1]); // lootid, user id
+      expect(mockClient.query.mock.calls[1][0]).toContain('FROM characters');
+      expect(mockClient.query.mock.calls[1][1]).toEqual([7]); // user id
+      expect(mockClient.query.mock.calls[2][0]).toContain('INSERT INTO consumableuse');
+      expect(mockClient.query.mock.calls[2][1]).toEqual([5, 42]); // lootid, character id (not user id)
 
       expect(res.success).toHaveBeenCalledWith(
         updatedWand,
         'Wand charge used successfully'
+      );
+    });
+
+    it('tells the user when the last charge empties and trashes the wand (owner decision 2026-10-06)', async () => {
+      const req = createMockReq({ user: { id: 7 }, body: { itemid: 5, type: 'wand' } });
+      const res = createMockRes();
+      const emptied = { id: 5, name: 'Wand of Magic Missile', charges: 0, status: 'Trashed' };
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [emptied] })
+          .mockResolvedValueOnce({ rows: [{ id: 42 }] })
+          .mockResolvedValueOnce({ rows: [] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await consumablesController.useConsumable(req, res);
+
+      // trash happens in the same UPDATE statement, and the use is still recorded
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/status = CASE WHEN charges = 1 THEN 'Trashed'/);
+      expect(mockClient.query.mock.calls[2][0]).toContain('INSERT INTO consumableuse');
+      expect(res.success).toHaveBeenCalledWith(
+        emptied,
+        expect.stringMatching(/the wand is now empty and was moved to trash/i)
       );
     });
 
@@ -168,6 +201,7 @@ describe('consumablesController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [updatedPotion] })
+          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
@@ -177,6 +211,12 @@ describe('consumablesController', () => {
       await consumablesController.useConsumable(req, res);
 
       expect(mockClient.query.mock.calls[0][0]).toContain('quantity = quantity - 1');
+      // F-0271: only party-held stock may be decremented
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/status = 'Kept Party'/);
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/quantity > 0/);
+      // only potion items can be consumed as potions
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%potion of%'/);
+      expect(mockClient.query.mock.calls[0][0]).not.toMatch(/scroll of/);
       expect(res.success).toHaveBeenCalledWith(
         updatedPotion,
         'potion consumed successfully'
@@ -199,6 +239,7 @@ describe('consumablesController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [updatedScroll] })
+          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
@@ -207,10 +248,29 @@ describe('consumablesController', () => {
 
       await consumablesController.useConsumable(req, res);
 
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%scroll of%'/);
       expect(res.success).toHaveBeenCalledWith(
         updatedScroll,
         'scroll consumed successfully'
       );
+    });
+
+    it('F-0272: records NULL for who when the user has no active character (e.g. a DM)', async () => {
+      const req = createMockReq({ body: { itemid: 10, type: 'potion' } });
+      const res = createMockRes();
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [{ id: 5, status: 'Kept Party' }] })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [] }),
+        release: jest.fn(),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await consumablesController.useConsumable(req, res);
+
+      expect(mockClient.query.mock.calls[2][1]).toEqual([5, null]);
+      expect(res.success).toHaveBeenCalled();
     });
 
     it('should return not found when consumable has no uses left', async () => {
@@ -245,6 +305,28 @@ describe('consumablesController', () => {
 
       expect(res.validationError).toHaveBeenCalled();
     });
+
+    it.each(['ring', 'WAND', 'wand; DROP TABLE loot', ['wand'], 5])(
+      'should reject an unknown type (%p) without touching the database', async (type) => {
+        const req = createMockReq({ body: { itemid: 1, type } });
+        const res = createMockRes();
+
+        await consumablesController.useConsumable(req, res);
+
+        expect(res.validationError).toHaveBeenCalledWith('Type must be wand, potion or scroll');
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+    it.each([0, -3, 1.5, NaN, '7', null, [1], {}])(
+      'should reject a non-integer or non-positive itemid (%p)', async (itemid) => {
+        const req = createMockReq({ body: { itemid, type: 'potion' } });
+        const res = createMockRes();
+
+        await consumablesController.useConsumable(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
   });
 
   // ---------------------------------------------------------------
@@ -295,6 +377,66 @@ describe('consumablesController', () => {
       );
     });
 
+    it('trashes the wand when a DM sets 0 charges and says so (owner decision 2026-10-06)', async () => {
+      const req = createMockReq({ body: { id: 1, charges: 0 } });
+      const res = createMockRes();
+      const trashed = { id: 1, charges: 0, status: 'Trashed' };
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [trashed] });
+
+      await consumablesController.updateWandCharges(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(expect.any(String), [0, 1]);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/status = CASE WHEN [$]1 = 0 THEN 'Trashed' ELSE status END/);
+      expect(res.success).toHaveBeenCalledWith(
+        trashed,
+        expect.stringMatching(/the wand is now empty and was moved to trash/i)
+      );
+    });
+
+    it('keeps the plain message when charges stay above 0', async () => {
+      const req = createMockReq({ body: { id: 1, charges: 3 } });
+      const res = createMockRes();
+      const kept = { id: 1, charges: 3, status: 'Kept Party' };
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [kept] });
+
+      await consumablesController.updateWandCharges(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(kept, 'Wand charges updated successfully');
+    });
+
+    it('should only update wand rows', async () => {
+      const req = createMockReq({ body: { id: 3, charges: 10 } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // e.g. a longsword row
+
+      await consumablesController.updateWandCharges(req, res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/ILIKE '%wand of%'/);
+      expect(res.notFound).toHaveBeenCalledWith('Wand not found or not in kept party status');
+    });
+
+    it.each([1.5, NaN, '25', null, [25], {}, Infinity])(
+      'should reject non-integer charges (%p)', async (charges) => {
+        const req = createMockReq({ body: { id: 1, charges } });
+        const res = createMockRes();
+
+        await consumablesController.updateWandCharges(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      });
+
+    it.each([0, -1, 1.5, '1', NaN, null])(
+      'should reject an invalid loot id (%p)', async (id) => {
+        const req = createMockReq({ body: { id, charges: 10 } });
+        const res = createMockRes();
+
+        await consumablesController.updateWandCharges(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      });
+
     it('should set charges to minimum (1)', async () => {
       const req = createMockReq({
         body: { id: 1, charges: 1 },
@@ -321,21 +463,7 @@ describe('consumablesController', () => {
       await consumablesController.updateWandCharges(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Charges must be between 1 and 50'
-      );
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should reject charges below minimum (0)', async () => {
-      const req = createMockReq({
-        body: { id: 1, charges: 0 },
-      });
-      const res = createMockRes();
-
-      await consumablesController.updateWandCharges(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Charges must be between 1 and 50'
+        'Charges must be a whole number between 0 and 50'
       );
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
@@ -349,7 +477,7 @@ describe('consumablesController', () => {
       await consumablesController.updateWandCharges(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Charges must be between 1 and 50'
+        'Charges must be a whole number between 0 and 50'
       );
     });
 

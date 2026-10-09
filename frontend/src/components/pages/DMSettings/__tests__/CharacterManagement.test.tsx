@@ -54,7 +54,7 @@ const mockCharacters: CharacterFixture[] = [
     user_id: 10,
     active: true,
     appraisal_bonus: 5,
-    birthday: '2000-01-15',
+    birthday: '2000-01-15T00:00:00.000Z',
     deathday: null,
   },
   {
@@ -64,8 +64,8 @@ const mockCharacters: CharacterFixture[] = [
     user_id: 11,
     active: false,
     appraisal_bonus: 2,
-    birthday: '1995-06-30',
-    deathday: '2024-12-01',
+    birthday: '1995-06-30T00:00:00.000Z',
+    deathday: '2024-12-01T00:00:00.000Z',
   },
   {
     id: 3,
@@ -105,8 +105,10 @@ const setupDefaultApiMocks = (
     if (url === '/user/all-characters') {
       return Promise.resolve({ data: characters });
     }
-    if (url === '/user/all') {
-      return Promise.resolve({ data: users });
+    if (url === '/campaigns/current/members') {
+      return Promise.resolve({
+        data: { members: users.map((u) => ({ user_id: u.id, username: u.username, role: u.role })) },
+      });
     }
     return Promise.reject(new Error(`Unexpected GET ${url}`));
   });
@@ -146,8 +148,29 @@ describe('CharacterManagement (DMSettings)', () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith('/user/all-characters');
-        expect(api.get).toHaveBeenCalledWith('/user/all');
+        expect(api.get).toHaveBeenCalledWith('/campaigns/current/members');
       });
+    });
+
+    it('does not call the superadmin-only /user/all endpoint', async () => {
+      renderComponent();
+
+      await screen.findByRole('cell', { name: 'Zara' });
+      expect(api.get).not.toHaveBeenCalledWith('/user/all');
+    });
+
+    it('still renders characters when the member roster request fails', async () => {
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/user/all-characters') {
+          return Promise.resolve({ data: mockCharacters });
+        }
+        return Promise.reject(new Error('403'));
+      });
+
+      renderComponent();
+
+      expect(await screen.findByRole('cell', { name: 'Zara' })).toBeInTheDocument();
+      expect(screen.queryByText(/Error loading data/i)).not.toBeInTheDocument();
     });
 
     it('renders a row for each returned character', async () => {
@@ -228,6 +251,17 @@ describe('CharacterManagement (DMSettings)', () => {
     });
   });
 
+  describe('calendar dates', () => {
+    it('shows birthday and deathday as the stored calendar day, never shifted by a time zone', async () => {
+      renderComponent();
+      await screen.findByRole('cell', { name: 'Aldric' });
+
+      const row = getCharacterRow('Aldric');
+      expect(within(row).getByText('Jun 30, 1995')).toBeInTheDocument();
+      expect(within(row).getByText('Dec 1, 2024')).toBeInTheDocument();
+    });
+  });
+
   describe('active character highlight', () => {
     it('applies the green outline style to active character rows', async () => {
       renderComponent();
@@ -262,12 +296,9 @@ describe('CharacterManagement (DMSettings)', () => {
       const appraisalInput = within(dialog).getByLabelText('Appraisal Bonus') as HTMLInputElement;
       expect(appraisalInput.value).toBe('5');
 
-      // Birthday field is populated and formatted as YYYY-MM-DD.
-      // The exact day depends on the test runner's local timezone because the
-      // component's formatDateForInput interprets the ISO string and then reads
-      // local-tz year/month/day. We only assert format + non-empty here.
+      // Birthday is a calendar date: shown exactly as stored, in every time zone
       const birthdayInput = within(dialog).getByLabelText('Birthday') as HTMLInputElement;
-      expect(birthdayInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(birthdayInput.value).toBe('2000-01-15');
 
       // Deathday field empty (Zara has no deathday)
       const deathdayInput = within(dialog).getByLabelText('Deathday') as HTMLInputElement;
@@ -337,7 +368,7 @@ describe('CharacterManagement (DMSettings)', () => {
           expect.objectContaining({
             id: 1,
             name: 'Zara the Bold',
-            appraisal_bonus: '7',
+            appraisal_bonus: 7,
             active: false,
             deathday: '2026-04-01',
             user_id: 10,
@@ -373,10 +404,8 @@ describe('CharacterManagement (DMSettings)', () => {
       const birthdayInput = within(dialog).getByLabelText('Birthday') as HTMLInputElement;
       const deathdayInput = within(dialog).getByLabelText('Deathday') as HTMLInputElement;
 
-      // Sanity check: both pre-populated to YYYY-MM-DD shape (exact day may shift
-      // across timezones; just verify the dialog is showing the dates).
-      expect(birthdayInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(deathdayInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(birthdayInput.value).toBe('1995-06-30');
+      expect(deathdayInput.value).toBe('2024-12-01');
 
       fireEvent.change(birthdayInput, { target: { value: '' } });
       fireEvent.change(deathdayInput, { target: { value: '' } });
@@ -409,12 +438,9 @@ describe('CharacterManagement (DMSettings)', () => {
       const userSelect = within(dialog).getByRole('combobox');
       fireEvent.mouseDown(userSelect);
 
-      // Pick "bob" (only Player-role users are listed)
-      const bobOption = await screen.findByRole('option', { name: 'bob' });
-      fireEvent.click(bobOption);
-
-      // Verify DM user is NOT shown as an option
-      expect(screen.queryByRole('option', { name: 'dm_user' })).not.toBeInTheDocument();
+      // Every member of this campaign is a choice, whatever their campaign role
+      expect(await screen.findByRole('option', { name: 'dm_user' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('option', { name: 'bob' }));
 
       fireEvent.click(within(dialog).getByRole('button', { name: /^update$/i }));
 
@@ -427,6 +453,51 @@ describe('CharacterManagement (DMSettings)', () => {
           })
         );
       });
+    });
+
+    it('sends only the editable fields, with the bonus as a number (a cleared bonus is 0)', async () => {
+      (api.put as any).mockResolvedValueOnce({ data: { success: true } });
+      renderComponent();
+
+      const zaraRow = await screen.findByRole('cell', { name: 'Zara' }).then((c) => c.closest('tr')!);
+      fireEvent.click(zaraRow);
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Appraisal Bonus'), { target: { value: '' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /^update$/i }));
+
+      await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+      expect((api.put as any).mock.calls[0][1]).toEqual({
+        id: 1,
+        name: 'Zara',
+        appraisal_bonus: 0,
+        birthday: '2000-01-15',
+        deathday: '',
+        active: true,
+        user_id: 10,
+      });
+    });
+
+    it('keeps a former member selectable as the owner so the select is never blank', async () => {
+      setupDefaultApiMocks(mockCharacters, mockUsers.filter((u) => u.id !== 10));
+      renderComponent();
+
+      const zaraRow = await screen.findByRole('cell', { name: 'Zara' }).then((c) => c.closest('tr')!);
+      fireEvent.click(zaraRow);
+      const dialog = await screen.findByRole('dialog');
+
+      expect(within(dialog).getByRole('combobox')).toHaveTextContent('alice (not a member)');
+    });
+
+    it('shows the server message inside the dialog when the update is rejected', async () => {
+      (api.put as any).mockRejectedValueOnce({ response: { data: { message: 'Character name already exists' } } });
+      renderComponent();
+
+      const zaraRow = await screen.findByRole('cell', { name: 'Zara' }).then((c) => c.closest('tr')!);
+      fireEvent.click(zaraRow);
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /^update$/i }));
+
+      expect(await within(dialog).findByText('Character name already exists')).toBeInTheDocument();
     });
 
     it('shows an error and keeps the dialog open when the PUT fails', async () => {

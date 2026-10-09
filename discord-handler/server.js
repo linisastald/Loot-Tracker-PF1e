@@ -6,6 +6,7 @@ process.env.DOTENV_CONFIG_QUIET = 'true';
 
 const express = require('express');
 const axios = require('axios');
+const crypto = require('crypto');
 const { verifyKey } = require('discord-interactions');
 const dotenv = require('dotenv');
 
@@ -19,45 +20,143 @@ const PORT = process.env.PORT || 3000;
 app.use('/interactions', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
-// Dynamic campaign registry - apps can register/unregister at runtime
+// Dynamic campaign registry - apps register/unregister at runtime. The registry
+// lives in memory and is bounded: a registration needs the broker secret, and
+// these limits cap what even a holder of the secret can make the process keep.
 const registeredApps = new Map();
+const MAX_REGISTERED_APPS = 20;
+const MAX_CHANNELS_PER_APP = 50;
+const MAX_TEXT_LENGTH = 200;
+const MAX_ENDPOINT_LENGTH = 2048;
+const MAX_CHANNEL_ID_LENGTH = 32;
+// Backends heartbeat every 30 s. One that has been silent this long is gone
+// (crashed, or restarted under a new appId) and may be replaced on its channels.
+const STALE_APP_MS = 90 * 1000;
 
-// Legacy static configuration for backward compatibility
-const STATIC_CONFIG = {
-  [process.env.ROTR_CHANNEL_ID]: {
-    name: 'ROTR',
-    endpoint: process.env.ROTR_API_ENDPOINT || 'http://localhost:5000/api',
-    channelId: process.env.ROTR_CHANNEL_ID
-  },
-  [process.env.SNS_CHANNEL_ID]: {
-    name: 'SNS',
-    endpoint: process.env.SNS_API_ENDPOINT || 'http://localhost:5001/api',
-    channelId: process.env.SNS_CHANNEL_ID
-  },
-  [process.env.TEST_CHANNEL_ID]: {
-    name: 'TEST',
-    endpoint: process.env.TEST_API_ENDPOINT || 'http://localhost:5002/api',
-    channelId: process.env.TEST_CHANNEL_ID
-  }
+// Ephemeral (only the clicking user sees it) reply to a Discord interaction
+const ephemeral = (content) => ({
+  type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+  data: { content, flags: 64 } // 64 = EPHEMERAL
+});
+
+// ---------------------------------------------------------------------------
+// Broker authentication (DISCORD_BROKER_SECRET)
+//
+// /register, /unregister, /heartbeat and /status are control endpoints for the
+// backend(s) and must not be callable by anyone else. The backend sends the
+// shared secret in X-Broker-Secret; this service sends the same header on every
+// forward to a backend. Fail closed: in production an unset secret rejects every
+// control request. Outside production an unset secret is allowed (local dev).
+// ---------------------------------------------------------------------------
+const BROKER_SECRET_HEADER = 'X-Broker-Secret';
+
+const secretsMatch = (provided, expected) => {
+  if (typeof provided !== 'string' || typeof expected !== 'string') return false;
+  const a = crypto.createHash('sha256').update(provided).digest();
+  const b = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
 };
 
-// Build campaign configuration from both static and dynamic sources
-const getCampaignConfig = () => {
-  const config = { ...STATIC_CONFIG };
+// Rollout aid: with BROKER_ALLOW_UNAUTHENTICATED_CONTROL=true, a backend that
+// predates the shared secret (sends no X-Broker-Secret header at all) may still
+// register / heartbeat / unregister. A wrong secret is always rejected, and
+// /status always needs the secret. Turn this off once every backend is updated.
+const TRANSITION_PATHS = new Set(['/register', '/unregister', '/heartbeat']);
+const transitionModeEnabled = () => process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL === 'true';
 
-  // Add dynamically registered apps
+const requireBrokerSecret = (req, res, next) => {
+  const expected = process.env.DISCORD_BROKER_SECRET;
+
+  if (transitionModeEnabled() && TRANSITION_PATHS.has(req.path) && req.get(BROKER_SECRET_HEADER) === undefined) {
+    console.warn(`Transition mode: allowing unauthenticated control request to ${req.path} (appId: ${req.body?.appId})`);
+    req.brokerAuthenticated = false;
+    return next();
+  }
+
+  if (!expected) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('DISCORD_BROKER_SECRET is not set; rejecting control request');
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    req.brokerAuthenticated = false;
+    return next();
+  }
+
+  if (!secretsMatch(req.get(BROKER_SECRET_HEADER), expected)) {
+    console.warn(`Rejected control request to ${req.path}: missing or invalid broker secret`);
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  req.brokerAuthenticated = true;
+  return next();
+};
+
+// An unauthenticated caller (transition mode, or dev without a secret) may
+// never touch a registration that was made with the secret.
+const refuseUnauthenticatedOverAuthenticated = (req, res, existing, action) => {
+  if (existing && existing.authenticated && !req.brokerAuthenticated) {
+    console.warn(`Refused unauthenticated ${action} of authenticated registration ${existing.appId}`);
+    res.status(403).json({
+      success: false,
+      message: `An authenticated registration cannot be changed without the broker secret`,
+      appId: existing.appId
+    });
+    return true;
+  }
+  return false;
+};
+
+// Allowlist of hosts a registered callback endpoint may point at.
+// BROKER_ALLOWED_ENDPOINT_HOSTS is a comma-separated list of hostnames (or
+// host:port). When unset the endpoint only has to be a valid http(s) URL.
+const getAllowedEndpointHosts = () =>
+  (process.env.BROKER_ALLOWED_ENDPOINT_HOSTS || '')
+    .split(',')
+    .map(h => h.trim().toLowerCase())
+    .filter(Boolean);
+
+/**
+ * Validate a registration callback endpoint.
+ * @param {*} endpoint - Value supplied to /register
+ * @return {string|null} Error message, or null when acceptable
+ */
+const validateEndpoint = (endpoint) => {
+  if (typeof endpoint !== 'string') return 'endpoint must be a URL string';
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return 'endpoint is not a valid URL';
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return 'endpoint must use http or https';
+  }
+  if (url.username || url.password) return 'endpoint must not contain credentials';
+  const allowed = getAllowedEndpointHosts();
+  if (allowed.length > 0
+      && !allowed.includes(url.host.toLowerCase())
+      && !allowed.includes(url.hostname.toLowerCase())) {
+    return 'endpoint host is not allowed';
+  }
+  return null;
+};
+
+// Channel id -> registered app, built from the registry. A Map, so a channel id
+// such as "__proto__" or a missing one can never match anything.
+const getChannelRoutes = () => {
+  const routes = new Map();
   registeredApps.forEach((appConfig) => {
     Object.keys(appConfig.channels).forEach(channelId => {
-      config[channelId] = {
+      routes.set(channelId, {
         name: appConfig.name,
         endpoint: appConfig.endpoint,
-        channelId: channelId,
-        appId: appConfig.appId
-      };
+        channelId,
+        appId: appConfig.appId,
+        authenticated: appConfig.authenticated === true
+      });
     });
   });
-
-  return config;
+  return routes;
 };
 
 // Discord signature verification middleware
@@ -103,7 +202,11 @@ const routeToInstance = async (interaction, campaignConfig) => {
         headers: {
           'Content-Type': 'application/json',
           'X-Forwarded-From': 'discord-handler',
-          'X-Campaign-Instance': campaignConfig.name
+          'X-Campaign-Instance': campaignConfig.name,
+          // The secret only goes to a registration that proved it knows it
+          ...(process.env.DISCORD_BROKER_SECRET && campaignConfig.authenticated
+            ? { [BROKER_SECRET_HEADER]: process.env.DISCORD_BROKER_SECRET }
+            : {})
         },
         timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500
       }
@@ -114,13 +217,7 @@ const routeToInstance = async (interaction, campaignConfig) => {
     console.error(`Failed to route to ${campaignConfig.name}:`, error.message);
 
     // Return a fallback response for Discord
-    return {
-      type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
-      data: {
-        content: `⚠️ Sorry, the ${campaignConfig.name} campaign system is temporarily unavailable. Please try again later.`,
-        flags: 64 // EPHEMERAL
-      }
-    };
+    return ephemeral(`⚠️ Sorry, the ${campaignConfig.name} campaign system is temporarily unavailable. Please try again later.`);
   }
 };
 
@@ -143,132 +240,108 @@ app.post('/interactions', verifyDiscordRequest, async (req, res) => {
 
   // Handle component interactions (button clicks) - type 3
   if (interaction.type === 3) {
-    const channelId = interaction.channel_id;
-    const CAMPAIGN_CONFIG = getCampaignConfig();
-    const campaignConfig = CAMPAIGN_CONFIG[channelId];
+    const campaignConfig = getChannelRoutes().get(interaction.channel_id);
 
     if (!campaignConfig) {
-      console.error(`No campaign configuration found for channel ${channelId}`);
-      return res.json({
-        type: 4,
-        data: {
-          content: '⚠️ This channel is not configured for session attendance tracking.',
-          flags: 64 // EPHEMERAL
-        }
-      });
+      console.error(`No campaign configuration found for channel ${interaction.channel_id}`);
+      return res.json(ephemeral('⚠️ This channel is not configured for session attendance tracking.'));
     }
 
-    // Route to appropriate campaign instance
-    try {
-      const response = await routeToInstance(interaction, campaignConfig);
-      return res.json(response);
-    } catch (error) {
-      console.error('Error routing interaction:', error);
-      return res.status(500).json({
-        type: 4,
-        data: {
-          content: '❌ An error occurred processing your response. Please try again.',
-          flags: 64 // EPHEMERAL
-        }
-      });
-    }
+    // routeToInstance never throws: it answers with a fallback reply instead
+    return res.json(await routeToInstance(interaction, campaignConfig));
   }
 
   // Handle other interaction types (application commands, etc.)
   console.log(`Unhandled interaction type: ${interaction.type}`);
-  return res.json({
-    type: 4,
-    data: {
-      content: '❓ Unknown interaction type.',
-      flags: 64 // EPHEMERAL
-    }
-  });
+  return res.json(ephemeral('❓ Unknown interaction type.'));
 });
 
-// Discord webhook endpoint for reaction events
-app.post('/webhook', express.json(), async (req, res) => {
-  const event = req.body;
+const isText = (value, maxLength) => typeof value === 'string' && value.length > 0 && value.length <= maxLength;
 
-  console.log('Received Discord webhook event:', {
-    type: event.t,
-    eventId: event.s,
-    timestamp: new Date().toISOString()
-  });
-
-  // Handle reaction add/remove events
-  if (event.t === 'MESSAGE_REACTION_ADD' || event.t === 'MESSAGE_REACTION_REMOVE') {
-    const reaction = event.d;
-    const channelId = reaction.channel_id;
-    const messageId = reaction.message_id;
-    const userId = reaction.user_id;
-    const emoji = reaction.emoji.name || reaction.emoji.id;
-    const action = event.t === 'MESSAGE_REACTION_ADD' ? 'add' : 'remove';
-
-    console.log('Processing reaction event:', {
-      action,
-      emoji,
-      messageId,
-      userId,
-      channelId
+// Control endpoints take a JSON body; without one req.body is undefined (Express 5)
+const requireAppId = (req, res, next) => {
+  req.body = req.body || {};
+  if (!req.body.appId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required field: appId'
     });
-
-    const CAMPAIGN_CONFIG = getCampaignConfig();
-    const campaignConfig = CAMPAIGN_CONFIG[channelId];
-
-    if (!campaignConfig) {
-      console.log(`No campaign configuration found for channel ${channelId}, ignoring reaction`);
-      return res.status(200).send('OK');
-    }
-
-    // Route reaction event to appropriate campaign instance
-    try {
-      const reactionData = {
-        type: 'reaction_event',
-        action: action,
-        message_id: messageId,
-        user_id: userId,
-        emoji: emoji,
-        channel_id: channelId,
-        guild_id: reaction.guild_id,
-        timestamp: new Date().toISOString()
-      };
-
-      const response = await axios.post(
-        `${campaignConfig.endpoint}/discord/reactions`,
-        reactionData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Forwarded-From': 'discord-handler',
-            'X-Campaign-Instance': campaignConfig.name,
-            'X-Event-Type': 'reaction'
-          },
-          timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500
-        }
-      );
-
-      console.log(`Successfully routed reaction event to ${campaignConfig.name}:`, response.status);
-      return res.status(200).send('OK');
-
-    } catch (error) {
-      console.error(`Failed to route reaction event to ${campaignConfig.name}:`, error.message);
-      return res.status(200).send('OK'); // Always return 200 to Discord to prevent retries
-    }
   }
-
-  // Handle other webhook events
-  console.log(`Unhandled webhook event type: ${event.t}`);
-  return res.status(200).send('OK');
-});
+  return next();
+};
 
 // App registration endpoint
-app.post('/register', (req, res) => {
-  const { appId, name, description, endpoint, channels } = req.body;
+app.post('/register', requireBrokerSecret, (req, res) => {
+  const { appId, name, description, endpoint, channels } = req.body || {};
 
   if (!appId || !name || !endpoint || !channels) {
     return res.status(400).json({
       success: false,
       message: 'Missing required fields: appId, name, endpoint, channels'
+    });
+  }
+
+  if (!isText(appId, MAX_TEXT_LENGTH) || !isText(name, MAX_TEXT_LENGTH)
+      || (description !== undefined && typeof description !== 'string')
+      || (typeof description === 'string' && description.length > MAX_TEXT_LENGTH)
+      || !isText(endpoint, MAX_ENDPOINT_LENGTH)) {
+    return res.status(400).json({
+      success: false,
+      message: `appId, name, description and endpoint must be strings of at most ${MAX_TEXT_LENGTH} characters (endpoint ${MAX_ENDPOINT_LENGTH})`
+    });
+  }
+
+  if (typeof channels !== 'object' || Array.isArray(channels)) {
+    return res.status(400).json({ success: false, message: 'channels must be an object keyed by channel id' });
+  }
+
+  const channelIds = Object.keys(channels);
+  if (channelIds.length > MAX_CHANNELS_PER_APP || channelIds.some(id => id.length > MAX_CHANNEL_ID_LENGTH)) {
+    return res.status(400).json({
+      success: false,
+      message: `channels may hold at most ${MAX_CHANNELS_PER_APP} channel ids of at most ${MAX_CHANNEL_ID_LENGTH} characters`
+    });
+  }
+
+  const endpointError = validateEndpoint(endpoint);
+  if (endpointError) {
+    console.warn(`Rejected registration from ${appId}: ${endpointError}`);
+    return res.status(400).json({ success: false, message: endpointError });
+  }
+
+  // A channel already owned by a different app cannot be taken over, unless that
+  // app has stopped sending heartbeats and the caller presented the shared secret.
+  const staleOwners = new Set();
+  for (const channelId of channelIds) {
+    for (const [otherId, other] of registeredApps) {
+      if (otherId !== appId && other.channels[channelId]) {
+        const silentFor = Date.now() - new Date(other.lastHeartbeat).getTime();
+        if (req.brokerAuthenticated === true && silentFor > STALE_APP_MS) {
+          staleOwners.add(otherId);
+          continue;
+        }
+        return res.status(409).json({
+          success: false,
+          message: `Channel ${channelId} is already registered by another app`
+        });
+      }
+    }
+  }
+
+  const existing = registeredApps.get(appId);
+  if (refuseUnauthenticatedOverAuthenticated(req, res, existing, 'register')) return;
+  for (const staleId of staleOwners) {
+    console.warn(`Registration for ${appId} replaces ${staleId}, which has sent no heartbeat for over ${STALE_APP_MS / 1000}s`);
+    registeredApps.delete(staleId);
+  }
+  if (existing && existing.endpoint !== endpoint) {
+    console.warn(`Registration for ${appId} replaces a different endpoint (${existing.endpoint} -> ${endpoint}); two backends sharing one appId overwrite each other. Give each deployment its own GROUP_NAME.`);
+  }
+
+  if (!existing && registeredApps.size >= MAX_REGISTERED_APPS) {
+    return res.status(429).json({
+      success: false,
+      message: `At most ${MAX_REGISTERED_APPS} apps may be registered`
     });
   }
 
@@ -278,22 +351,14 @@ app.post('/register', (req, res) => {
     description: description || '',
     endpoint,
     channels,
+    authenticated: req.brokerAuthenticated === true,
     registeredAt: new Date().toISOString(),
     lastHeartbeat: new Date().toISOString()
   };
 
-  // Every deployment shares this registry, keyed by appId. Flag the two
-  // failure modes that silently break routing: a different app already owning
-  // one of these channels, and an existing appId being re-registered with a
-  // completely different channel set (a second deployment using the same id).
-  const claimedChannels = Object.keys(channels);
-  registeredApps.forEach((existing, existingId) => {
-    if (existingId === appId) return;
-    const overlap = claimedChannels.filter(ch => existing.channels[ch]);
-    if (overlap.length > 0) {
-      console.warn(`Channel conflict: ${appId} is claiming channels already owned by ${existingId}:`, overlap);
-    }
-  });
+  // A channel owned by another app was refused above. Still flag an existing
+  // appId being re-registered with a different channel set (a second
+  // deployment using the same id), which silently breaks routing.
   const previous = registeredApps.get(appId);
   if (previous) {
     const dropped = Object.keys(previous.channels).filter(ch => !channels[ch]);
@@ -304,26 +369,21 @@ app.post('/register', (req, res) => {
 
   registeredApps.set(appId, appConfig);
 
-  console.log(`Registered app: ${name} (${appId}) with channels:`, claimedChannels);
+  console.log(`Registered app: ${name} (${appId}) with channels:`, channelIds);
 
   res.json({
     success: true,
     message: 'App registered successfully',
     appId,
-    registeredChannels: Object.keys(channels)
+    registeredChannels: channelIds
   });
 });
 
 // App unregistration endpoint
-app.post('/unregister', (req, res) => {
+app.post('/unregister', requireBrokerSecret, requireAppId, (req, res) => {
   const { appId } = req.body;
 
-  if (!appId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Missing required field: appId'
-    });
-  }
+  if (refuseUnauthenticatedOverAuthenticated(req, res, registeredApps.get(appId), 'unregister')) return;
 
   const wasRegistered = registeredApps.delete(appId);
 
@@ -344,18 +404,11 @@ app.post('/unregister', (req, res) => {
 });
 
 // Heartbeat endpoint
-app.post('/heartbeat', (req, res) => {
-  const { appId } = req.body;
+app.post('/heartbeat', requireBrokerSecret, requireAppId, (req, res) => {
+  const { appId, endpoint } = req.body;
 
-  if (!appId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Missing required field: appId'
-    });
-  }
-
-  const app = registeredApps.get(appId);
-  if (!app) {
+  const registered = registeredApps.get(appId);
+  if (!registered) {
     return res.status(404).json({
       success: false,
       message: 'App not registered',
@@ -363,41 +416,42 @@ app.post('/heartbeat', (req, res) => {
     });
   }
 
-  app.lastHeartbeat = new Date().toISOString();
-  registeredApps.set(appId, app);
+  if (refuseUnauthenticatedOverAuthenticated(req, res, registered, 'heartbeat')) return;
+
+  // A heartbeat from an endpoint other than the registered one means this
+  // caller's registration was overwritten by another backend under the same
+  // appId: answer "not registered" so it registers again (older backends send
+  // no endpoint and keep the previous behaviour).
+  if (typeof endpoint === 'string' && endpoint !== registered.endpoint) {
+    console.warn(`Heartbeat for ${appId} came from ${endpoint} but the registered endpoint is ${registered.endpoint}; answering not registered`);
+    return res.status(404).json({
+      success: false,
+      message: 'App not registered',
+      appId
+    });
+  }
+
+  registered.lastHeartbeat = new Date().toISOString();
 
   res.json({
     success: true,
     message: 'Heartbeat received',
     appId,
-    lastHeartbeat: app.lastHeartbeat
+    lastHeartbeat: registered.lastHeartbeat
   });
 });
 
-// Health check endpoint
+// Health check endpoint: liveness only (it is unauthenticated and is what the
+// compose healthcheck calls; /status has the details behind the secret)
 app.get('/health', (req, res) => {
-  const CAMPAIGN_CONFIG = getCampaignConfig();
-  const configuredChannels = Object.keys(CAMPAIGN_CONFIG).filter(key => key && key !== 'undefined');
-
   res.json({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
-    configuredCampaigns: configuredChannels.length,
-    registeredApps: registeredApps.size,
-    campaigns: Object.entries(CAMPAIGN_CONFIG)
-      .filter(([channelId]) => channelId && channelId !== 'undefined')
-      .map(([channelId, config]) => ({
-        name: config.name,
-        channelId: channelId,
-        endpoint: config.endpoint,
-        appId: config.appId
-      }))
+    timestamp: new Date().toISOString()
   });
 });
 
-// Status endpoint for debugging
-app.get('/status', (req, res) => {
-  const CAMPAIGN_CONFIG = getCampaignConfig();
+// Status endpoint for debugging (authenticated: discloses endpoints and channel ids)
+app.get('/status', requireBrokerSecret, (req, res) => {
   res.json({
     service: 'Discord Interaction Handler',
     version: '1.0.0',
@@ -410,13 +464,7 @@ app.get('/status', (req, res) => {
       requestTimeout: process.env.REQUEST_TIMEOUT || '2500ms'
     },
     registeredApps: Array.from(registeredApps.values()),
-    campaigns: Object.entries(CAMPAIGN_CONFIG).map(([channelId, config]) => ({
-      name: config.name,
-      configured: !!channelId && channelId !== 'undefined',
-      channelId: channelId || 'NOT_CONFIGURED',
-      endpoint: config.endpoint,
-      appId: config.appId
-    }))
+    campaigns: Array.from(getChannelRoutes().values())
   });
 });
 
@@ -429,30 +477,41 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server (only when run directly, so tests can import the app)
+const startServer = () => app.listen(PORT, () => {
   console.log(`Discord Interaction Handler running on port ${PORT}`);
-  const CAMPAIGN_CONFIG = getCampaignConfig();
-  console.log('Configured campaigns:', Object.entries(CAMPAIGN_CONFIG)
-    .filter(([channelId]) => channelId && channelId !== 'undefined')
-    .map(([channelId, config]) => `${config.name} (${channelId})`)
-    .join(', ') || 'None configured'
-  );
+  console.log('Channels are registered by the backends at runtime (POST /register)');
 
   if (!process.env.DISCORD_PUBLIC_KEY) {
     console.warn('⚠️  DISCORD_PUBLIC_KEY not configured - signature verification will fail');
   }
+
+  if (transitionModeEnabled()) {
+    console.warn('⚠️  BROKER_ALLOW_UNAUTHENTICATED_CONTROL is on - /register, /unregister and /heartbeat accept requests without the broker secret. Turn it off once every backend sends the secret.');
+  }
+
+  if (!process.env.DISCORD_BROKER_SECRET) {
+    console.warn(process.env.NODE_ENV === 'production'
+      ? '⚠️  DISCORD_BROKER_SECRET not configured - /register, /unregister, /heartbeat and /status will reject all requests'
+      : '⚠️  DISCORD_BROKER_SECRET not configured - control endpoints are unauthenticated (non-production only)');
+  }
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down gracefully');
-  process.exit(0);
-});
+if (require.main === module) {
+  startServer();
 
-process.on('SIGINT', () => {
-  console.log('Received SIGINT, shutting down gracefully');
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('Received SIGTERM, shutting down gracefully');
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    console.log('Received SIGINT, shutting down gracefully');
+    process.exit(0);
+  });
+}
 
 module.exports = app;
+module.exports.registeredApps = registeredApps;
+module.exports.validateEndpoint = validateEndpoint;

@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const AppraisalService = require('../services/appraisalService');
 const IdentificationService = require('../services/identificationService');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Appraise loot items
@@ -30,6 +31,8 @@ const appraiseLoot = async (req, res) => {
     }
   });
 
+  const isDm = hasDmRights(req);
+
   try {
     // Send the HTTP response AFTER the transaction COMMITs, not from
     // inside the callback. Otherwise the frontend can refetch before the
@@ -38,10 +41,21 @@ const appraiseLoot = async (req, res) => {
       const results = [];
       const errors = [];
 
-      // Batch-fetch character info and appraisal bonus
-      const characterResult = await client.query('SELECT name, appraisal_bonus FROM characters WHERE id = $1', [characterId]);
-      const characterName = characterResult.rows[0]?.name || 'Unknown Character';
-      const appraisalBonus = characterResult.rows[0]?.appraisal_bonus || 0;
+      // The character must exist, and unless the caller is a DM it must be theirs:
+      // appraising consumes the character's one appraisal per item.
+      const characterResult = await client.query(
+        'SELECT name, appraisal_bonus, user_id FROM characters WHERE id = $1',
+        [characterId]
+      );
+      const character = characterResult.rows[0];
+      if (!character) {
+        throw controllerFactory.createNotFoundError('Character not found');
+      }
+      if (!isDm && character.user_id !== req.user.id) {
+        throw controllerFactory.createAuthorizationError('You can only appraise as your own character');
+      }
+      const characterName = character.name;
+      const appraisalBonus = character.appraisal_bonus || 0;
 
       // Batch-fetch all loot items at once
       const lootResult = await client.query('SELECT id, name, value FROM loot WHERE id = ANY($1)', [lootIds]);
@@ -93,7 +107,8 @@ const appraiseLoot = async (req, res) => {
           results.push({
             lootId,
             itemName: lootItem.name,
-            actualValue: parseFloat(lootItem.value),
+            // Only a DM sees the true value; players see just what their roll tells them.
+            ...(isDm && { actualValue: parseFloat(lootItem.value) }),
             believedValue,
             diceRoll,
             appraisalBonus,
@@ -143,12 +158,11 @@ const getUnidentifiedItems = async (req, res) => {
     const { limit = 50, offset = 0, identifiableOnly } = req.query;
     const pagination = ValidationService.validatePagination(req.query.page, limit);
 
-    logger.info(`getUnidentifiedItems called with identifiableOnly: ${identifiableOnly}, evaluated to: ${identifiableOnly === 'true'}`);
-
     const result = await IdentificationService.getUnidentifiedItems({
       limit: pagination.limit,
       offset: pagination.offset,
-      identifiableOnly: identifiableOnly === 'true'
+      identifiableOnly: identifiableOnly === 'true',
+      isDM: hasDmRights(req)
     });
 
     return controllerFactory.sendSuccessResponse(res, {
@@ -168,17 +182,34 @@ const getUnidentifiedItems = async (req, res) => {
   }
 };
 
+/** Body fields from the old client-side roll contract; never accepted any more. */
+const CLIENT_ROLL_FIELDS = ['spellcraftRolls', 'spellcraftRoll', 'spellcraftTotal', 'roll', 'rolls', 'total'];
+
 /**
  * Identify items
  */
 const identifyItems = async (req, res) => {
-  const { items, characterId, spellcraftRolls } = req.body;
+  const { items, characterId, spellcraftBonus, dmIdentify } = req.body;
+  const isDmIdentification = dmIdentify === true && hasDmRights(req);
+
+  // The server rolls the d20 for a player identification; the client sends only
+  // its Spellcraft bonus. A hand-made request cannot supply the roll or the total.
+  if (!isDmIdentification && CLIENT_ROLL_FIELDS.some((field) => req.body[field] !== undefined)) {
+    throw controllerFactory.createValidationError(
+      'The server rolls the d20 for identification. Send only spellcraftBonus, not a roll or total.'
+    );
+  }
 
   try {
     const result = await IdentificationService.identifyItems({
       items,
       characterId,
-      spellcraftRolls
+      spellcraftBonus,
+      // DM identification (no roll, auto-success) is decided server-side: the
+      // client intent only counts when the caller really has DM rights.
+      dmIdentify: isDmIdentification,
+      // Used to check that a non-DM only identifies as their own character
+      actor: { userId: req.user.id, isDM: hasDmRights(req) }
     });
 
     const message = `${result.count.success} items identified successfully` +
@@ -188,208 +219,6 @@ const identifyItems = async (req, res) => {
     return controllerFactory.sendSuccessResponse(res, result, message);
   } catch (error) {
     logger.error('Error identifying items:', error);
-    throw error;
-  }
-};
-
-/**
- * Get identification attempts for a character
- */
-const getIdentificationAttempts = async (req, res) => {
-  const characterId = ValidationService.validateCharacterId(parseInt(req.params.characterId));
-  const { golarionDate } = req.query;
-
-  try {
-    const attempts = await IdentificationService.getIdentificationAttempts(characterId, golarionDate);
-
-    return controllerFactory.sendSuccessResponse(res, {
-      attempts,
-      count: attempts.length,
-      characterId,
-      golarionDate: golarionDate || 'all dates'
-    }, `Found ${attempts.length} identification attempts`);
-  } catch (error) {
-    logger.error('Error fetching identification attempts:', error);
-    throw error;
-  }
-};
-
-/**
- * Get appraisal details for a loot item
- */
-const getItemAppraisals = async (req, res) => {
-  const lootId = ValidationService.validateItemId(parseInt(req.params.lootId));
-
-  try {
-    const appraisalData = await AppraisalService.fetchAndProcessAppraisals(lootId);
-
-    // Get loot item details
-    const lootResult = await dbUtils.executeQuery(
-      'SELECT l.*, i.name as base_item_name FROM loot l JOIN item i ON l.itemid = i.id WHERE l.id = $1',
-      [lootId]
-    );
-
-    if (lootResult.rows.length === 0) {
-      throw controllerFactory.createNotFoundError('Loot item not found');
-    }
-
-    const lootItem = lootResult.rows[0];
-
-    return controllerFactory.sendSuccessResponse(res, {
-      lootItem: {
-        id: lootItem.id,
-        name: lootItem.name,
-        baseItemName: lootItem.base_item_name,
-        actualValue: lootItem.value,
-        unidentified: lootItem.unidentified
-      },
-      appraisals: appraisalData.appraisals,
-      averageAppraisal: appraisalData.average_appraisal,
-      summary: {
-        totalAppraisals: appraisalData.appraisals.length,
-        hasAverage: appraisalData.average_appraisal !== null
-      }
-    }, `Found ${appraisalData.appraisals.length} appraisals for item`);
-  } catch (error) {
-    logger.error(`Error fetching appraisals for item ${lootId}:`, error);
-    throw error;
-  }
-};
-
-/**
- * Get appraisal statistics
- */
-const getAppraisalStatistics = async (req, res) => {
-  ValidationService.requireDM(req);
-
-  try {
-    const { days = 30 } = req.query;
-    const validatedDays = ValidationService.validateRequiredNumber(days, 'days', { min: 1, max: 365 });
-
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - validatedDays);
-
-    const statsQuery = `
-      SELECT 
-        c.name as character_name,
-        COUNT(a.id) as total_appraisals,
-        AVG(a.believedvalue) as avg_believed_value,
-        AVG(a.appraisalroll) as avg_roll,
-        AVG(CASE WHEN l.value IS NOT NULL THEN ABS(a.believedvalue - l.value) END) as avg_accuracy_error
-      FROM appraisal a
-      JOIN characters c ON a.characterid = c.id
-      LEFT JOIN loot l ON a.lootid = l.id
-      WHERE a.created_at >= $1
-      GROUP BY c.id, c.name
-      ORDER BY total_appraisals DESC
-    `;
-
-    const overallStatsQuery = `
-      SELECT 
-        COUNT(a.id) as total_appraisals,
-        COUNT(DISTINCT a.characterid) as unique_characters,
-        AVG(a.believedvalue) as avg_believed_value,
-        AVG(a.appraisalroll) as avg_roll
-      FROM appraisal a
-      WHERE a.created_at >= $1
-    `;
-
-    const [characterStatsResult, overallStatsResult] = await Promise.all([
-      dbUtils.executeQuery(statsQuery, [startDate]),
-      dbUtils.executeQuery(overallStatsQuery, [startDate])
-    ]);
-
-    const statistics = {
-      period: {
-        days: validatedDays,
-        startDate: startDate.toISOString(),
-        endDate: new Date().toISOString()
-      },
-      overall: {
-        totalAppraisals: parseInt(overallStatsResult.rows[0].total_appraisals),
-        uniqueCharacters: parseInt(overallStatsResult.rows[0].unique_characters),
-        averageBelievedValue: parseFloat(overallStatsResult.rows[0].avg_believed_value) || 0,
-        averageRoll: parseFloat(overallStatsResult.rows[0].avg_roll) || 0
-      },
-      byCharacter: characterStatsResult.rows.map(row => ({
-        characterName: row.character_name,
-        totalAppraisals: parseInt(row.total_appraisals),
-        averageBelievedValue: parseFloat(row.avg_believed_value) || 0,
-        averageRoll: parseFloat(row.avg_roll) || 0,
-        averageAccuracyError: parseFloat(row.avg_accuracy_error) || 0
-      }))
-    };
-
-    return controllerFactory.sendSuccessResponse(res, statistics,
-      `Appraisal statistics for the last ${validatedDays} days`);
-  } catch (error) {
-    logger.error('Error fetching appraisal statistics:', error);
-    throw error;
-  }
-};
-
-/**
- * Bulk update item values and recalculate appraisals
- */
-const bulkUpdateItemValues = async (req, res) => {
-  ValidationService.requireDM(req);
-  
-  const { updates } = req.body;
-  ValidationService.validateItems(updates, 'updates');
-
-  try {
-    // Send the response after COMMIT, not inside the transaction callback.
-    const { results, errors } = await dbUtils.executeTransaction(async (client) => {
-      const results = [];
-      const errors = [];
-
-      for (const update of updates) {
-        try {
-          const { lootId, newValue } = update;
-          ValidationService.validateItemId(lootId);
-          ValidationService.validateRequiredNumber(newValue, 'newValue', { min: 0 });
-
-          // Update the item value
-          await client.query('UPDATE loot SET value = $1 WHERE id = $2', [newValue, lootId]);
-
-          // Update existing appraisals
-          await AppraisalService.updateAppraisalsOnValueChange(lootId, newValue);
-
-          results.push({
-            lootId,
-            newValue,
-            updated: true
-          });
-
-        } catch (error) {
-          logger.error(`Error updating item value for loot ${update.lootId}:`, error);
-          errors.push({
-            lootId: update.lootId,
-            error: error.message
-          });
-        }
-      }
-
-      return { results, errors };
-    });
-
-    logger.info(`DM ${req.user.id} bulk updated ${results.length} item values`, {
-      userId: req.user.id,
-      updatedCount: results.length,
-      errorCount: errors.length
-    });
-
-    return controllerFactory.sendSuccessResponse(res, {
-      updates: results,
-      errors: errors.length > 0 ? errors : undefined,
-      summary: {
-        successful: results.length,
-        failed: errors.length,
-        total: updates.length
-      }
-    }, `${results.length} item values updated successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
-  } catch (error) {
-    logger.error('Error in bulk update item values:', error);
     throw error;
   }
 };
@@ -406,21 +235,5 @@ module.exports = {
   
   identifyItems: controllerFactory.createHandler(identifyItems, {
     errorMessage: 'Error identifying items'
-  }),
-  
-  getIdentificationAttempts: controllerFactory.createHandler(getIdentificationAttempts, {
-    errorMessage: 'Error fetching identification attempts'
-  }),
-  
-  getItemAppraisals: controllerFactory.createHandler(getItemAppraisals, {
-    errorMessage: 'Error fetching item appraisals'
-  }),
-  
-  getAppraisalStatistics: controllerFactory.createHandler(getAppraisalStatistics, {
-    errorMessage: 'Error fetching appraisal statistics'
-  }),
-  
-  bulkUpdateItemValues: controllerFactory.createHandler(bulkUpdateItemValues, {
-    errorMessage: 'Error bulk updating item values'
   })
 };

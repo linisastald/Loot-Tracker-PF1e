@@ -15,7 +15,8 @@ import {
 import type {SelectChangeEvent} from '@mui/material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import api from '../../utils/api';
-import {isDM} from '../../utils/auth';
+import {getErrorMessage} from '../../utils/apiErrors';
+import {useIsDM} from '../../contexts/CampaignContext';
 import SpellbookViewer, {Spellbook} from '../spellbook/SpellbookViewer';
 
 const CLASS_OPTIONS = [
@@ -38,7 +39,7 @@ const SCHOOLS = [
 ];
 
 const SpellbookGenerator: React.FC = () => {
-    const dmMode = isDM();
+    const dmMode = useIsDM();
     const [casterClass, setCasterClass] = useState<string>('wizard');
     const [casterLevel, setCasterLevel] = useState<string>('9');
     const [school, setSchool] = useState<string>('');
@@ -60,11 +61,14 @@ const SpellbookGenerator: React.FC = () => {
     const specialist = casterClass === 'wizard';
 
     const handleGenerate = async (): Promise<void> => {
+        // Clamp to the valid 1-20 range and reflect it back into the field.
+        const level = Math.min(20, Math.max(1, parseInt(casterLevel, 10) || 1));
+        setCasterLevel(String(level));
         setGenerating(true);
         try {
             const payload: Record<string, unknown> = {
                 casterClass,
-                casterLevel: parseInt(casterLevel, 10) || 1,
+                casterLevel: level,
                 fullness,
             };
             if (specialist && school) payload.school = school;
@@ -73,8 +77,8 @@ const SpellbookGenerator: React.FC = () => {
             setBook(data);
             setError(null);
             setStatus(null);
-        } catch (err: any) {
-            setError(err.response?.data?.message || 'Failed to generate spellbook.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Failed to generate spellbook.'));
         } finally {
             setGenerating(false);
         }
@@ -87,7 +91,8 @@ const SpellbookGenerator: React.FC = () => {
             const label = book.classLabel || 'Wizard';
             const item = {
                 name: `${label} spellbook (CL ${book.casterLevel})`,
-                type: 'spellbook',
+                type: 'magic',
+                subtype: 'spellbook',
                 quantity: 1,
                 value: book.value ?? 0,
                 unidentified: false,
@@ -99,13 +104,12 @@ const SpellbookGenerator: React.FC = () => {
                     spells: book.spells,
                 },
             };
-            const response = await api.post('/loot-generator/commit', {items: [item], coins: {}});
-            const data = response.data || response;
+            await api.post('/loot-generator/commit', {items: [item], coins: {}});
             setBook(null);
             setError(null);
-            setStatus(`Sent the spellbook to pending loot${data?.itemsCreated ? '' : ''}.`);
-        } catch (err: any) {
-            setError(err.response?.data?.message || 'Failed to send the spellbook to loot.');
+            setStatus('Sent the spellbook to pending loot.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Failed to send the spellbook to loot.'));
         } finally {
             setCommitting(false);
         }

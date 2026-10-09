@@ -205,62 +205,62 @@ describe('processSessionInteraction campaign context', () => {
     const charLookup = seenQueries.find(q => q.query.includes('FROM characters'));
     expect(charLookup.query).toContain('campaign_id');
     expect(charLookup.params).toEqual(['6']);
+    // Opus review M-7: only characters whose owning account has no Discord id yet
+    expect(charLookup.query).toMatch(/u\.discord_id IS NULL/);
 
     expect(sessionService.recordAttendance).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 4,
         data: expect.objectContaining({
-          content: expect.stringContaining("No characters found for this campaign"),
+          // tells the player to ask the DM or link from User Settings
+          content: expect.stringMatching(/ask your DM.*User Settings/i),
           flags: 64,
         }),
       })
     );
   });
 
-  it('processes a legacy session_messages interaction under the legacy row campaign', async () => {
-    const seenQueries = [];
+  it('lists only the character names (no owner usernames) in the link menu', async () => {
     mockExecuteQuery.mockImplementation(async (query) => {
-      seenQueries.push({ query, context: activeCampaign });
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [] }; // no enhanced session
-      }
-      if (query.includes('FROM session_messages')) {
-        return {
-          rows: [{
-            session_date: new Date().toISOString(),
-            session_time: new Date().toISOString(),
-            responses: '{}',
-            campaign_id: 3,
-          }],
-        };
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 7, username: 'bob' }] };
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 6 }] };
+      if (query.includes('FROM users WHERE discord_id')) return { rows: [] };
+      if (query.includes('FROM characters')) {
+        return { rows: [{ id: 5, name: 'Valeros', username: 'secret_player_name' }] };
       }
       return { rows: [], rowCount: 0 };
     });
 
     const res = makeRes();
-    await sessionController.processSessionInteraction(buttonRequest('session_yes'), res);
+    await sessionController.processSessionInteraction(buttonRequest(), res);
 
-    expect(contextIds()).toEqual(['all', '3']);
-
-    // Legacy fallback lookup selects campaign_id and runs under 'all'
-    const legacyLookup = seenQueries.find(q => q.query.includes('FROM session_messages'));
-    expect(legacyLookup.context).toBe('all');
-    expect(legacyLookup.query).toContain('campaign_id');
-
-    // The legacy responses UPDATE runs under campaign 3
-    const responsesUpdate = seenQueries.find(q => q.query.includes('UPDATE session_messages'));
-    expect(responsesUpdate.context).toBe('3');
-
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 4 })
-    );
+    const payload = res.json.mock.calls[0][0];
+    const options = payload.data.components[0].components[0].options;
+    expect(options).toEqual([{ label: 'Valeros', value: '5' }]);
+    expect(JSON.stringify(payload)).not.toContain('secret_player_name');
   });
 
-  it('returns "Session not found." without entering a per-campaign context when nothing matches', async () => {
+  it('answers a button on a message that is not a current session with an ephemeral "no longer active" reply', async () => {
+    const seenQueries = [];
+    mockExecuteQuery.mockImplementation(async (query) => {
+      seenQueries.push(query);
+      return { rows: [], rowCount: 0 };
+    });
+
+    // session_yes / session_no / session_maybe were the retired announcement buttons
+    for (const customId of ['session_yes', 'session_no', 'session_maybe', 'session_attend_yes']) {
+      const res = makeRes();
+      await sessionController.processSessionInteraction(buttonRequest(customId), res);
+      expect(res.json).toHaveBeenCalledWith({
+        type: 4,
+        data: { content: 'This session announcement is no longer active.', flags: 64 },
+      });
+    }
+    expect(seenQueries.some(q => q.includes('session_messages'))).toBe(false);
+    expect(sessionService.recordAttendance).not.toHaveBeenCalled();
+  });
+
+  it('replies "no longer active" without entering a per-campaign context when nothing matches', async () => {
     mockExecuteQuery.mockResolvedValue({ rows: [] });
 
     const res = makeRes();
@@ -269,7 +269,7 @@ describe('processSessionInteraction campaign context', () => {
     expect(contextIds()).toEqual(['all']);
     expect(res.json).toHaveBeenCalledWith({
       type: 4,
-      data: { content: 'Session not found.', flags: 64 },
+      data: { content: 'This session announcement is no longer active.', flags: 64 },
     });
     expect(sessionService.recordAttendance).not.toHaveBeenCalled();
   });
@@ -286,6 +286,9 @@ describe('processSessionInteraction campaign context', () => {
       }
       if (query.includes('FROM users WHERE discord_id')) {
         return { rows: [] }; // not yet linked
+      }
+      if (query.includes('UPDATE users SET discord_id')) {
+        return { rows: [], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };
     });
@@ -320,5 +323,174 @@ describe('processSessionInteraction campaign context', () => {
         }),
       })
     );
+  });
+
+  it('refuses to relink when the character owner already has a different Discord id', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) {
+        return { rows: [{ id: 50, campaign_id: 4 }] };
+      }
+      if (query.includes('FROM characters')) {
+        return { rows: [{ user_id: 7, name: 'Valeros' }] };
+      }
+      if (query.includes('SELECT discord_id FROM users WHERE id')) {
+        return { rows: [{ discord_id: '111111111111111111' }] };
+      }
+      if (query.includes('FROM users WHERE discord_id')) {
+        return { rows: [] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+
+    expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('UPDATE users SET discord_id'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ content: expect.stringContaining('already linked') }),
+      })
+    );
+  });
+
+  it('refuses to link when the originating session message cannot be resolved to a campaign', async () => {
+    mockExecuteQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+
+    expect(res.json.mock.calls[0][0].data.content).toContain('Could not determine the campaign');
+    expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('UPDATE users SET discord_id'))).toBe(false);
+  });
+
+  it('does not report success when the linked character has no owner account', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 4 }] };
+      if (query.includes('FROM characters')) return { rows: [{ user_id: null, name: 'Orphan' }] };
+      return { rows: [], rowCount: 0 };
+    });
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+
+    expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('UPDATE users SET discord_id'))).toBe(false);
+    expect(res.json.mock.calls[0][0].data.content).toContain('no player account');
+  });
+
+  it('reports failure when the guarded link UPDATE changes no row', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 4 }] };
+      if (query.includes('FROM characters')) return { rows: [{ user_id: 7, name: 'Valeros' }] };
+      if (query.includes('SELECT discord_id FROM users WHERE id')) return { rows: [{ discord_id: null }] };
+      if (query.includes('UPDATE users SET discord_id')) {
+        expect(query).toContain('discord_id IS NULL');
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+    expect(res.json.mock.calls[0][0].data.content).toContain('could not be linked');
+  });
+
+  it('replaces other reaction rows when they switch response', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 6 }] };
+      if (query.includes('FROM users')) return { rows: [{ id: 7, username: 'bob' }] };
+      if (query.includes('FROM characters')) return { rows: [{ id: 3 }] };
+      return { rows: [], rowCount: 0 };
+    });
+    sessionService.recordAttendance.mockResolvedValue({});
+    sessionService.getSession.mockResolvedValue({ id: 50 });
+    sessionService.getSessionAttendance.mockResolvedValue([]);
+    sessionDiscordService.createSessionEmbed.mockResolvedValue({});
+    sessionDiscordService.createAttendanceButtons.mockReturnValue([]);
+
+    await sessionController.processSessionInteraction(buttonRequest('session_attend_no'), makeRes());
+
+    const del = mockExecuteQuery.mock.calls.find(c => String(c[0]).includes('DELETE FROM discord_reaction_tracking'));
+    expect(del[1]).toEqual([ENHANCED_MESSAGE_ID, '999888777666555444', '❌']);
+  });
+
+  describe('Leaving Early button', () => {
+    const setup = (currentResponse) => {
+      mockExecuteQuery.mockImplementation(async (query) => {
+        if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 6 }] };
+        if (query.includes('FROM users')) return { rows: [{ id: 7, username: 'bob' }] };
+        if (query.includes('FROM characters')) return { rows: [{ id: 3 }] };
+        if (query.includes('SELECT response_type FROM session_attendance')) {
+          return { rows: currentResponse ? [{ response_type: currentResponse }] : [] };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      sessionService.recordAttendance.mockResolvedValue({});
+      sessionService.getSession.mockResolvedValue({ id: 50 });
+      sessionService.getSessionAttendance.mockResolvedValue([]);
+      sessionDiscordService.createSessionEmbed.mockResolvedValue({});
+      sessionDiscordService.createAttendanceButtons.mockReturnValue([]);
+    };
+
+    const recorded = () => sessionService.recordAttendance.mock.calls[0][2];
+
+    it('records "early" for a first response', async () => {
+      setup(null);
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_early'), makeRes());
+      expect(recorded()).toBe('early');
+    });
+
+    it('combines Leaving Early on top of Running Late into late_and_early', async () => {
+      setup('late');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_early'), makeRes());
+      expect(recorded()).toBe('late_and_early');
+    });
+
+    it('combines Running Late on top of Leaving Early into late_and_early', async () => {
+      setup('early');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_late'), makeRes());
+      expect(recorded()).toBe('late_and_early');
+    });
+
+    it('keeps late_and_early when either button is clicked again', async () => {
+      setup('late_and_early');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_late'), makeRes());
+      expect(recorded()).toBe('late_and_early');
+    });
+
+    it('replaces an early answer when Attending is clicked', async () => {
+      setup('early');
+      await sessionController.processSessionInteraction(buttonRequest('session_attend_yes'), makeRes());
+      expect(recorded()).toBe('yes');
+      expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('SELECT response_type FROM session_attendance'))).toBe(false);
+    });
   });
 });

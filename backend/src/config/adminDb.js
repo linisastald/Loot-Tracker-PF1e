@@ -13,7 +13,7 @@
  */
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
-const { DATABASE } = require('./constants');
+const { buildPoolConfig } = require('./poolConfig');
 require('dotenv').config();
 
 /** Migrations run sequentially at startup; a few connections are plenty. */
@@ -27,16 +27,11 @@ let adminPool = null;
  */
 const getAdminPool = () => {
     if (!adminPool) {
-        adminPool = new Pool({
+        adminPool = new Pool(buildPoolConfig({
             user: process.env.DB_USER,
-            host: process.env.DB_HOST,
-            database: process.env.DB_NAME,
             password: process.env.DB_PASSWORD,
-            port: process.env.DB_PORT,
-            connectionTimeoutMillis: DATABASE.CONNECTION_TIMEOUT,
-            max: ADMIN_MAX_CONNECTIONS,
-            idleTimeoutMillis: DATABASE.IDLE_TIMEOUT
-        });
+            max: ADMIN_MAX_CONNECTIONS
+        }));
 
         adminPool.on('error', (err) => {
             logger.error('Unexpected error on idle admin PostgreSQL client', {

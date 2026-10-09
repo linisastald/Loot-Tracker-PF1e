@@ -88,6 +88,27 @@ exports.getLedger = async (characterId, chapter = null) => {
 };
 
 /**
+ * Fetch several characters in one query (campaign-scoped by RLS).
+ * @param {number[]} ids
+ * @return {Promise<Array<{id:number, name:string, user_id:number|null}>>}
+ */
+exports.getCharacters = async (ids) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT id, name, user_id FROM characters WHERE id = ANY($1::int[])',
+    [ids]
+  );
+  return result.rows;
+};
+
+const INSERT_ENTRY_SQL = `INSERT INTO harrow_ledger (character_id, chapter, delta, reason, entry_type, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`;
+
+const entryValues = ({ characterId, chapter, delta, reason, entryType, userId }) => [
+  characterId, chapter, delta, reason || null, entryType, userId || null,
+];
+
+/**
  * Insert a single ledger entry. campaign_id is filled by the column DEFAULT
  * (the app.current_campaign GUC), so it never has to be passed in.
  *
@@ -98,16 +119,41 @@ exports.getLedger = async (characterId, chapter = null) => {
  * @param {string} [params.reason]
  * @param {string} params.entryType - 'award' | 'spend' | 'adjust'
  * @param {number} [params.userId] - Recorder (DM or player)
+ * @param {Object} [client] - Optional transaction client (from executeTransaction)
  * @return {Promise<Object>} The inserted row
  */
-exports.addEntry = async ({ characterId, chapter, delta, reason, entryType, userId }) => {
-  const result = await dbUtils.executeQuery(
-    `INSERT INTO harrow_ledger (character_id, chapter, delta, reason, entry_type, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [characterId, chapter, delta, reason || null, entryType, userId || null]
-  );
+exports.addEntry = async (params, client = null) => {
+  const values = entryValues(params);
+  const result = client
+    ? await client.query(INSERT_ENTRY_SQL, values)
+    : await dbUtils.executeQuery(INSERT_ENTRY_SQL, values);
   return result.rows[0];
+};
+
+/**
+ * Insert a negative entry only if the chapter balance stays >= 0. The balance
+ * check and the insert run in ONE transaction under a row lock on the
+ * character, so two concurrent spends cannot both pass the check.
+ *
+ * @param {Object} params - Same as addEntry (delta should be negative)
+ * @return {Promise<{ok:boolean, balance:number, entry?:Object}>} ok=false means
+ *   insufficient points; balance is the balance before the attempted entry (ok=false)
+ *   or after it (ok=true).
+ */
+exports.addEntryGuarded = async (params) => {
+  return dbUtils.executeTransaction(async (client) => {
+    await client.query('SELECT id FROM characters WHERE id = $1 FOR UPDATE', [params.characterId]);
+    const balanceResult = await client.query(
+      'SELECT COALESCE(SUM(delta), 0)::int AS balance FROM harrow_ledger WHERE character_id = $1 AND chapter = $2',
+      [params.characterId, params.chapter]
+    );
+    const balance = balanceResult.rows[0].balance;
+    if (balance + params.delta < 0) {
+      return { ok: false, balance };
+    }
+    const entry = await exports.addEntry(params, client);
+    return { ok: true, balance: balance + params.delta, entry };
+  });
 };
 
 /**
@@ -123,19 +169,19 @@ exports.awardBatch = async (chapter, awards, userId) => {
   return dbUtils.executeTransaction(async (client) => {
     const inserted = [];
     for (const award of awards) {
-      const result = await client.query(
-        `INSERT INTO harrow_ledger (character_id, chapter, delta, reason, entry_type, created_by)
-         VALUES ($1, $2, $3, $4, 'award', $5)
-         RETURNING *`,
-        [
-          award.characterId,
-          chapter,
-          award.points,
-          award.reason || `Chapter ${chapter} harrowing`,
-          userId || null,
-        ]
+      inserted.push(
+        await exports.addEntry(
+          {
+            characterId: award.characterId,
+            chapter,
+            delta: award.points,
+            reason: award.reason || `Chapter ${chapter} harrowing`,
+            entryType: 'award',
+            userId,
+          },
+          client
+        )
       );
-      inserted.push(result.rows[0]);
     }
     return inserted;
   });

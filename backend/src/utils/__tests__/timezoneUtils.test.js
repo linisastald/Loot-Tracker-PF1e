@@ -6,8 +6,17 @@ jest.mock('../logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));
 
-const { isValidTimezone, getTimezoneOptions, clearTimezoneCache, getCampaignTimezone, VALID_TIMEZONES } = require('../timezoneUtils');
+const { isValidTimezone, getTimezoneOptions, clearTimezoneCache, getCampaignTimezone, getUtcRangeForLocalDate, VALID_TIMEZONES } = require('../timezoneUtils');
 const dbUtils = require('../dbUtils');
+
+// These tests call handlers directly, outside the request context that verifyToken
+// establishes (an unset context now fails closed): simulate a request in campaign 1
+// unless the test sets its own context with runWithCampaign.
+beforeEach(() => {
+  const campaignContext = require('../campaignContext');
+  const realGetCampaignId = campaignContext.getCampaignId;
+  jest.spyOn(campaignContext, 'getCampaignId').mockImplementation(() => realGetCampaignId() || '1');
+});
 
 describe('timezoneUtils', () => {
   beforeEach(() => {
@@ -49,6 +58,25 @@ describe('timezoneUtils', () => {
       expect(isValidTimezone(undefined)).toBe(false);
       expect(isValidTimezone(123)).toBe(false);
       expect(isValidTimezone('')).toBe(false);
+    });
+  });
+
+  describe('single timezone list (F-0815)', () => {
+    it('derives VALID_TIMEZONES from the option list, in the same order', () => {
+      expect(VALID_TIMEZONES).toEqual(getTimezoneOptions().map(o => o.value));
+    });
+
+    it('returns a fresh copy so callers cannot alter the shared list', () => {
+      const options = getTimezoneOptions();
+      options.pop();
+      expect(getTimezoneOptions()).toHaveLength(VALID_TIMEZONES.length);
+    });
+
+    it('does not write an info log for every Intl-validated lookup', () => {
+      const logger = require('../logger');
+      logger.info.mockClear();
+      isValidTimezone('Europe/London');
+      expect(logger.info).not.toHaveBeenCalled();
     });
   });
 
@@ -115,6 +143,26 @@ describe('timezoneUtils', () => {
       const result = await getCampaignTimezone();
 
       expect(result).toBe('America/New_York');
+    });
+
+    it('does not cache the default after a transient DB error (F-0814)', async () => {
+      dbUtils.executeQuery
+        .mockRejectedValueOnce(new Error('DB down'))
+        .mockResolvedValueOnce({ rows: [{ value: 'America/Chicago' }] });
+
+      expect(await getCampaignTimezone()).toBe('America/New_York');
+      // The database recovered: the next call must read the real setting
+      expect(await getCampaignTimezone()).toBe('America/Chicago');
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it('still caches the default when the stored value is invalid', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ value: 'Invalid/Timezone' }] });
+
+      await getCampaignTimezone();
+      await getCampaignTimezone();
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -203,6 +251,44 @@ describe('timezoneUtils', () => {
       const result = await getCampaignTimezone({ campaignId: '3' });
 
       expect(result).toBe('America/Phoenix');
+    });
+  });
+
+  describe('getUtcRangeForLocalDate', () => {
+    it('returns the UTC instants bounding a calendar day in a western timezone', () => {
+      expect(getUtcRangeForLocalDate('2026-10-06', 'America/New_York')).toEqual({
+        start: '2026-10-06T04:00:00.000Z',
+        end: '2026-10-07T04:00:00.000Z',
+      });
+    });
+
+    it('is the plain UTC day for UTC', () => {
+      expect(getUtcRangeForLocalDate('2026-10-06', 'UTC')).toEqual({
+        start: '2026-10-06T00:00:00.000Z',
+        end: '2026-10-07T00:00:00.000Z',
+      });
+    });
+
+    it('handles a timezone ahead of UTC', () => {
+      expect(getUtcRangeForLocalDate('2026-01-15', 'Asia/Tokyo')).toEqual({
+        start: '2026-01-14T15:00:00.000Z',
+        end: '2026-01-15T15:00:00.000Z',
+      });
+    });
+
+    it('uses the offset in force at each boundary on a DST change day (23 hours)', () => {
+      // US spring forward: 2026-03-08, clocks jump from 02:00 EST to 03:00 EDT
+      expect(getUtcRangeForLocalDate('2026-03-08', 'America/New_York')).toEqual({
+        start: '2026-03-08T05:00:00.000Z',
+        end: '2026-03-09T04:00:00.000Z',
+      });
+    });
+
+    it('rejects malformed or impossible dates', () => {
+      expect(getUtcRangeForLocalDate('2026-13-01', 'UTC')).toBeNull();
+      expect(getUtcRangeForLocalDate('2026-02-30', 'UTC')).toBeNull();
+      expect(getUtcRangeForLocalDate('06/10/2026', 'UTC')).toBeNull();
+      expect(getUtcRangeForLocalDate(undefined, 'UTC')).toBeNull();
     });
   });
 });

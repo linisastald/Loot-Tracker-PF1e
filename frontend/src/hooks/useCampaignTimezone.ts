@@ -5,7 +5,6 @@ import { fetchCampaignTimezone } from '../utils/timezoneUtils';
 interface UseCampaignTimezoneReturn {
   timezone: string;
   loading: boolean;
-  error: string | null;
 }
 
 /**
@@ -20,52 +19,36 @@ const getBrowserTimezone = (): string => {
 };
 
 /**
- * React hook to fetch and provide the campaign timezone
+ * React hook to fetch and provide the campaign timezone.
+ *
+ * The browser's timezone is returned while the campaign timezone loads.
+ * fetchCampaignTimezone owns the failure fallback (it never rejects: it
+ * answers America/New_York when the request fails), so there is no error state.
  *
  * Usage:
- * ```tsx
- * const { timezone, loading, error } = useCampaignTimezone();
- *
- * if (loading) return <CircularProgress />;
- * if (error) return <Alert severity="error">{error}</Alert>;
- *
- * return <div>{formatInCampaignTimezone(timestamp, timezone)}</div>;
- * ```
+ *   const { timezone, loading } = useCampaignTimezone();
+ *   if (loading) return <CircularProgress />;
+ *   return <div>{formatInCampaignTimezone(timestamp, timezone)}</div>;
  */
 export const useCampaignTimezone = (): UseCampaignTimezoneReturn => {
-  const [timezone, setTimezone] = useState<string>(getBrowserTimezone()); // Fallback to browser timezone
+  const [timezone, setTimezone] = useState<string>(getBrowserTimezone());
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadTimezone = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const tz = await fetchCampaignTimezone();
-
-        if (isMounted) {
-          setTimezone(tz);
-          setLoading(false);
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          setError(err.message || 'Failed to load campaign timezone');
-          setTimezone(getBrowserTimezone()); // Fall back to browser timezone on error
-          setLoading(false);
-        }
+    fetchCampaignTimezone().then((tz) => {
+      if (isMounted) {
+        setTimezone(tz);
+        setLoading(false);
       }
-    };
+    });
 
-    loadTimezone();
-
-    // Cleanup function to prevent state updates on unmounted component
+    // Prevent state updates on an unmounted component
     return () => {
       isMounted = false;
     };
   }, []);
 
-  return { timezone, loading, error };
+  return { timezone, loading };
 };

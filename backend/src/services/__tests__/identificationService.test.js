@@ -10,11 +10,17 @@ jest.mock('../../utils/logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));
 
+jest.mock('../../utils/dice', () => ({ rollD20: jest.fn() }));
+
 const dbUtils = require('../../utils/dbUtils');
+const { rollD20 } = require('../../utils/dice');
 
 describe('IdentificationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // The server rolls the d20; tests pin it (total = 10 + the bonus the test sends)
+    rollD20.mockReset();
+    rollD20.mockReturnValue(10);
     jest.spyOn(ValidationService, 'validateItemId').mockImplementation((id) => id);
     jest.spyOn(ValidationService, 'validateRequiredNumber').mockImplementation((val, name, opts) => {
       if (val === null || val === undefined || isNaN(val)) {
@@ -399,13 +405,30 @@ describe('IdentificationService', () => {
       return { query: queryFn };
     }
 
+    it('locks the loot row so simultaneous attempts cannot each pass the once-per-day check', async () => {
+      const mockClient = buildMockClient();
+
+      await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftBonus: 10,
+        golarionDate: '4718-3-14',
+      });
+
+      const queries = mockClient.query.mock.calls.map(([query]) => query);
+      const lock = queries.findIndex((query) => /FROM loot WHERE id = \$1 FOR UPDATE/.test(query));
+      const attemptCheck = queries.findIndex((query) => query.includes('FROM identify'));
+      expect(lock).toBeGreaterThan(-1);
+      expect(attemptCheck).toBeGreaterThan(lock);
+    });
+
     it('should return success when roll >= DC', async () => {
       const mockClient = buildMockClient();
 
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 20, // DC = 15 + 5 = 20, roll 20 >= 20
+        spellcraftBonus: 10, // total 20 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -422,7 +445,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 15, // DC = 20, roll 15 < 20
+        spellcraftBonus: 5, // total 15 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -430,6 +453,7 @@ describe('IdentificationService', () => {
       expect(result.id).toBe(10);
       expect(result.name).toBe('Unknown Sword');
       expect(result.spellcraftRoll).toBe(15);
+      expect(result).toMatchObject({ roll: 10, bonus: 5, total: 15 });
       expect(result.requiredDC).toBe(20);
     });
 
@@ -442,7 +466,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 30, // Mocked validation allows any value
+        spellcraftBonus: 20, // total 30 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -460,7 +484,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 25,
+        spellcraftBonus: 15, // total 25 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -477,7 +501,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 20,
+        spellcraftBonus: 10, // total 20 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -486,13 +510,13 @@ describe('IdentificationService', () => {
       expect(result.message).toContain('Already attempted');
     });
 
-    it('should skip attempt check for DM identification (roll 99)', async () => {
+    it('should skip attempt check for DM identification (dmIdentify flag)', async () => {
       const mockClient = buildMockClient();
 
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        dmIdentify: true,
         golarionDate: '4718-3-14',
       });
 
@@ -504,13 +528,51 @@ describe('IdentificationService', () => {
       expect(attemptCheckCalls).toHaveLength(0);
     });
 
+    it('treats a client-sent roll of 99 as nothing at all: the server rolls (F-1294)', async () => {
+      const mockClient = buildMockClient({
+        attemptCheck: { rows: [{ id: 1 }] },
+      });
+
+      const result = await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 99, // ignored: the server rolls
+        spellcraftBonus: 0,
+        golarionDate: '4718-3-14',
+      });
+
+      // Subject to the once-per-day rule like any other roll
+      expect(result.alreadyAttempted).toBe(true);
+      const attemptCheckCalls = mockClient.query.mock.calls.filter(
+        (call) => call[0].includes('FROM identify')
+      );
+      expect(attemptCheckCalls).toHaveLength(1);
+    });
+
+    it('records a roll of 99 against the character when no dmIdentify flag is set (F-1294)', async () => {
+      const mockClient = buildMockClient();
+
+      await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 99, // ignored: the server rolls
+        spellcraftBonus: 0,
+        golarionDate: '4718-3-14',
+      });
+
+      const insertCall = mockClient.query.mock.calls.find(
+        (call) => call[0].includes('INSERT INTO identify')
+      );
+      expect(insertCall[1][1]).toBe(2);
+    });
+
     it('should record attempt with null characterId for DM identification', async () => {
       const mockClient = buildMockClient();
 
       await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        dmIdentify: true,
         golarionDate: '4718-3-14',
       });
 
@@ -522,13 +584,13 @@ describe('IdentificationService', () => {
       expect(insertCall[1][1]).toBeNull();
     });
 
-    it('should NOT call roll validation for DM identification (roll 99)', async () => {
+    it('should NOT call roll validation for DM identification (dmIdentify flag)', async () => {
       const mockClient = buildMockClient();
 
       await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        dmIdentify: true,
         golarionDate: '4718-3-14',
       });
 
@@ -547,7 +609,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 30, // d20 roll of 15 + spellcraft bonus of 15
+        spellcraftBonus: 20, // total 30 with the pinned roll of 10
         golarionDate: '4718-3-14',
       });
 
@@ -563,7 +625,7 @@ describe('IdentificationService', () => {
         IdentificationService.identifySingleItem(mockClient, {
           itemId: 999,
           characterId: 2,
-          spellcraftRoll: 15,
+          spellcraftBonus: 5, // total 15 with the pinned roll of 10
           golarionDate: '4718-3-14',
         })
       ).rejects.toThrow('Loot item with id 999 not found');
@@ -578,10 +640,78 @@ describe('IdentificationService', () => {
         IdentificationService.identifySingleItem(mockClient, {
           itemId: 10,
           characterId: 2,
-          spellcraftRoll: 15,
+          spellcraftBonus: 5, // total 15 with the pinned roll of 10
           golarionDate: '4718-3-14',
         })
       ).rejects.toThrow('Item with id 5 not found');
+    });
+
+    it('ignores a client-supplied roll or total: the server roll decides', async () => {
+      rollD20.mockReturnValue(3);
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 40,
+        total: 40,
+        spellcraftBonus: 2,
+        golarionDate: '4718-3-14',
+      });
+
+      // DC 20; the server's 3 + 2 = 5 fails no matter what the client claimed
+      expect(result).toMatchObject({ success: false, roll: 3, bonus: 2, total: 5, spellcraftRoll: 5, requiredDC: 20 });
+    });
+
+    it('uses the server d20 plus the bonus and records the total', async () => {
+      rollD20.mockReturnValue(14);
+      const mockClient = buildMockClient();
+      const result = await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10, characterId: 2, spellcraftBonus: 6, golarionDate: '4718-3-14',
+      });
+
+      expect(result).toMatchObject({ success: true, roll: 14, bonus: 6, total: 20 });
+      const insertCall = mockClient.query.mock.calls.find((call) => call[0].includes('INSERT INTO identify'));
+      expect(insertCall[1][2]).toBe(20);
+    });
+
+    it('allows a negative bonus and a total below 1', async () => {
+      rollD20.mockReturnValue(1);
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10, characterId: 2, spellcraftBonus: -3, golarionDate: '4718-3-14',
+      });
+      expect(result).toMatchObject({ success: false, roll: 1, bonus: -3, total: -2 });
+    });
+
+    it('does not roll when the character already tried today', async () => {
+      await IdentificationService.identifySingleItem(buildMockClient({ attemptCheck: { rows: [{ id: 1 }] } }), {
+        itemId: 10, characterId: 2, spellcraftBonus: 5, golarionDate: '4718-3-14',
+      });
+      expect(rollD20).not.toHaveBeenCalled();
+    });
+
+    it('does not roll for a DM identification and keeps the automatic success', async () => {
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10, characterId: 2, dmIdentify: true, spellcraftBonus: 5, golarionDate: '4718-3-14',
+      });
+      expect(rollD20).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.roll).toBeUndefined();
+    });
+
+    it.each([undefined, null, '', 'abc', 1.5, NaN, -11, 61, 1000, {}, [5]])(
+      'rejects the spellcraft bonus %p', async (bonus) => {
+        await expect(
+          IdentificationService.identifySingleItem(buildMockClient(), {
+            itemId: 10, characterId: 2, spellcraftBonus: bonus, golarionDate: '4718-3-14',
+          })
+        ).rejects.toThrow(/Spellcraft bonus must be a whole number from -10 to 60/);
+        expect(rollD20).not.toHaveBeenCalled();
+      });
+
+    it.each([[-10, -10], [0, 0], [60, 60], ['7', 7], [' -2 ', -2]])('accepts the spellcraft bonus %p', async (bonus, used) => {
+      const result = await IdentificationService.identifySingleItem(buildMockClient(), {
+        itemId: 10, characterId: 2, spellcraftBonus: bonus, golarionDate: '4718-3-14',
+      });
+      expect(result.bonus).toBe(used);
     });
   });
 
@@ -618,17 +748,19 @@ describe('IdentificationService', () => {
             if (query.includes('name FROM mod')) return { rows: [{ name: '+1' }] };
             if (query.includes('INSERT INTO identify')) return {};
             if (query.includes('UPDATE loot')) return {};
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
         return await callback(mockClient);
       });
 
+      rollD20.mockReturnValueOnce(15).mockReturnValueOnce(5);
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
-        spellcraftRolls: [20, 10], // Item 10: roll 20 >= DC 20 (success), Item 11: roll 10 < DC 20 (fail)
+        actor: { userId: 5, isDM: false },
+        spellcraftBonus: 5, // server rolls 15 then 5: item 10 total 20 >= DC 20 (success), item 11 total 10 (fail)
       });
 
       expect(result.identified).toHaveLength(1);
@@ -655,7 +787,7 @@ describe('IdentificationService', () => {
               // All items already attempted
               return { rows: [{ id: 1 }] };
             }
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -665,7 +797,8 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
-        spellcraftRolls: [18, 18],
+        actor: { userId: 5, isDM: false },
+        spellcraftBonus: 8,
       });
 
       expect(result.alreadyAttempted).toHaveLength(2);
@@ -691,7 +824,7 @@ describe('IdentificationService', () => {
             if (query.includes('FROM identify')) return { rows: [] };
             if (query.includes('INSERT INTO identify')) return {};
             if (query.includes('UPDATE loot')) return {};
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -701,7 +834,8 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
-        spellcraftRolls: [18, 18],
+        actor: { userId: 5, isDM: false },
+        spellcraftBonus: 8,
       });
 
       // Item 10 errored, item 11 succeeded (roll 18 >= DC 16)
@@ -710,12 +844,189 @@ describe('IdentificationService', () => {
       expect(result.identified).toHaveLength(1);
     });
 
+    it('requires a character for a non-DM identification (F-1294)', async () => {
+      await expect(
+        IdentificationService.identifyItems({
+          items: [10],
+          characterId: null,
+          spellcraftBonus: 5,
+        })
+      ).rejects.toThrow('character ID is required');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('identifies without rolls or a character when dmIdentify is set', async () => {
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query, params) => {
+            if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+            if (query.includes('FROM loot')) return { rows: [{ id: 10, name: 'Unknown Sword', itemid: 5, modids: [], cursed: false }] };
+            if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Longsword', type: 'weapon', casterlevel: 20 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      const result = await IdentificationService.identifyItems({
+        items: [10],
+        characterId: null,
+        dmIdentify: true,
+      });
+
+      expect(result.identified).toHaveLength(1);
+      expect(result.count.failed).toBe(0);
+    });
+
+    it('rejects a character that belongs to another user (F-0690)', async () => {
+      const queries = [];
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query) => {
+            queries.push(query);
+            if (query.includes('FROM characters')) return { rows: [{ user_id: 99 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      await expect(
+        IdentificationService.identifyItems({
+          items: [10],
+          characterId: 2,
+          spellcraftBonus: 20,
+          actor: { userId: 5, isDM: false },
+        })
+      ).rejects.toThrow('your own character');
+      expect(queries.some((q) => q.includes('INSERT INTO identify'))).toBe(false);
+    });
+
+    it('rejects a non-DM call without an actor and a missing character row', async () => {
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+        return await callback(mockClient);
+      });
+
+      await expect(
+        IdentificationService.identifyItems({ items: [10], characterId: 2, spellcraftBonus: 20 })
+      ).rejects.toThrow('your own character');
+    });
+
+    it('lets a DM identify as any character', async () => {
+      const queries = [];
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query) => {
+            queries.push(query);
+            if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+            if (query.includes('FROM loot')) return { rows: [{ id: 10, name: 'Unknown', itemid: 5, modids: [] }] };
+            if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Sword', type: 'weapon', casterlevel: 1 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      const result = await IdentificationService.identifyItems({
+        items: [10],
+        characterId: 2,
+        spellcraftBonus: 20,
+        actor: { userId: 1, isDM: true },
+      });
+
+      expect(result.identified).toHaveLength(1);
+      expect(queries.some((q) => q.includes('SELECT user_id FROM characters'))).toBe(false);
+    });
+
+    it('isolates each item in a savepoint so a database error does not poison the batch (F-0691)', async () => {
+      const queries = [];
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query, params) => {
+            queries.push(query);
+            if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+            if (query.includes('FROM loot')) {
+              if (params[0] === 10) throw new Error('db exploded');
+              return { rows: [{ id: 11, name: 'Unknown', itemid: 5, modids: [] }] };
+            }
+            if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Sword', type: 'weapon', casterlevel: 1 }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'V', user_id: 5 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      const result = await IdentificationService.identifyItems({
+        items: [10, 11],
+        characterId: 2,
+        spellcraftBonus: 20,
+        actor: { userId: 5, isDM: false },
+      });
+
+      expect(result.failed).toHaveLength(1);
+      expect(result.identified).toHaveLength(1);
+      expect(queries.filter((q) => q === 'SAVEPOINT identify_item')).toHaveLength(2);
+      expect(queries).toContain('ROLLBACK TO SAVEPOINT identify_item');
+      expect(queries.filter((q) => q === 'RELEASE SAVEPOINT identify_item')).toHaveLength(1);
+      // the rollback comes before the next item's savepoint
+      expect(queries.indexOf('ROLLBACK TO SAVEPOINT identify_item'))
+        .toBeLessThan(queries.lastIndexOf('SAVEPOINT identify_item'));
+    });
+
+    it('rejects a missing or out-of-range spellcraft bonus before touching the database', async () => {
+      for (const bonus of [undefined, 61, -11, 2.5]) {
+        await expect(
+          IdentificationService.identifyItems({ items: [10], characterId: 2, spellcraftBonus: bonus })
+        ).rejects.toThrow(/Spellcraft bonus/);
+      }
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    const stubTransaction = () => dbUtils.executeTransaction.mockImplementation(async (callback) => callback({
+      query: jest.fn().mockImplementation((query) => {
+        if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+        if (query.includes('FROM loot')) return { rows: [{ id: 10, name: 'Unknown Sword', itemid: 5, modids: [], cursed: false }] };
+        if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Longsword', type: 'weapon', casterlevel: 3 }] };
+        if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
+        return { rows: [] };
+      }),
+    }));
+
+    it('never reads client-supplied rolls: only the server roll plus the bonus counts', async () => {
+      rollD20.mockReturnValue(2);
+      stubTransaction();
+
+      const result = await IdentificationService.identifyItems({
+        items: [10],
+        characterId: 2,
+        spellcraftRolls: [60],
+        spellcraftBonus: 1,
+        actor: { userId: 5, isDM: false },
+      });
+
+      expect(result.identified).toHaveLength(0);
+      expect(result.failed).toEqual([expect.objectContaining({ id: 10, roll: 2, bonus: 1, total: 3 })]);
+    });
+
+    it('returns the server roll, bonus and total for every identified item', async () => {
+      rollD20.mockReturnValue(18);
+      stubTransaction();
+
+      const result = await IdentificationService.identifyItems({
+        items: [10], characterId: 2, spellcraftBonus: 4, actor: { userId: 5, isDM: false },
+      });
+
+      expect(result.identified[0]).toMatchObject({ id: 10, roll: 18, bonus: 4, total: 22, spellcraftRoll: 22, requiredDC: 18 });
+    });
+
     it('should validate items array', async () => {
       await expect(
         IdentificationService.identifyItems({
           items: [],
           characterId: 2,
-          spellcraftRolls: [],
+          spellcraftBonus: 0,
         })
       ).rejects.toThrow('items array is required');
     });
@@ -736,7 +1047,7 @@ describe('IdentificationService', () => {
             if (query.includes('FROM identify')) return { rows: [] };
             if (query.includes('INSERT INTO identify')) return {};
             if (query.includes('UPDATE loot')) return {};
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -746,55 +1057,12 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10],
         characterId: 2,
-        spellcraftRolls: [18],
+        actor: { userId: 5, isDM: false },
+        spellcraftBonus: 8,
       });
 
       expect(result.alreadyAttempted).toBeUndefined();
       expect(result.count.alreadyAttempted).toBe(0);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // getIdentificationAttempts
-  // ---------------------------------------------------------------------------
-  describe('getIdentificationAttempts', () => {
-    it('should return attempts for character filtered by date', async () => {
-      const mockAttempts = [
-        { id: 1, lootid: 10, characterid: 2, spellcraft_roll: 18, success: true, item_name: 'Sword' },
-      ];
-      dbUtils.executeQuery.mockResolvedValue({ rows: mockAttempts });
-
-      const result = await IdentificationService.getIdentificationAttempts(2, '4718-3-14');
-
-      expect(result).toEqual(mockAttempts);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('golarion_date = $2'),
-        [2, '4718-3-14']
-      );
-    });
-
-    it('should return all attempts (with LIMIT 50) when no date provided', async () => {
-      const mockAttempts = [
-        { id: 1, lootid: 10, characterid: 2, success: true, item_name: 'Sword' },
-        { id: 2, lootid: 11, characterid: 2, success: false, item_name: 'Ring' },
-      ];
-      dbUtils.executeQuery.mockResolvedValue({ rows: mockAttempts });
-
-      const result = await IdentificationService.getIdentificationAttempts(2);
-
-      expect(result).toEqual(mockAttempts);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT 50'),
-        [2]
-      );
-    });
-
-    it('should validate character ID', async () => {
-      await expect(
-        IdentificationService.getIdentificationAttempts(null)
-      ).rejects.toThrow();
-
-      expect(ValidationService.validateCharacterId).toHaveBeenCalledWith(null);
     });
   });
 
@@ -816,6 +1084,35 @@ describe('IdentificationService', () => {
       expect(result.total).toBe(1);
       expect(result.limit).toBe(10);
       expect(result.offset).toBe(0);
+    });
+
+    it('hides the real item identity from non-DM callers (F-0693)', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+      await IdentificationService.getUnidentifiedItems({ isDM: false });
+
+      const itemsQuery = dbUtils.executeQuery.mock.calls[0][0];
+      const selected = itemsQuery.slice(itemsQuery.indexOf('SELECT'), itemsQuery.indexOf('FROM loot'));
+      expect(selected).not.toContain('*');
+      expect(selected).not.toContain('base_item_name');
+      ['itemid', 'modids', 'value', 'cursed', 'dm_notes', 'spellcraft_dc'].forEach((col) => {
+        expect(selected).not.toContain(col);
+      });
+      expect(selected).toContain('l.name');
+    });
+
+    it('gives DMs the full row including the base item', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+      await IdentificationService.getUnidentifiedItems({ isDM: true });
+
+      const itemsQuery = dbUtils.executeQuery.mock.calls[0][0];
+      expect(itemsQuery).toContain('l.*');
+      expect(itemsQuery).toContain('base_item_name');
     });
 
     it('should use default limit and offset when not provided', async () => {

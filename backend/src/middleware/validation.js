@@ -11,31 +11,12 @@ const controllerFactory = require('../utils/controllerFactory');
  * Validation schema definitions for different endpoints
  */
 const validationSchemas = {
-  // Loot/Item validation schemas
-  createLoot: {
-    body: {
-      name: { type: 'string', required: true, minLength: 1, maxLength: 255 },
-      quantity: { type: 'number', required: true, min: 1 },
-      sessionDate: { type: 'string', required: true, format: 'date' },
-      itemType: { type: 'string', required: false, enum: ['weapon', 'armor', 'shield', 'item', 'trade good', 'consumable'] },
-      value: { type: 'number', required: false, min: 0 }
-    }
-  },
-
+  // Loot validation schemas
   updateLootStatus: {
     body: {
-      lootIds: { type: 'array', required: true, minLength: 1, items: { type: 'number', min: 1 } },
-      status: { type: 'string', required: true, enum: ['Unprocessed', 'Kept Party', 'Kept Character', 'Pending Sale', 'Sold', 'Given Away', 'Trashed'] },
-      characterId: { type: 'number', required: false, min: 1 }
-    }
-  },
-
-  // Character validation schemas
-  createCharacter: {
-    body: {
-      name: { type: 'string', required: true, minLength: 1, maxLength: 100 },
-      appraisal_bonus: { type: 'number', required: false, min: -10, max: 50 },
-      active: { type: 'boolean', required: false }
+      lootIds: { type: 'array', required: true, minLength: 1, items: { type: 'number', min: 1, integer: true } },
+      status: { type: 'string', required: true, enum: ValidationService.LOOT_STATUSES },
+      characterId: { type: 'number', required: false, min: 1, integer: true }
     }
   },
 
@@ -65,7 +46,7 @@ const validationSchemas = {
   createItem: {
     body: {
       name: { type: 'string', required: true, minLength: 1, maxLength: 255 },
-      type: { type: 'string', required: true, minLength: 1, maxLength: 50 },
+      type: { type: 'string', required: true, enum: ValidationService.ITEM_TYPES },
       subtype: { type: 'string', required: false, maxLength: 50 },
       value: { type: 'number', required: true, min: 0 },
       weight: { type: 'number', required: false, min: 0 },
@@ -98,8 +79,8 @@ const validationSchemas = {
   // Appraisal validation schemas
   appraiseLoot: {
     body: {
-      lootIds: { type: 'array', required: true, minLength: 1, items: { type: 'number', min: 1 } },
-      characterId: { type: 'number', required: true, min: 1 },
+      lootIds: { type: 'array', required: true, minLength: 1, items: { type: 'number', min: 1, integer: true } },
+      characterId: { type: 'number', required: true, min: 1, integer: true },
       appraisalRolls: { 
         type: 'array', 
         required: true, 
@@ -110,8 +91,27 @@ const validationSchemas = {
   }
 };
 
+// Plain decimal notation with an optional exponent; nothing else (no hex, no trailing text).
+const NUMERIC_STRING = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
 /**
- * Validate a single value based on schema rules
+ * Convert a request value to a number: real numbers, or strings that are
+ * entirely a number. Anything else (including '12abc', arrays, booleans)
+ * yields NaN instead of being partially parsed.
+ */
+function toNumber(value) {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string' && NUMERIC_STRING.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return NaN;
+}
+
+/**
+ * Validate a single value based on schema rules.
+ * Returns the (possibly coerced) value; numbers given as strings come back as numbers.
  */
 function validateValue(value, schema, fieldName, parentPath = '') {
   const fullFieldName = parentPath ? `${parentPath}.${fieldName}` : fieldName;
@@ -161,10 +161,14 @@ function validateValue(value, schema, fieldName, parentPath = '') {
       
       break;
 
-    case 'number':
-      const numValue = parseFloat(value);
-      if (isNaN(numValue)) {
+    case 'number': {
+      const numValue = toNumber(value);
+      if (!Number.isFinite(numValue)) {
         throw controllerFactory.createValidationError(`${fullFieldName} must be a valid number`);
+      }
+
+      if (schema.integer && !Number.isInteger(numValue)) {
+        throw controllerFactory.createValidationError(`${fullFieldName} must be a whole number`);
       }
       
       if (schema.min !== undefined && numValue < schema.min) {
@@ -176,6 +180,7 @@ function validateValue(value, schema, fieldName, parentPath = '') {
       }
       
       return numValue;
+    }
 
     case 'boolean':
       if (typeof value !== 'boolean') {
@@ -199,10 +204,10 @@ function validateValue(value, schema, fieldName, parentPath = '') {
       // Validate array items if schema is provided
       if (schema.items) {
         value.forEach((item, index) => {
-          validateValue(item, schema.items, `[${index}]`, fullFieldName);
+          value[index] = validateValue(item, schema.items, `[${index}]`, fullFieldName);
         });
       }
-      
+
       break;
 
     case 'object':
@@ -213,7 +218,10 @@ function validateValue(value, schema, fieldName, parentPath = '') {
       // Validate object properties if schema is provided
       if (schema.properties) {
         Object.entries(schema.properties).forEach(([propName, propSchema]) => {
-          validateValue(value[propName], propSchema, propName, fullFieldName);
+          const validated = validateValue(value[propName], propSchema, propName, fullFieldName);
+          if (validated !== undefined) {
+            value[propName] = validated;
+          }
         });
       }
       
@@ -226,83 +234,49 @@ function validateValue(value, schema, fieldName, parentPath = '') {
   return value;
 }
 
-/**
- * Create validation middleware for a specific schema
- */
-function createValidationMiddleware(schemaName) {
-  return (req, res, next) => {
-    try {
-      const schema = validationSchemas[schemaName];
-      if (!schema) {
-        throw new Error(`Validation schema '${schemaName}' not found`);
-      }
-
-      // Validate request body
-      if (schema.body) {
-        Object.entries(schema.body).forEach(([fieldName, fieldSchema]) => {
-          const value = req.body[fieldName];
-          req.body[fieldName] = validateValue(value, fieldSchema, fieldName);
-        });
-      }
-
-      // Validate request parameters
-      if (schema.params) {
-        Object.entries(schema.params).forEach(([fieldName, fieldSchema]) => {
-          const value = req.params[fieldName];
-          req.params[fieldName] = validateValue(value, fieldSchema, fieldName, 'params');
-        });
-      }
-
-      // Validate query parameters
-      if (schema.query) {
-        Object.entries(schema.query).forEach(([fieldName, fieldSchema]) => {
-          const value = req.query[fieldName];
-          req.query[fieldName] = validateValue(value, fieldSchema, fieldName, 'query');
-        });
-      }
-
-      next();
-    } catch (error) {
-      next(error);
-    }
-  };
-}
+// Request parts a rule set can validate, with the prefix used in error messages
+const REQUEST_PARTS = [
+  ['body', ''],
+  ['params', 'params'],
+  ['query', 'query']
+];
 
 /**
- * Generic validation middleware that can be used inline
+ * Generic validation middleware that can be used inline.
+ * A failed rule answers 400 (res.validationError); coerced values are written
+ * back onto the request.
  */
 function validate(rules) {
   return (req, res, next) => {
     try {
-      // Validate request body
-      if (rules.body) {
-        Object.entries(rules.body).forEach(([fieldName, fieldSchema]) => {
-          const value = req.body[fieldName];
-          req.body[fieldName] = validateValue(value, fieldSchema, fieldName);
-        });
+      for (const [part, parentPath] of REQUEST_PARTS) {
+        if (!rules[part]) continue;
+        for (const [fieldName, fieldSchema] of Object.entries(rules[part])) {
+          const validated = validateValue(req[part][fieldName], fieldSchema, fieldName, parentPath);
+          if (validated !== undefined) {
+            req[part][fieldName] = validated;
+          }
+        }
       }
-
-      // Validate request parameters
-      if (rules.params) {
-        Object.entries(rules.params).forEach(([fieldName, fieldSchema]) => {
-          const value = req.params[fieldName];
-          req.params[fieldName] = validateValue(value, fieldSchema, fieldName, 'params');
-        });
-      }
-
-      // Validate query parameters
-      if (rules.query) {
-        Object.entries(rules.query).forEach(([fieldName, fieldSchema]) => {
-          const value = req.query[fieldName];
-          req.query[fieldName] = validateValue(value, fieldSchema, fieldName, 'query');
-        });
-      }
-
-      next();
     } catch (error) {
-      next(error);
+      if (error.name === 'ValidationError') {
+        return res.validationError(error.message);
+      }
+      return next(error);
     }
+    next();
   };
+}
+
+/**
+ * Create validation middleware for a named schema in validationSchemas
+ */
+function createValidationMiddleware(schemaName) {
+  const schema = validationSchemas[schemaName];
+  if (!schema) {
+    throw new Error(`Validation schema '${schemaName}' not found`);
+  }
+  return validate(schema);
 }
 
 module.exports = {

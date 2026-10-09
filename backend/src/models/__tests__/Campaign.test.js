@@ -1,13 +1,17 @@
 /**
- * Unit tests for the Campaign model — settings storage (Phase 4a) and
- * membership lookup. The campaign CRUD methods are covered through
- * campaignController tests; this file focuses on the raw-SQL methods added
- * for per-campaign settings (theme storage) and invite redemption.
+ * Unit tests for the Campaign model: listing and lookup, the create
+ * transaction (the controller tests mock this model, so it runs only here),
+ * per-campaign settings storage and membership lookups.
  */
 
 jest.mock('../../utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
+  SET_CAMPAIGN_SQL: 'SET_CAMPAIGN_SQL_STUB',
+}));
+
+jest.mock('../SessionTask', () => ({
+  seedDefaults: jest.fn(),
 }));
 
 jest.mock('../../utils/logger', () => ({
@@ -19,11 +23,115 @@ jest.mock('../../utils/logger', () => ({
 
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
+const SessionTask = require('../SessionTask');
 const Campaign = require('../Campaign');
 
 describe('Campaign model', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  // -------------------------------------------------------------------
+  // getForUser / getAll / getById
+  // -------------------------------------------------------------------
+  describe('getForUser', () => {
+    it('should join memberships to campaigns for the user, ordered by id, with the per-campaign role', async () => {
+      const rows = [{ id: 1, name: 'A', slug: 'a', world: 'Golarion', is_active: true, role: 'DM' }];
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows });
+
+      const result = await Campaign.getForUser(7);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('FROM user_campaign uc');
+      expect(query).toContain('JOIN campaigns c ON c.id = uc.campaign_id');
+      expect(query).toContain('uc.user_id = $1');
+      expect(query).toContain('ORDER BY c.id');
+      expect(params).toEqual([7]);
+      expect(result).toEqual(rows);
+    });
+  });
+
+  describe('getAll', () => {
+    it('should list every campaign ordered by id', async () => {
+      const rows = [{ id: 1 }, { id: 2 }];
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows });
+
+      expect(await Campaign.getAll()).toEqual(rows);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('ORDER BY id');
+    });
+  });
+
+  describe('getById', () => {
+    it('should return the campaign row', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 4, name: 'X' }] });
+
+      const campaign = await Campaign.getById(4);
+
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([4]);
+      expect(campaign).toEqual({ id: 4, name: 'X' });
+    });
+
+    it('should return null when the campaign does not exist', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      expect(await Campaign.getById(99)).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // create (transaction)
+  // -------------------------------------------------------------------
+  describe('create', () => {
+    const runCreate = async () => {
+      const client = { query: jest.fn() };
+      client.query.mockImplementation(async (sql) =>
+        String(sql).includes('INSERT INTO campaigns')
+          ? { rows: [{ id: 12, name: 'New', slug: 'new', world: 'Golarion' }] }
+          : { rows: [], rowCount: 1 }
+      );
+      dbUtils.executeTransaction.mockImplementation(async (callback) => callback(client));
+      const campaign = await Campaign.create({ name: 'New', slug: 'new', world: 'Golarion', createdById: 3 });
+      return { client, campaign };
+    };
+
+    it('should insert the campaign, make the creator DM, seed empty Discord settings, then re-point the GUC before seeding task defaults', async () => {
+      const { client, campaign } = await runCreate();
+
+      const calls = client.query.mock.calls;
+      expect(calls).toHaveLength(4);
+
+      expect(calls[0][0]).toContain('INSERT INTO campaigns');
+      expect(calls[0][1]).toEqual(['New', 'new', 'Golarion', 3]);
+
+      expect(calls[1][0]).toContain('INSERT INTO user_campaign');
+      expect(calls[1][0]).toContain("'DM'");
+      expect(calls[1][1]).toEqual([3, 12]);
+
+      expect(calls[2][0]).toContain('INSERT INTO campaign_settings');
+      expect(calls[2][0]).toContain("'discord_integration_enabled', '0'");
+      expect(calls[2][0]).toContain("'discord_channel_id', ''");
+      expect(calls[2][0]).toContain("'campaign_role_id', ''");
+      expect(calls[2][0]).toContain('ON CONFLICT (campaign_id, name) DO NOTHING');
+      expect(calls[2][1]).toEqual([12]);
+
+      expect(calls[3]).toEqual(['SET_CAMPAIGN_SQL_STUB', ['12']]);
+      expect(SessionTask.seedDefaults).toHaveBeenCalledWith(client, 12);
+      expect(client.query.mock.invocationCallOrder[3]).toBeLessThan(
+        SessionTask.seedDefaults.mock.invocationCallOrder[0]
+      );
+      expect(campaign).toEqual({ id: 12, name: 'New', slug: 'new', world: 'Golarion' });
+    });
+
+    it('should surface a duplicate-slug unique violation for the controller to translate', async () => {
+      const violation = Object.assign(new Error('duplicate key'), { code: '23505' });
+      dbUtils.executeTransaction.mockImplementation(async (callback) =>
+        callback({ query: jest.fn().mockRejectedValue(violation) })
+      );
+
+      await expect(Campaign.create({ name: 'N', slug: 'dup', world: 'Golarion', createdById: 3 }))
+        .rejects.toMatchObject({ code: '23505' });
+      expect(SessionTask.seedDefaults).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------
@@ -208,6 +316,28 @@ describe('Campaign model', () => {
       const membership = await Campaign.getMembership(42, 3);
 
       expect(membership).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // getActiveCharacterId (Opus review M-6)
+  // -------------------------------------------------------------------
+  describe('getActiveCharacterId', () => {
+    it("returns the user's active character in THAT campaign only", async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 77 }] });
+
+      const id = await Campaign.getActiveCharacterId(42, 3);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('FROM characters');
+      expect(query).toContain('user_id = $1 AND campaign_id = $2 AND active = true');
+      expect(params).toEqual([42, 3]);
+      expect(id).toBe(77);
+    });
+
+    it('returns null when the user has no active character there', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      expect(await Campaign.getActiveCharacterId(42, 3)).toBeNull();
     });
   });
 

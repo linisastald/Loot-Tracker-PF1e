@@ -3,51 +3,34 @@
  */
 const ApiResponse = require('../utils/apiResponse');
 
+// Build-and-send in one place; returns the Express response like res.json().
+const respond = (res, response) => res.status(response.status).json(response.body);
+
 /**
  * Enhances the Express response object with standardized API response methods
  */
 const apiResponseMiddleware = (req, res, next) => {
-  // Add success response method to res object
-  res.success = (data = null, message = 'Operation successful') => {
-    const response = ApiResponse.success(data, message);
-    return res.status(response.status).json(response.body);
-  };
+  res.success = (data = null, message = 'Operation successful') =>
+    respond(res, ApiResponse.success(data, message));
 
-  // Add created response method to res object (status 201)
-  res.created = (data = null, message = 'Resource created successfully') => {
-    const response = ApiResponse.success(data, message, 201);
-    return res.status(response.status).json(response.body);
-  };
+  // 201 Created
+  res.created = (data = null, message = 'Resource created successfully') =>
+    respond(res, ApiResponse.success(data, message, 201));
 
-  // Add error response method to res object
-  res.error = (message = 'An error occurred', status = 500, errors = null) => {
-    const response = ApiResponse.error(message, status, errors);
-    return res.status(response.status).json(response.body);
-  };
+  res.error = (message = 'An error occurred', status = 500, errors = null) =>
+    respond(res, ApiResponse.error(message, status, errors));
 
-  // Add validation error response method to res object
-  res.validationError = (errors) => {
-    const response = ApiResponse.validationError(errors);
-    return res.status(response.status).json(response.body);
-  };
+  res.validationError = (errors) =>
+    respond(res, ApiResponse.validationError(errors));
 
-  // Add not found response method to res object
-  res.notFound = (message = 'Resource not found') => {
-    const response = ApiResponse.error(message, 404);
-    return res.status(response.status).json(response.body);
-  };
+  res.notFound = (message = 'Resource not found') =>
+    respond(res, ApiResponse.error(message, 404));
 
-  // Add unauthorized response method to res object
-  res.unauthorized = (message = 'Unauthorized access') => {
-    const response = ApiResponse.error(message, 401);
-    return res.status(response.status).json(response.body);
-  };
+  res.unauthorized = (message = 'Unauthorized access') =>
+    respond(res, ApiResponse.error(message, 401));
 
-  // Add forbidden response method to res object
-  res.forbidden = (message = 'Access forbidden') => {
-    const response = ApiResponse.error(message, 403);
-    return res.status(response.status).json(response.body);
-  };
+  res.forbidden = (message = 'Access forbidden') =>
+    respond(res, ApiResponse.error(message, 403));
 
   next();
 };

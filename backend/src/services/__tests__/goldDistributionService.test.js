@@ -6,6 +6,11 @@ jest.mock('../../utils/dbUtils', () => ({
   executeTransaction: jest.fn(),
 }));
 
+jest.mock('../../models/Gold', () => ({
+  lockLedger: jest.fn(),
+  getBalance: jest.fn(),
+}));
+
 jest.mock('../../utils/controllerFactory', () => ({
   createValidationError(message) {
     const error = new Error(message);
@@ -22,6 +27,7 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 const dbUtils = require('../../utils/dbUtils');
+const Gold = require('../../models/Gold');
 
 describe('GoldDistributionService', () => {
   beforeEach(() => {
@@ -29,61 +35,24 @@ describe('GoldDistributionService', () => {
   });
 
   describe('getActiveCharacters', () => {
-    it('should return active characters', async () => {
+    it('should return active characters read through the transaction client', async () => {
       const characters = [
         { id: 1, name: 'Valeros' },
         { id: 2, name: 'Merisiel' },
       ];
-      dbUtils.executeQuery.mockResolvedValue({ rows: characters });
+      const client = { query: jest.fn().mockResolvedValue({ rows: characters }) };
 
-      const result = await GoldDistributionService.getActiveCharacters();
+      const result = await GoldDistributionService.getActiveCharacters(client);
 
       expect(result).toEqual(characters);
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('active = true');
+      expect(client.query.mock.calls[0][0]).toContain('active = true');
     });
 
     it('should throw ValidationError when no active characters', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
 
-      await expect(GoldDistributionService.getActiveCharacters())
+      await expect(GoldDistributionService.getActiveCharacters(client))
         .rejects.toThrow('No active characters found');
-    });
-  });
-
-  describe('getCurrentTotals', () => {
-    it('should return parsed currency totals', async () => {
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{
-          total_platinum: '10',
-          total_gold: '500',
-          total_silver: '30',
-          total_copper: '45',
-        }],
-      });
-
-      const totals = await GoldDistributionService.getCurrentTotals();
-
-      expect(totals).toEqual({
-        platinum: 10,
-        gold: 500,
-        silver: 30,
-        copper: 45,
-      });
-    });
-
-    it('should default null values to 0', async () => {
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{
-          total_platinum: null,
-          total_gold: null,
-          total_silver: null,
-          total_copper: null,
-        }],
-      });
-
-      const totals = await GoldDistributionService.getCurrentTotals();
-
-      expect(totals).toEqual({ platinum: 0, gold: 0, silver: 0, copper: 0 });
     });
   });
 
@@ -127,6 +96,49 @@ describe('GoldDistributionService', () => {
       expect(() => GoldDistributionService.calculateDistribution(totals, 3, false))
         .toThrow('No currency to distribute');
     });
+
+    // F-0683: a negative denomination used to floor to a negative share, which
+    // was then inserted as a positive "Withdrawal" (money created from nothing).
+    it('should never pay out a share for a negative denomination', () => {
+      const totals = { platinum: 30, gold: -5, silver: 0, copper: 0 };
+
+      const dist = GoldDistributionService.calculateDistribution(totals, 3, false);
+
+      expect(dist).toEqual({ platinum: 10, gold: 0, silver: 0, copper: 0 });
+    });
+
+    it('should reject a distribution when every denomination is zero or negative', () => {
+      const totals = { platinum: -3, gold: -5, silver: 0, copper: -1 };
+
+      expect(() => GoldDistributionService.calculateDistribution(totals, 3, false))
+        .toThrow('No currency to distribute');
+    });
+
+    it('should conserve every coin: shares paid out plus what stays equals the total', () => {
+      const totals = { platinum: 11, gold: 1001, silver: 7, copper: 13 };
+      [1, 2, 3, 4, 5, 7].forEach((n) => {
+        [false, true].forEach((party) => {
+          let dist;
+          try {
+            dist = GoldDistributionService.calculateDistribution(totals, n, party);
+          } catch (e) {
+            return; // nothing to distribute for this size
+          }
+          const divisor = party ? n + 1 : n;
+          ['platinum', 'gold', 'silver', 'copper'].forEach((c) => {
+            const paid = dist[c] * n;
+            const stays = totals[c] - paid;
+            expect(stays).toBeGreaterThanOrEqual(0);
+            expect(paid + stays).toBe(totals[c]);
+            // Staying money is the party share (one equal share when included)
+            // plus a remainder smaller than the divisor
+            const partyShare = party ? dist[c] : 0;
+            expect(stays - partyShare).toBeLessThan(divisor);
+            expect(stays - partyShare).toBeGreaterThanOrEqual(0);
+          });
+        });
+      });
+    });
   });
 
   describe('validateDistribution (pure)', () => {
@@ -158,77 +170,78 @@ describe('GoldDistributionService', () => {
   });
 
   describe('createDistributionEntries', () => {
-    it('should create negative entries for each character', async () => {
-      const mockClient = { query: jest.fn() };
+    it('should create negative entries for each character, recording who ran it', async () => {
+      const client = { query: jest.fn().mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] }) };
       const characters = [
         { id: 1, name: 'Valeros' },
         { id: 2, name: 'Merisiel' },
       ];
       const distribution = { platinum: 2, gold: 25, silver: 5, copper: 10 };
 
-      // Batch INSERT returns all rows at once
-      mockClient.query
-        .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] });
+      const result = await GoldDistributionService.createDistributionEntries(client, characters, distribution, 42);
 
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      const result = await GoldDistributionService.createDistributionEntries(characters, distribution, 42);
-
-      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      expect(client.query).toHaveBeenCalledTimes(1);
       expect(result).toHaveLength(2);
 
-      // Verify negative amounts in batch query
-      const query = mockClient.query.mock.calls[0][0];
-      const values = mockClient.query.mock.calls[0][1];
+      const [query, values] = client.query.mock.calls[0];
       expect(query).toContain('character_id');
+      expect(query).toContain('who');
       expect(values[1]).toBe('Withdrawal');
-      expect(values[2]).toBe(-2);   // platinum
-      expect(values[3]).toBe(-25);  // gold
-      expect(values[4]).toBe(-5);   // silver
-      expect(values[5]).toBe(-10);  // copper
+      expect(values.slice(2, 6)).toEqual([-2, -25, -5, -10]);
       expect(values[6]).toEqual(['Distributed to Valeros', 'Distributed to Merisiel']);
       expect(values[7]).toEqual([1, 2]); // each row attributed to its character
+      expect(values[8]).toBe(42); // gold.who = acting user
     });
   });
 
   describe('executeDistribution', () => {
-    it('should orchestrate full distribution flow', async () => {
-      const mockClient = { query: jest.fn() };
+    const setup = (characters, totals, insertRows) => {
+      const client = { query: jest.fn() };
+      client.query
+        .mockResolvedValueOnce({ rows: characters }) // active characters
+        .mockResolvedValueOnce({ rows: insertRows }); // batch INSERT
+      Gold.getBalance.mockResolvedValue(totals);
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      return client;
+    };
 
-      // getActiveCharacters
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Valeros' }, { id: 2, name: 'Merisiel' }] })
-        // getCurrentTotals
-        .mockResolvedValueOnce({
-          rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }],
-        });
-
-      // createDistributionEntries transaction (batch INSERT returns all rows)
-      mockClient.query
-        .mockResolvedValueOnce({ rows: [{ id: 10 }, { id: 11 }] });
-
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+    it('should orchestrate the full flow in one transaction under the ledger lock', async () => {
+      const client = setup(
+        [{ id: 1, name: 'Valeros' }, { id: 2, name: 'Merisiel' }],
+        { platinum: 0, gold: 100, silver: 0, copper: 0 },
+        [{ id: 10 }, { id: 11 }]
+      );
 
       const result = await GoldDistributionService.executeDistribution(1, false);
 
+      expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
+      expect(Gold.lockLedger).toHaveBeenCalledWith(client);
+      expect(Gold.getBalance).toHaveBeenCalledWith(client);
+      // The lock is taken before the balance is read
+      expect(Gold.lockLedger.mock.invocationCallOrder[0])
+        .toBeLessThan(Gold.getBalance.mock.invocationCallOrder[0]);
+      // No read happens outside the transaction
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
       expect(result.entries).toHaveLength(2);
       expect(result.message).toBe('Gold distributed successfully');
+      expect(client.query.mock.calls[1][1].slice(2, 6)).toEqual([0, -50, 0, 0]);
+      expect(client.query.mock.calls[1][1][8]).toBe(1);
     });
 
     it('should include party share message when enabled', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Valeros' }] })
-        .mockResolvedValueOnce({
-          rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }],
-        });
-
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValue({ rows: [{ id: 10 }] });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      setup([{ id: 1, name: 'Valeros' }], { platinum: 0, gold: 100, silver: 0, copper: 0 }, [{ id: 10 }]);
 
       const result = await GoldDistributionService.executeDistribution(1, true);
 
       expect(result.message).toContain('party loot share');
+    });
+
+    it('should not insert anything when there is no currency to distribute', async () => {
+      const client = setup([{ id: 1, name: 'Valeros' }], { platinum: 0, gold: 0, silver: 0, copper: 0 }, []);
+
+      await expect(GoldDistributionService.executeDistribution(1, false))
+        .rejects.toThrow('No currency to distribute');
+      expect(client.query).toHaveBeenCalledTimes(1); // only the character read
     });
   });
 });

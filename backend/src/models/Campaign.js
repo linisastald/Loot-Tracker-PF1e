@@ -14,6 +14,7 @@ exports.getForUser = async (userId) => {
     FROM user_campaign uc
     JOIN campaigns c ON c.id = uc.campaign_id
     WHERE uc.user_id = $1
+      AND c.is_active = TRUE
     ORDER BY c.id
   `;
   const result = await dbUtils.executeQuery(query, [userId]);
@@ -81,6 +82,24 @@ exports.getMembership = async (userId, campaignId) => {
     [userId, campaignId]
   );
   return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * The user's active character in ONE campaign (null when none). Used so the
+ * frontend always gets the character of the campaign the request selected, not
+ * of the user's lowest-id campaign (GET /auth/status carries no campaign
+ * header).
+ *
+ * @param {number} userId
+ * @param {number} campaignId
+ * @return {Promise<number|null>}
+ */
+exports.getActiveCharacterId = async (userId, campaignId) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT id FROM characters WHERE user_id = $1 AND campaign_id = $2 AND active = true ORDER BY id LIMIT 1',
+    [userId, campaignId]
+  );
+  return result.rows[0]?.id ?? null;
 };
 
 /**
@@ -226,10 +245,11 @@ exports.updateName = async (id, name) => {
  * @param {string} data.name - Campaign name
  * @param {string} data.slug - URL-safe unique identifier
  * @param {string} data.world - Game world (e.g. 'Golarion')
- * @param {number} data.createdById - User ID of the creator (becomes DM)
+ * @param {number} data.createdById - User ID of the creator (recorded in created_by)
+ * @param {number} [data.dmUserId] - User who becomes the campaign's DM; defaults to the creator
  * @return {Promise<Object>} The created campaign row
  */
-exports.create = async ({ name, slug, world, createdById }) => {
+exports.create = async ({ name, slug, world, createdById, dmUserId = createdById }) => {
   return await dbUtils.executeTransaction(async (client) => {
     const insertResult = await client.query(
       `INSERT INTO campaigns (name, slug, world, created_by)
@@ -239,11 +259,12 @@ exports.create = async ({ name, slug, world, createdById }) => {
     );
     const campaign = insertResult.rows[0];
 
-    // The creator is always a DM in the campaign they create
+    // Every campaign starts with exactly one DM: the chosen user, or the
+    // creator when none was chosen (a superadmin reaches any campaign anyway).
     await client.query(
       `INSERT INTO user_campaign (user_id, campaign_id, role)
        VALUES ($1, $2, 'DM')`,
-      [createdById, campaign.id]
+      [dmUserId, campaign.id]
     );
 
     // Seed explicit EMPTY Discord settings: without rows, the
@@ -267,11 +288,125 @@ exports.create = async ({ name, slug, world, createdById }) => {
     // the transaction-local GUC at the NEW campaign before inserting (the
     // request's GUC still names the creator's current campaign). set_config
     // with is_local=true resets at COMMIT, so nothing leaks.
-    await client.query("SELECT set_config('app.current_campaign', $1, true)", [String(campaign.id)]);
+    await client.query(dbUtils.SET_CAMPAIGN_SQL, [String(campaign.id)]);
     await SessionTask.seedDefaults(client, campaign.id);
 
     return campaign;
   });
 };
 
-module.exports = exports;
+// ---------------------------------------------------------------------------
+// Instance administration (superadmin page): campaign updates, deactivation
+// and membership management by campaign id. None of these tables has RLS;
+// the explicit campaign_id predicate is the scope.
+// ---------------------------------------------------------------------------
+
+/**
+ * Update a campaign's name, world and/or active flag.
+ *
+ * Only the keys present in `fields` are written; the controller validates
+ * values. Deactivation is the only "delete" the application can perform:
+ * the app's database login has no DELETE right on campaigns (079), and an
+ * inactive campaign is hidden from its members by verifyToken / getForUser.
+ *
+ * @param {number} id
+ * @param {Object} fields - { name?, world?, is_active? }
+ * @return {Promise<Object|null>} The updated row, or null when the campaign does not exist
+ */
+exports.update = async (id, fields) => {
+  const sets = [];
+  const params = [];
+  ['name', 'world', 'is_active'].forEach((column) => {
+    if (fields[column] !== undefined) {
+      params.push(fields[column]);
+      sets.push(`${column} = $${params.length}`);
+    }
+  });
+  if (sets.length === 0) {
+    return exports.getById(id);
+  }
+  params.push(id);
+  const result = await dbUtils.executeQuery(
+    `UPDATE campaigns
+     SET ${sets.join(', ')}, updated_at = NOW()
+     WHERE id = $${params.length}
+     RETURNING id, name, slug, world, is_active`,
+    params
+  );
+  return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Number of active campaigns on the instance.
+ * @return {Promise<number>}
+ */
+exports.countActive = async () => {
+  const result = await dbUtils.executeQuery(
+    'SELECT COUNT(*)::int AS count FROM campaigns WHERE is_active = TRUE'
+  );
+  return result.rows[0].count;
+};
+
+/**
+ * Number of DMs in a campaign.
+ * @param {number} campaignId
+ * @return {Promise<number>}
+ */
+exports.countDMs = async (campaignId) => {
+  const result = await dbUtils.executeQuery(
+    "SELECT COUNT(*)::int AS count FROM user_campaign WHERE campaign_id = $1 AND role = 'DM'",
+    [campaignId]
+  );
+  return result.rows[0].count;
+};
+
+/**
+ * Look up an account for membership changes.
+ * @param {number} userId
+ * @return {Promise<Object|null>} { id, username, role } or null
+ */
+exports.findUserAccount = async (userId) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT id, username, role FROM users WHERE id = $1',
+    [userId]
+  );
+  return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Add a user to a campaign with a role, or change the role when they are
+ * already a member (UNIQUE (user_id, campaign_id) is the conflict target).
+ *
+ * @param {number} campaignId
+ * @param {number} userId
+ * @param {string} role - 'DM' | 'Player' (validated by the controller)
+ * @return {Promise<Object>} { user_id, campaign_id, role, joined_at }
+ */
+exports.addOrUpdateMember = async (campaignId, userId, role) => {
+  const result = await dbUtils.executeQuery(
+    `INSERT INTO user_campaign (user_id, campaign_id, role)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, campaign_id) DO UPDATE SET role = EXCLUDED.role
+     RETURNING user_id, campaign_id, role, joined_at`,
+    [userId, campaignId, role]
+  );
+  return result.rows[0];
+};
+
+/**
+ * Change an existing member's role.
+ *
+ * @param {number} campaignId
+ * @param {number} userId
+ * @param {string} role - 'DM' | 'Player'
+ * @return {Promise<Object|null>} The membership row, or null when not a member
+ */
+exports.updateMemberRole = async (campaignId, userId, role) => {
+  const result = await dbUtils.executeQuery(
+    `UPDATE user_campaign SET role = $1
+     WHERE campaign_id = $2 AND user_id = $3
+     RETURNING user_id, campaign_id, role, joined_at`,
+    [role, campaignId, userId]
+  );
+  return result.rows.length > 0 ? result.rows[0] : null;
+};

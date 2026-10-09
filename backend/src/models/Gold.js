@@ -1,13 +1,17 @@
 // src/models/Gold.js
 const BaseModel = require('./BaseModel');
 const dbUtils = require('../utils/dbUtils');
+const campaignContext = require('../utils/campaignContext');
+
+// Two-key advisory lock (key space, campaign id) that serializes every write to
+// a campaign's gold ledger, so concurrent balance checks cannot both pass.
+const GOLD_LEDGER_LOCK_KEY = 7301;
 
 class GoldModel extends BaseModel {
   constructor() {
     super({
       tableName: 'gold',
       primaryKey: 'id',
-      fields: ['session_date', 'transaction_type', 'platinum', 'gold', 'silver', 'copper', 'notes', 'character_id'],
       timestamps: { createdAt: false, updatedAt: false }
     });
   }
@@ -15,9 +19,10 @@ class GoldModel extends BaseModel {
   /**
    * Create a new gold transaction entry with additional preprocessing
    * @param {Object} entry - The gold transaction data
+   * @param {Object} [client] - pg client to insert through (inside a transaction)
    * @return {Promise<Object>} - The created gold transaction
    */
-  async create(entry) {
+  async create(entry, client) {
     // Map entry properties to database columns
     const dbEntry = {
       session_date: entry.sessionDate,
@@ -30,7 +35,36 @@ class GoldModel extends BaseModel {
       character_id: entry.character_id || null
     };
 
-    return await super.create(dbEntry);
+    if (!client) {
+      return await super.create(dbEntry);
+    }
+
+    const result = await client.query(
+      `INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes, character_id, who)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        dbEntry.session_date,
+        dbEntry.transaction_type,
+        dbEntry.platinum,
+        dbEntry.gold,
+        dbEntry.silver,
+        dbEntry.copper,
+        dbEntry.notes,
+        dbEntry.character_id,
+        entry.who || null
+      ]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Take the per-campaign gold ledger lock for the rest of the transaction.
+   * @param {Object} client - pg client inside a transaction
+   */
+  async lockLedger(client) {
+    const campaignKey = parseInt(campaignContext.getCampaignId(), 10) || 0;
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [GOLD_LEDGER_LOCK_KEY, campaignKey]);
   }
 
   /**
@@ -40,40 +74,33 @@ class GoldModel extends BaseModel {
    */
   async findAll(options = {}) {
     const { startDate, endDate, page = 1, limit = 50 } = options;
-    
+
     // Calculate offset for pagination
     const offset = (page - 1) * limit;
-    
-    // Build count query
-    let countQuery = 'SELECT COUNT(*) as total FROM gold';
-    const countValues = [];
-    let countParamCount = 1;
-    
-    // Build main query
-    let query = 'SELECT * FROM gold';
-    const values = [];
-    let paramCount = 1;
 
-    // Add WHERE clauses if options are provided
-    if (startDate && endDate) {
-      const whereClause = ` WHERE session_date BETWEEN $${paramCount} AND $${paramCount + 1}`;
-      query += whereClause;
-      countQuery += whereClause;
-      
-      values.push(startDate, endDate);
-      countValues.push(startDate, endDate);
-      paramCount += 2;
-      countParamCount += 2;
+    // Each date bound is optional on its own. The end date is inclusive of the
+    // whole day (session_date is a TIMESTAMP, so BETWEEN would drop every entry
+    // made later on the end date).
+    const conditions = [];
+    const filterValues = [];
+    if (startDate) {
+      filterValues.push(startDate);
+      conditions.push(`session_date >= $${filterValues.length}`);
     }
+    if (endDate) {
+      filterValues.push(endDate);
+      conditions.push(`session_date < ($${filterValues.length}::date + 1)`);
+    }
+    const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
 
-    // Add ORDER BY and LIMIT clauses
-    query += ` ORDER BY session_date DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-    values.push(limit, offset);
+    // id DESC is the tiebreaker: many rows share one session_date, and without
+    // it pages can repeat or skip rows.
+    const query = `SELECT * FROM gold${whereClause} ORDER BY session_date DESC, id DESC LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}`;
+    const countQuery = `SELECT COUNT(*) as total FROM gold${whereClause}`;
 
-    // Execute both queries
     const [transactionResult, countResult] = await Promise.all([
-      dbUtils.executeQuery(query, values, 'Error fetching gold transactions'),
-      dbUtils.executeQuery(countQuery, countValues, 'Error counting gold transactions')
+      dbUtils.executeQuery(query, [...filterValues, limit, offset], 'Error fetching gold transactions'),
+      dbUtils.executeQuery(countQuery, filterValues, 'Error counting gold transactions')
     ]);
 
     const total = parseInt(countResult.rows[0].total);
@@ -93,79 +120,31 @@ class GoldModel extends BaseModel {
   }
 
   /**
-   * Get gold balance
-   * @return {Promise<Object>} - Current gold balance
+   * Get the current gold balance per denomination as integers.
+   * @param {Object} [client] - pg client to read through (inside a transaction);
+   *   defaults to a standalone query
+   * @return {Promise<Object>} - { platinum, gold, silver, copper }
    */
-  async getBalance() {
+  async getBalance(client) {
     const query = `
-      SELECT 
-        COALESCE(SUM(platinum), 0) AS platinum, 
-        COALESCE(SUM(gold), 0) AS gold, 
-        COALESCE(SUM(silver), 0) AS silver, 
+      SELECT
+        COALESCE(SUM(platinum), 0) AS platinum,
+        COALESCE(SUM(gold), 0) AS gold,
+        COALESCE(SUM(silver), 0) AS silver,
         COALESCE(SUM(copper), 0) AS copper
       FROM gold
     `;
 
-    const result = await dbUtils.executeQuery(query, [], 'Error fetching gold balance');
-    return result.rows[0];
-  }
-
-  /**
-   * Get transaction summary by type
-   * @return {Promise<Array>} - Transactions summarized by type
-   */
-  async getSummaryByType() {
-    const query = `
-      SELECT 
-        transaction_type, 
-        COALESCE(SUM(platinum), 0) AS platinum, 
-        COALESCE(SUM(gold), 0) AS gold, 
-        COALESCE(SUM(silver), 0) AS silver, 
-        COALESCE(SUM(copper), 0) AS copper,
-        COUNT(*) as count
-      FROM gold
-      GROUP BY transaction_type
-      ORDER BY transaction_type
-    `;
-
-    const result = await dbUtils.executeQuery(query, [], 'Error fetching gold summary by type');
-    return result.rows;
-  }
-
-  /**
-   * Distribute gold to characters
-   * @param {Array<Object>} distributions - Array of distribution objects
-   * @return {Promise<Array>} - Array of created transactions
-   */
-  async distributeToCharacters(distributions) {
-    return await dbUtils.executeTransaction(async (client) => {
-      const createdEntries = [];
-
-      for (const distribution of distributions) {
-        const { characterId, platinum, gold, silver, copper, notes, transactionType } = distribution;
-
-        const query = `
-          INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes, character_id)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING *
-        `;
-
-        const result = await client.query(query, [
-          new Date(),
-          transactionType,
-          platinum || 0,
-          gold || 0,
-          silver || 0,
-          copper || 0,
-          notes,
-          characterId
-        ]);
-
-        createdEntries.push(result.rows[0]);
-      }
-
-      return createdEntries;
-    }, 'Error distributing gold to characters');
+    const result = client
+      ? await client.query(query)
+      : await dbUtils.executeQuery(query, [], 'Error fetching gold balance');
+    const row = result.rows[0];
+    return {
+      platinum: Number(row.platinum),
+      gold: Number(row.gold),
+      silver: Number(row.silver),
+      copper: Number(row.copper)
+    };
   }
 }
 

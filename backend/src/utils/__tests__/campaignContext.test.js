@@ -2,8 +2,8 @@ const campaignContext = require('../campaignContext');
 
 describe('campaignContext', () => {
   describe('getCampaignId', () => {
-    it('defaults to "1" when no context is active', () => {
-      expect(campaignContext.getCampaignId()).toBe('1');
+    it('fails closed (empty id, which the RLS policies treat as no rows) when no context is active', () => {
+      expect(campaignContext.getCampaignId()).toBe('');
     });
   });
 
@@ -31,9 +31,9 @@ describe('campaignContext', () => {
       expect(result).toBe('done');
     });
 
-    it('restores the default after the context exits', () => {
+    it('restores the empty default after the context exits', () => {
       campaignContext.runWithCampaign('9', () => {});
-      expect(campaignContext.getCampaignId()).toBe('1');
+      expect(campaignContext.getCampaignId()).toBe('');
     });
 
     it('supports nested contexts and restores the outer value', () => {
@@ -53,7 +53,7 @@ describe('campaignContext', () => {
         await new Promise((resolve) => setImmediate(resolve));
         expect(campaignContext.getCampaignId()).toBe('5');
       });
-      expect(campaignContext.getCampaignId()).toBe('1');
+      expect(campaignContext.getCampaignId()).toBe('');
     });
   });
 
@@ -86,7 +86,7 @@ describe('campaignContext', () => {
       } catch (e) {
         // expected
       }
-      expect(campaignContext.getCampaignId()).toBe('1');
+      expect(campaignContext.getCampaignId()).toBe('');
     });
 
     it('accepts digit strings, numbers, and "all"', () => {

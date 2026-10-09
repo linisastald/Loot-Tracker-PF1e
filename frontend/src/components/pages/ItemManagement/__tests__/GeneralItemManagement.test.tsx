@@ -7,27 +7,12 @@ import React from 'react';
 // Mocks (must be declared before component import)
 // ---------------------------------------------------------------------------
 
-// Mock the api utility (imported - though not actually called - by the component).
-// Path is 4 levels up from this test file (__tests__/ -> ItemManagement/ -> pages/ ->
-// components/ -> src/).
-vi.mock('../../../../utils/api', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-    patch: vi.fn(),
-  },
-}));
-
-// Mock lootService (this is what the component actually calls for fetch/search)
+// Mock lootService. getAllLoot and getItemsByIds are present only so the tests can
+// assert the component never calls them (it only searches).
 vi.mock('../../../../services/lootService', () => ({
   default: {
     searchLoot: vi.fn(),
-    getMods: vi.fn(),
-    updateLootItemAsDM: vi.fn(),
-    // After a search returns items, the component fetches the catalog rows
-    // for each unique itemid so the "Real Item" column can render names.
+    getAllLoot: vi.fn(),
     getItemsByIds: vi.fn(),
   },
 }));
@@ -86,51 +71,6 @@ import GeneralItemManagement from '../GeneralItemManagement';
 // Test fixtures
 // ---------------------------------------------------------------------------
 
-const mockSummaryItems = [
-  {
-    id: 1,
-    name: 'Cloak of Resistance +1',
-    quantity: 1,
-    unidentified: false,
-    masterwork: false,
-    type: 'magic',
-    size: 'Medium',
-    status: 'Pending Sale',
-    value: 1000,
-    notes: 'shimmery',
-    session_date: '2026-04-01',
-  },
-  {
-    id: 2,
-    name: 'Bag of Holding',
-    quantity: 1,
-    unidentified: true,
-    masterwork: false,
-    type: 'magic',
-    size: 'Medium',
-    status: 'Kept Party',
-    value: 2500,
-    notes: '',
-    session_date: '2026-04-02',
-  },
-];
-
-const mockIndividualItems = [
-  {
-    id: 3,
-    name: 'Masterwork Longsword',
-    quantity: 2,
-    unidentified: false,
-    masterwork: true,
-    type: 'weapon',
-    size: 'Medium',
-    status: 'Kept Self',
-    value: 315,
-    notes: 'shiny',
-    session_date: '2026-04-03',
-  },
-];
-
 const mockSearchResults = [
   {
     id: 11,
@@ -166,10 +106,6 @@ const setupDefaultMocks = () => {
     data: { items: [] },
   });
 
-  // Catalog item lookups default to "no items found"; specific tests override.
-  (lootService.getItemsByIds as any).mockResolvedValue({
-    data: { items: [], count: 0 },
-  });
 };
 
 const renderComponent = () =>
@@ -273,46 +209,27 @@ describe('GeneralItemManagement', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('does NOT call getAllLoot on mount (catalog items are fetched lazily after a search)', async () => {
+    it('does not call getAllLoot on mount', async () => {
       renderComponent();
       await waitFor(() => {
         expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
-      // Component now resolves catalog item names via getItemsByIds keyed off
-      // the itemids in the search results, not via a blanket getAllLoot.
-      expect((lootService as any).getAllLoot).toBeUndefined();
+      expect(lootService.getAllLoot).not.toHaveBeenCalled();
     });
 
-    it('fetches catalog items via getItemsByIds when a search returns rows with itemids', async () => {
+    it('does not look up catalog items after a search (no extra request per search)', async () => {
       (lootService.searchLoot as any).mockResolvedValueOnce({
-        data: {
-          items: [
-            { id: 50, name: 'Wand', itemid: 5364, value: 0 },
-            { id: 51, name: 'Boots', itemid: 2839, value: 0 },
-          ],
-        },
-      });
-      (lootService.getItemsByIds as any).mockResolvedValueOnce({
-        data: {
-          items: [
-            { id: 5364, name: 'Wand of Magic Missile', value: 750 },
-            { id: 2839, name: 'Sandals of the Lightest Step', value: 4500 },
-          ],
-          count: 2,
-        },
+        data: { items: [{ id: 50, name: 'Wand', itemid: 5364, value: 0 }] },
       });
 
       renderComponent();
-      await waitFor(() => {
-        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
-      });
-
-      fireEvent.change(getSearchInput(), { target: { value: 'sandals' } });
+      fireEvent.change(getSearchInput(), { target: { value: 'wand' } });
       clickSearchButton();
 
       await waitFor(() => {
-        expect(lootService.getItemsByIds).toHaveBeenCalledWith([5364, 2839]);
+        expect(screen.getByText('Wand')).toBeInTheDocument();
       });
+      expect(lootService.getItemsByIds).not.toHaveBeenCalled();
     });
   });
 
@@ -488,7 +405,7 @@ describe('GeneralItemManagement', () => {
       fireEvent.change(getSearchInput(), { target: { value: 'sword' } });
       await selectOption(/^type$/i, 'Weapon');
       await selectOption(/^size$/i, 'Medium');
-      await selectOption(/^status$/i, 'Kept Self');
+      await selectOption(/^status$/i, 'Kept Character');
 
       clickSearchButton();
 
@@ -500,7 +417,7 @@ describe('GeneralItemManagement', () => {
         query: 'sword',
         type: 'weapon',
         size: 'Medium',
-        status: 'Kept Self',
+        status: 'Kept Character',
       });
     });
   });
@@ -617,6 +534,46 @@ describe('GeneralItemManagement', () => {
       const rowsAfter = screen.getAllByRole('row');
       const firstDataRowAfter = rowsAfter[1];
       expect(firstDataRowAfter.textContent).toContain('Aardvark Cloak');
+    });
+  });
+
+  describe('Sort direction and numeric columns', () => {
+    const rows = [
+      { id: 1, name: 'Ten', quantity: 10, value: 10 },
+      { id: 2, name: 'Nine', quantity: 9, value: 9 },
+      { id: 3, name: 'Hundred', quantity: 100, value: 100 },
+    ];
+
+    const renderWithRows = async () => {
+      (lootService.searchLoot as any).mockResolvedValueOnce({ data: { items: rows } });
+      renderComponent();
+      fireEvent.change(getSearchInput(), { target: { value: 'x' } });
+      clickSearchButton();
+      await waitFor(() => expect(screen.getByText('Hundred')).toBeInTheDocument());
+    };
+
+    const firstRowName = () => screen.getAllByRole('row')[1].textContent ?? '';
+
+    it('sorts numeric columns as numbers, not as text', async () => {
+      await renderWithRows();
+
+      fireEvent.click(screen.getByRole('button', { name: /^value$/i }));
+
+      expect(screen.getAllByRole('row').slice(1).map(r => r.textContent?.match(/Nine|Ten|Hundred/)?.[0]))
+        .toEqual(['Nine', 'Ten', 'Hundred']);
+    });
+
+    it('reflects the active direction in aria-sort (asc then desc)', async () => {
+      await renderWithRows();
+      const header = () => screen.getByRole('button', { name: /^quantity$/i }).closest('th')!;
+
+      fireEvent.click(screen.getByRole('button', { name: /^quantity$/i }));
+      expect(header()).toHaveAttribute('aria-sort', 'ascending');
+      expect(firstRowName()).toContain('Nine');
+
+      fireEvent.click(screen.getByRole('button', { name: /^quantity$/i }));
+      expect(header()).toHaveAttribute('aria-sort', 'descending');
+      expect(firstRowName()).toContain('Hundred');
     });
   });
 
@@ -792,36 +749,9 @@ describe('GeneralItemManagement', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 10. Error case: failing initial fetch shows error UI
+  // 10. Error states
   // -------------------------------------------------------------------------
   describe('Error states', () => {
-    it('survives a failing catalog lookup after a successful search', async () => {
-      // The search itself succeeds but the catalog enrichment errors. The
-      // component should still render the rows from the search; the "Real
-      // Item" column will fall back to its "Not linked" state for those rows.
-      (lootService.searchLoot as any).mockResolvedValueOnce({
-        data: {
-          items: [{ id: 1, name: 'Found Row', itemid: 999, value: 100 }],
-        },
-      });
-      (lootService.getItemsByIds as any).mockRejectedValueOnce(
-        new Error('catalog boom')
-      );
-
-      renderComponent();
-      await waitFor(() => {
-        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
-      });
-
-      fireEvent.change(getSearchInput(), { target: { value: 'found' } });
-      clickSearchButton();
-
-      // Search results render even though catalog lookup failed.
-      await waitFor(() => {
-        expect(screen.getByText('Found Row')).toBeInTheDocument();
-      });
-    });
-
     it('shows an error alert when search fails', async () => {
       (lootService.searchLoot as any).mockRejectedValueOnce(
         new Error('search failed')

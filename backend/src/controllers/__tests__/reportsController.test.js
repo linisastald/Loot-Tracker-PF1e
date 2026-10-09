@@ -8,10 +8,18 @@
  * - getCharacterLedger: character loot ledger with balance calculations
  * - getUnidentifiedCount: count of unidentified items
  * - getUnprocessedCount: count of unprocessed items
- * - getLootStatistics: loot statistics over a time period
- * - getValueDistribution: value range distribution report
- * - getSessionReport: session-based loot report
  */
+
+jest.mock('../../utils/dbUtils', () => ({
+  executeQuery: jest.fn(),
+}));
+
+jest.mock('../../utils/logger', () => ({
+  error: jest.fn(),
+  warn: jest.fn(),
+  info: jest.fn(),
+  debug: jest.fn(),
+}));
 
 const dbUtils = require('../../utils/dbUtils');
 const reportsController = require('../reportsController');
@@ -117,6 +125,48 @@ describe('reportsController', () => {
       await reportsController.getKeptPartyLoot(req, res);
 
       expect(res.error).toHaveBeenCalledWith('Internal server error');
+    });
+  });
+
+  // ─── F-0382: no implicit cap ─────────────────────────────────────
+
+  describe('unpaginated requests return the full set', () => {
+    const cases = [
+      ['getKeptPartyLoot', {}],
+      ['getKeptCharacterLoot', {}],
+      ['getKeptCharacterLoot', { character_id: '5' }],
+      ['getTrashedLoot', {}],
+    ];
+
+    it.each(cases)('%s without page/limit applies no LIMIT', async (fn, query) => {
+      const req = createMockReq({ query });
+      const res = createMockRes();
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1, row_type: 'summary' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '120' }] });
+
+      await reportsController[fn](req, res);
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).not.toMatch(/LIMIT|OFFSET/i);
+      expect(params).not.toContain(50);
+      const data = res.success.mock.calls[0][0];
+      expect(data.pagination.hasMore).toBe(false);
+      expect(data.pagination.total).toBe(120);
+    });
+
+    it('still paginates when the caller sends page/limit', async () => {
+      const req = createMockReq({ query: { page: '2', limit: '10', character_id: '5' } });
+      const res = createMockRes();
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '25' }] });
+
+      await reportsController.getKeptCharacterLoot(req, res);
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toMatch(/LIMIT \$\d+ OFFSET \$\d+/);
+      expect(params).toEqual(expect.arrayContaining(['5', 10, 10]));
     });
   });
 
@@ -399,198 +449,65 @@ describe('reportsController', () => {
     });
   });
 
-  // ─── getLootStatistics ──────────────────────────────────────────
+  // ─── SQL filters and parameters ─────────────────────────────────
 
-  describe('getLootStatistics', () => {
-    it('should return statistics for default 30-day period', async () => {
-      const req = createMockReq({ query: {} });
-      const res = createMockRes();
+  describe('query filters', () => {
+    const queueRows = () => dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
-      // Status breakdown
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [
-            { status: 'Kept Character', count: '10', total_value: '5000.00' },
-            { status: 'Kept Party', count: '5', total_value: '2500.00' },
-          ],
-        })
-        // Type breakdown
-        .mockResolvedValueOnce({
-          rows: [
-            { type: 'Weapon', count: '8', total_value: '4000.00' },
-          ],
-        })
-        // Daily breakdown
-        .mockResolvedValueOnce({
-          rows: [
-            { date: '2024-06-15', items_created: '3', total_value: '1500.00' },
-          ],
-        })
-        // Overall totals
-        .mockResolvedValueOnce({
-          rows: [{
-            total_items: '15',
-            total_value: '7500.00',
-            unique_items: '12',
-            avg_item_value: '500.00',
-          }],
-        });
+    it('party report reads only Kept Party rows, ordered by name', async () => {
+      queueRows();
+      await reportsController.getKeptPartyLoot(createMockReq(), createMockRes());
 
-      await reportsController.getLootStatistics(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(4);
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.period.days).toBe(30);
-      expect(data.totals.totalItems).toBe(15);
-      expect(data.totals.totalValue).toBe(7500);
-      expect(data.totals.uniqueItems).toBe(12);
-      expect(data.totals.averageItemValue).toBe(500);
-      expect(data.byStatus).toHaveLength(2);
-      expect(data.byType).toHaveLength(1);
-      expect(data.dailyBreakdown).toHaveLength(1);
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain('statuspage = ANY($1::text[])');
+      expect(sql).toContain('ORDER BY name');
+      expect(params).toEqual([['Kept Party']]);
+      // the count query uses the same filter
+      expect(dbUtils.executeQuery.mock.calls[1][0]).toContain('statuspage = ANY($1::text[])');
     });
 
-    it('should accept custom days parameter', async () => {
-      const req = createMockReq({ query: { days: '7' } });
-      const res = createMockRes();
+    it('character report reads Kept Character rows and filters on the character name', async () => {
+      queueRows();
+      await reportsController.getKeptCharacterLoot(createMockReq({ query: { character_id: '5' } }), createMockRes());
 
-      const emptyResult = { rows: [] };
-      const totalsResult = {
-        rows: [{ total_items: '0', total_value: '0', unique_items: '0', avg_item_value: '0' }],
-      };
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce(emptyResult)
-        .mockResolvedValueOnce(emptyResult)
-        .mockResolvedValueOnce(emptyResult)
-        .mockResolvedValueOnce(totalsResult);
-
-      await reportsController.getLootStatistics(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.period.days).toBe(7);
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params[0]).toEqual(expect.arrayContaining(['Kept Character']));
+      expect(sql).toContain('character_name = (SELECT name FROM characters WHERE id = $2)');
+      expect(params[1]).toBe('5');
     });
 
-    it('should return 500 when query fails', async () => {
-      const req = createMockReq({ query: {} });
-      const res = createMockRes();
+    it('trashed report reads Trashed and Given Away rows', async () => {
+      queueRows();
+      await reportsController.getTrashedLoot(createMockReq(), createMockRes());
 
-      dbUtils.executeQuery.mockRejectedValue(new Error('Query timeout'));
-
-      await reportsController.getLootStatistics(req, res);
-
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-  });
-
-  // ─── getValueDistribution ───────────────────────────────────────
-
-  describe('getValueDistribution', () => {
-    it('should return value distribution with percentages', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [
-          { value_range: '< 10 gp', count: '20', total_value: '100.00' },
-          { value_range: '100-499 gp', count: '30', total_value: '9000.00' },
-          { value_range: '5,000+ gp', count: '50', total_value: '500000.00' },
-        ],
-      });
-
-      await reportsController.getValueDistribution(req, res);
-
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.distribution).toHaveLength(3);
-      expect(data.totalItems).toBe(100);
-
-      // Check percentages are calculated
-      expect(data.distribution[0].percentage).toBe('20.0');
-      expect(data.distribution[1].percentage).toBe('30.0');
-      expect(data.distribution[2].percentage).toBe('50.0');
-
-      expect(data.totalValue).toBe(509100);
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params[0]).toEqual(expect.arrayContaining(['Trashed', 'Given Away']));
+      expect(params[0]).not.toContain('Kept Party');
     });
 
-    it('should handle empty distribution', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
+    it('page 3 with limit 20 binds LIMIT 20 and OFFSET 40', async () => {
+      queueRows();
+      await reportsController.getKeptPartyLoot(createMockReq({ query: { page: '3', limit: '20' } }), createMockRes());
 
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await reportsController.getValueDistribution(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.distribution).toHaveLength(0);
-      expect(data.totalItems).toBe(0);
-      expect(data.totalValue).toBe(0);
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain('LIMIT $2 OFFSET $3');
+      expect(params).toEqual([['Kept Party'], 20, 40]);
     });
 
-    it('should return 500 when query fails', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
+    it('unidentified count only counts unidentified rows that still hide an item or mods', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+      await reportsController.getUnidentifiedCount(createMockReq(), createMockRes());
 
-      dbUtils.executeQuery.mockRejectedValue(new Error('View missing'));
-
-      await reportsController.getValueDistribution(req, res);
-
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-  });
-
-  // ─── getSessionReport ───────────────────────────────────────────
-
-  describe('getSessionReport', () => {
-    it('should return session report for a valid date', async () => {
-      const req = createMockReq({ query: { sessionDate: '2024-06-15' } });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [
-            { id: 1, name: 'Longsword +1', base_item_name: 'Longsword', character_name: 'Valeros' },
-            { id: 2, name: 'Potion of CLW', base_item_name: 'Potion', character_name: null },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rows: [{
-            total_items: '2',
-            total_value: '2500.00',
-            unique_statuses: '2',
-          }],
-        });
-
-      await reportsController.getSessionReport(req, res);
-
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.items).toHaveLength(2);
-      expect(data.summary.totalItems).toBe(2);
-      expect(data.summary.totalValue).toBe(2500);
-      expect(data.summary.uniqueStatuses).toBe(2);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('unidentified = true');
     });
 
-    it('should reject when sessionDate is missing', async () => {
-      const req = createMockReq({ query: {} });
-      const res = createMockRes();
+    it('unprocessed count only counts rows without a status', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+      await reportsController.getUnprocessedCount(createMockReq(), createMockRes());
 
-      await reportsController.getSessionReport(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Session date is required');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should return 500 when query fails', async () => {
-      const req = createMockReq({ query: { sessionDate: '2024-06-15' } });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockRejectedValue(new Error('DB error'));
-
-      await reportsController.getSessionReport(req, res);
-
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('status IS NULL');
     });
   });
 });

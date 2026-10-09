@@ -2,6 +2,7 @@
 // Catalog access for the spellbook generator (kept separate so the generation
 // logic can be unit-tested with this module mocked).
 const dbUtils = require('../../utils/dbUtils');
+const { castableSpellsSource } = require('../../utils/castableSpells');
 
 /**
  * Load every spell castable by the given class tag (e.g. 'Wizard', 'Magus',
@@ -9,14 +10,15 @@ const dbUtils = require('../../utils/dbUtils');
  * per-class levels (e.g. {Bard=2|Cleric,Sorcerer,Wizard=3}); we filter on the
  * rejoined string here and parse the exact per-class level in the service.
  *
+ * Only real, castable spells are returned (see utils/castableSpells).
+ *
  * @param {string} classTag
  * @returns {Promise<Array<{id:number,name:string,school:string,subschool:string,class:string[],spelllevel:number,source:string}>>}
  */
 const getClassSpells = async (classTag) => {
   const result = await dbUtils.executeQuery(
     `SELECT id, name, school, subschool, class, spelllevel, source
-     FROM spells
-     WHERE array_to_string(class, ',') ILIKE $1
+     FROM ${castableSpellsSource("array_to_string(class, ',') ILIKE $1")} AS s
      ORDER BY name`,
     [`%${classTag}%`]
   );

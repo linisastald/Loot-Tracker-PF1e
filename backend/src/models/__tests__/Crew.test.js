@@ -64,6 +64,28 @@ describe('Crew model', () => {
     });
   });
 
+  describe('single-row updates bind the crew id as a placeholder', () => {
+    // One more value is bound than the SET clause uses; the WHERE clause must
+    // reference it as $N, or PostgreSQL rejects the statement.
+    const lastPlaceholder = (query) => Math.max(...[...query.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+
+    it.each([
+      ['update', () => Crew.update(7, { name: 'Bosun', location_type: 'ship', location_id: 1 })],
+      ['markDead', () => Crew.markDead(7, '2026-01-01')],
+      ['markDeparted', () => Crew.markDeparted(7, '2026-01-01', 'left')],
+      ['moveToLocation', () => Crew.moveToLocation(7, 'ship', 3, 'Cook')],
+    ])('%s', async (_name, run) => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 7 }] });
+
+      await run();
+
+      const [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(values[values.length - 1]).toBe(7);
+      expect(query).toContain(`WHERE id = $${values.length}`);
+      expect(lastPlaceholder(query)).toBe(values.length);
+    });
+  });
+
   describe('create', () => {
     it('should create crew with ship position when on ship', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, name: 'Bosun' }] });
@@ -106,8 +128,15 @@ describe('Crew model', () => {
   });
 
   describe('update', () => {
+    const existingRow = {
+      id: 1, name: 'Bosun', race: 'Human', age: 30, description: 'Gruff',
+      location_type: 'ship', location_id: 4, ship_position: 'bosun', hire_date: '4722-01-15',
+    };
+
     it('should clear ship_position when moving to outpost', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [existingRow] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] });
 
       await Crew.update(1, {
         name: 'Guard', race: 'Human', age: 30,
@@ -115,8 +144,29 @@ describe('Crew model', () => {
         ship_position: 'captain',
       });
 
-      const values = dbUtils.executeQuery.mock.calls[0][1];
+      const values = dbUtils.executeQuery.mock.calls[1][1];
       expect(values[6]).toBeNull(); // ship_position
+    });
+
+    it('keeps stored values for fields missing from a partial body', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [existingRow] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+      await Crew.update(1, { name: 'Renamed' });
+
+      const values = dbUtils.executeQuery.mock.calls[1][1];
+      expect(values).toEqual(['Renamed', 'Human', 30, 'Gruff', 'ship', 4, 'bosun', '4722-01-15', 1]);
+    });
+
+    it('turns an explicitly blank optional field into NULL', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [existingRow] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+      await Crew.update(1, { description: '' });
+
+      expect(dbUtils.executeQuery.mock.calls[1][1][3]).toBeNull();
     });
 
     it('should return null when crew not found', async () => {
@@ -125,6 +175,21 @@ describe('Crew model', () => {
       const result = await Crew.update(999, { name: 'Ghost', location_type: 'ship', location_id: 1 });
 
       expect(result).toBeNull();
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('locationExists', () => {
+    it('queries the ships table for ship locations', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ '?column?': 1 }] });
+      await expect(Crew.locationExists('ship', 3)).resolves.toBe(true);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('FROM ships');
+    });
+
+    it('returns false for unknown id or type', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      await expect(Crew.locationExists('outpost', 99)).resolves.toBe(false);
+      await expect(Crew.locationExists('tavern', 1)).resolves.toBe(false);
     });
   });
 

@@ -30,6 +30,7 @@ vi.mock('../../../../services/lootService', () => ({
     getAllLoot: vi.fn(),
     getMods: vi.fn(),
     suggestItems: vi.fn(),
+    getItemsByIds: vi.fn(),
   },
 }));
 
@@ -52,6 +53,7 @@ vi.mock('../../../../contexts/CampaignContext', () => ({
 import api from '../../../../utils/api';
 import lootService from '../../../../services/lootService';
 import AddItemMod from '../AddItemMod';
+import { ITEM_TYPES } from '../../../../utils/itemOptions';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -67,6 +69,16 @@ const mockExistingItem = {
   casterlevel: 5,
 };
 
+// The suggest endpoint returns ONLY these columns (no weight / casterlevel), which is
+// what made editing a catalog item null those two columns (F-1334).
+const mockSuggestion = {
+  id: 42,
+  name: 'Existing Sword',
+  type: 'weapon',
+  subtype: 'one handed',
+  value: 315,
+};
+
 const mockExistingMod = {
   id: 7,
   name: 'Flaming',
@@ -79,15 +91,16 @@ const mockExistingMod = {
 };
 
 const setupDefaultMocks = () => {
-  // Component fetches at mount: getAllLoot + getMods
-  (lootService.getAllLoot as any).mockResolvedValue({
-    data: { summary: [], individual: [], count: 0 },
-  });
+  // Component fetches only the mod list at mount
   (lootService.getMods as any).mockResolvedValue({
     data: { mods: [] },
   });
   (lootService.suggestItems as any).mockResolvedValue({
     data: { suggestions: [], count: 0 },
+  });
+  // Full catalog row lookup used when an item is picked for editing
+  (lootService.getItemsByIds as any).mockResolvedValue({
+    data: { items: [mockExistingItem], count: 1 },
   });
 };
 
@@ -175,9 +188,10 @@ describe('AddItemMod', () => {
       renderAddItemMod();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
         expect(lootService.getMods).toHaveBeenCalled();
       });
+      // The loot list is not needed on a catalog page (F-1330/F-1331)
+      expect(lootService.getAllLoot).not.toHaveBeenCalled();
 
       // "Add New Item" heading is rendered when on Items tab in add mode
       expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
@@ -214,6 +228,20 @@ describe('AddItemMod', () => {
         expect(screen.getByText('Item name is required')).toBeInTheDocument();
       });
       expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('offers exactly the shared canonical item types (owner decision 2026-10-06)', async () => {
+      renderAddItemMod();
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+      });
+
+      const label = Array.from(document.querySelectorAll('label')).find(l => /^Type/.test(l.textContent || ''))!;
+      const combobox = label.closest('.MuiFormControl-root')!.querySelector('[role="combobox"]') as HTMLElement;
+      fireEvent.mouseDown(combobox);
+
+      const options = (await screen.findAllByRole('option')).map(o => o.textContent);
+      expect(options).toEqual(['Select Type', ...ITEM_TYPES.map(t => t.label)]);
     });
 
     it('shows "Item type is required" when type is blank', async () => {
@@ -337,13 +365,13 @@ describe('AddItemMod', () => {
       });
     });
 
-    it('refreshes the items list after a successful create', async () => {
+    it('does not reload the loot list after a successful create', async () => {
       (api.post as any).mockResolvedValueOnce({ data: { id: 101 } });
 
       renderAddItemMod();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalledTimes(1);
+        expect(lootService.getMods).toHaveBeenCalledTimes(1);
       });
 
       fireEvent.change(getInputByLabelText(/^Item Name/), {
@@ -355,9 +383,9 @@ describe('AddItemMod', () => {
       fireEvent.click(screen.getByRole('button', { name: /add item/i }));
 
       await waitFor(() => {
-        // Initial mount call + post-create refresh call
-        expect(lootService.getAllLoot).toHaveBeenCalledTimes(2);
+        expect(api.post).toHaveBeenCalledTimes(1);
       });
+      expect(lootService.getAllLoot).not.toHaveBeenCalled();
     });
   });
 
@@ -367,7 +395,7 @@ describe('AddItemMod', () => {
   describe('Items tab - autocomplete + update', () => {
     it('populates the form when an item is selected from the Autocomplete', async () => {
       (lootService.suggestItems as any).mockResolvedValue({
-        data: { suggestions: [mockExistingItem], count: 1 },
+        data: { suggestions: [mockSuggestion], count: 1 },
       });
 
       renderAddItemMod();
@@ -405,9 +433,60 @@ describe('AddItemMod', () => {
       expect(screen.queryByRole('button', { name: /^add item$/i })).not.toBeInTheDocument();
     });
 
+    it('F-1334: loads the full catalog row so weight and casterlevel are not nulled on update', async () => {
+      (lootService.suggestItems as any).mockResolvedValue({
+        data: { suggestions: [mockSuggestion], count: 1 },
+      });
+      (api.put as any).mockResolvedValueOnce({ data: { id: 42 } });
+
+      renderAddItemMod();
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+      });
+
+      fireEvent.change(getInputByLabelText(/^Search for an item to edit/), { target: { value: 'Exi' } });
+      fireEvent.click(await screen.findByRole('option', { name: 'Existing Sword' }));
+
+      await waitFor(() => {
+        expect(lootService.getItemsByIds).toHaveBeenCalledWith([42]);
+      });
+      await waitFor(() => {
+        expect((getInputByLabelText(/^Weight/) as HTMLInputElement).value).toBe('4');
+      });
+      expect((getInputByLabelText(/^Caster Level/) as HTMLInputElement).value).toBe('5');
+
+      fireEvent.click(screen.getByRole('button', { name: /^update item$/i }));
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith(
+          '/admin/items/42',
+          expect.objectContaining({ weight: 4, casterlevel: 5 }),
+        );
+      });
+    });
+
+    it('does not populate the form (so it cannot null columns) when the full row cannot be loaded', async () => {
+      (lootService.suggestItems as any).mockResolvedValue({
+        data: { suggestions: [mockSuggestion], count: 1 },
+      });
+      (lootService.getItemsByIds as any).mockRejectedValue(new Error('boom'));
+
+      renderAddItemMod();
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+      });
+
+      fireEvent.change(getInputByLabelText(/^Search for an item to edit/), { target: { value: 'Exi' } });
+      fireEvent.click(await screen.findByRole('option', { name: 'Existing Sword' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to load item details/i)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+    });
+
     it('PUTs /admin/items/:id when updating an existing selected item', async () => {
       (lootService.suggestItems as any).mockResolvedValue({
-        data: { suggestions: [mockExistingItem], count: 1 },
+        data: { suggestions: [mockSuggestion], count: 1 },
       });
       (api.put as any).mockResolvedValueOnce({ data: { id: 42 } });
 
@@ -622,6 +701,28 @@ describe('AddItemMod', () => {
       });
     });
 
+    it('offers each subtarget once and only those matching the target (F-1336)', async () => {
+      (api.post as any).mockResolvedValueOnce({ data: { id: 8 } });
+
+      await switchToModsTab();
+
+      fireEvent.change(getInputByLabelText(/^Mod Name/), { target: { value: 'Light Plate' } });
+      await selectMuiOption(/^Type/, 'Material');
+      await selectMuiOption(/^Target/, 'Armor');
+      await selectMuiOption(/^Subtarget/, 'Light Armor');
+
+      fireEvent.click(screen.getByRole('button', { name: /add mod/i }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith(
+          '/admin/mods',
+          expect.objectContaining({ target: 'armor', subtarget: 'light' }),
+        );
+      });
+      // The selected option is shown as Light Armor, not Light Weapon
+      expect(screen.queryByText('Light Weapon')).not.toBeInTheDocument();
+    });
+
     it('sends plus=null when Plus is blank', async () => {
       (api.post as any).mockResolvedValueOnce({ data: { id: 6 } });
 
@@ -787,12 +888,7 @@ describe('AddItemMod', () => {
       });
     });
 
-    it('treats negative value as a number (component does not enforce non-negativity)', async () => {
-      // Documents current behaviour: the component performs no min/max clamping;
-      // it simply parseFloats whatever the user types. This protects against
-      // future regressions if validation is added.
-      (api.post as any).mockResolvedValueOnce({ data: { id: 70 } });
-
+    it('rejects a negative value without posting (matches the backend min of 0) (F-1323)', async () => {
       renderAddItemMod();
 
       await waitFor(() => {
@@ -807,12 +903,26 @@ describe('AddItemMod', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /add item/i }));
 
+      expect(await screen.findByText('Item value cannot be negative')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('rejects a negative weight without posting', async () => {
+      renderAddItemMod();
+
       await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith(
-          '/admin/items',
-          expect.objectContaining({ value: -5 }),
-        );
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
       });
+
+      fireEvent.change(getInputByLabelText(/^Item Name/), { target: { value: 'Feather' } });
+      await selectMuiOption(/^Type/, 'Other');
+      fireEvent.change(getInputByLabelText(/^Value/), { target: { value: '5' } });
+      fireEvent.change(getInputByLabelText(/^Weight/), { target: { value: '-1' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /add item/i }));
+
+      expect(await screen.findByText('Item weight cannot be negative')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
     });
   });
 

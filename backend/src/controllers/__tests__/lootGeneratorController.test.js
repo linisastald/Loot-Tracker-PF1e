@@ -31,6 +31,15 @@ function createMockReq(over = {}) {
   return { body: {}, params: {}, query: {}, user: { role: 'DM', id: 1 }, ...over };
 }
 
+// These tests call handlers directly, outside the request context that verifyToken
+// establishes (an unset context now fails closed): simulate a request in campaign 1
+// unless the test sets its own context with runWithCampaign.
+beforeEach(() => {
+  const campaignContext = require('../../utils/campaignContext');
+  const realGetCampaignId = campaignContext.getCampaignId;
+  jest.spyOn(campaignContext, 'getCampaignId').mockImplementation(() => realGetCampaignId() || '1');
+});
+
 describe('lootGeneratorController', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -139,7 +148,7 @@ describe('lootGeneratorController', () => {
       const req = createMockReq({
         body: {
           items: [{
-            name: 'Spellbook (Wizard, CL 9)', type: 'spellbook', quantity: 1, value: 1200,
+            name: 'Spellbook (Wizard, CL 9)', type: 'magic', subtype: 'spellbook', quantity: 1, value: 1200,
             spellbook: {
               casterClass: 'wizard', casterLevel: 9, school: 'Evocation',
               spells: [
@@ -160,6 +169,137 @@ describe('lootGeneratorController', () => {
       expect(bookInserts).toHaveLength(1);
       expect(spellInserts).toHaveLength(2);
       expect(res.created).toHaveBeenCalled();
+    });
+
+    it('stores a spellbook as type magic (subtype spellbook), also for the legacy type value', async () => {
+      for (const sent of [{ type: 'magic', subtype: 'spellbook' }, { type: 'spellbook' }]) {
+        const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 5, name: 'Spellbook', quantity: 1 }] }) };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const req = createMockReq({
+          body: {
+            items: [{ name: 'Wizard spellbook', ...sent, quantity: 1, value: 10, spellbook: { spells: [{ id: 1, name: 'Fireball', level: 3 }] } }],
+            coins: {},
+          },
+        });
+        await controller.commit(req, createMockRes());
+        const lootInsert = client.query.mock.calls.find(c => c[0].includes('INSERT INTO loot'));
+        expect(lootInsert[1][5]).toBe('magic');
+        expect(client.query.mock.calls.filter(c => c[0].includes('INTO spellbook ('))).toHaveLength(1);
+      }
+    });
+
+    describe('spellbook catalog link', () => {
+      const bookBody = (over = {}) => ({
+        items: [{
+          name: 'Spellbook (Wizard, CL 9)', type: 'magic', subtype: 'spellbook', quantity: 1, value: 1200,
+          notes: 'Found in a chest', spellbook: { spells: [{ id: 1, name: 'Fireball', level: 3 }] }, ...over,
+        }],
+        coins: {},
+      });
+      const makeClient = (catalogRows) => ({
+        query: jest.fn().mockImplementation(async (sql) => {
+          if (/FROM item\b/.test(sql)) return { rows: catalogRows };
+          return { rows: [{ id: 5, name: 'x', quantity: 1 }] };
+        }),
+      });
+
+      it('links the loot row to the global catalog Spellbook, keeping its own name, type, value and notes', async () => {
+        const client = makeClient([{ id: 6472 }]);
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+
+        await controller.commit(createMockReq({ body: bookBody() }), createMockRes());
+
+        const lookup = client.query.mock.calls.find(c => /FROM item\b/.test(c[0]));
+        expect(lookup[0]).toMatch(/subtype = 'spellbook'/);
+        expect(lookup[0]).toMatch(/campaign_id IS NULL/);
+        expect(lookup[1]).toEqual(['Spellbook']);
+        const insert = client.query.mock.calls.find(c => c[0].includes('INSERT INTO loot'));
+        expect(insert[1][2]).toBe('Spellbook (Wizard, CL 9)'); // name
+        expect(insert[1][5]).toBe('magic'); // type
+        expect(insert[1][7]).toBe(6472); // itemid
+        expect(insert[1][9]).toBe(1200); // value
+        expect(insert[1][11]).toBe('Found in a chest'); // notes
+      });
+
+      it('saves without an itemid, and still succeeds, when the catalog row is missing', async () => {
+        const client = makeClient([]);
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = createMockRes();
+
+        await controller.commit(createMockReq({ body: bookBody() }), res);
+
+        const insert = client.query.mock.calls.find(c => c[0].includes('INSERT INTO loot'));
+        expect(insert[1][7]).toBeNull();
+        expect(client.query.mock.calls.filter(c => c[0].includes('INTO spellbook ('))).toHaveLength(1);
+        expect(res.created).toHaveBeenCalled();
+      });
+
+      it('does not link an unidentified spellbook (identifying would rename it to the catalog name)', async () => {
+        const client = makeClient([{ id: 6472 }]);
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+
+        await controller.commit(createMockReq({ body: bookBody({ unidentified: true }) }), createMockRes());
+
+        const insert = client.query.mock.calls.find(c => c[0].includes('INSERT INTO loot'));
+        expect(insert[1][7]).toBeNull();
+      });
+
+      it('does not look up the catalog for an ordinary item', async () => {
+        const client = makeClient([{ id: 6472 }]);
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+
+        await controller.commit(createMockReq({ body: { items: [{ name: 'Ring', type: 'magic', quantity: 1 }], coins: {} } }), createMockRes());
+
+        expect(client.query.mock.calls.some(c => /FROM item\b/.test(c[0]))).toBe(false);
+      });
+
+      it('keeps an itemId the client chose instead of looking one up', async () => {
+        const client = makeClient([{ id: 6472 }]);
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+
+        await controller.commit(createMockReq({ body: bookBody({ itemId: 99 }) }), createMockRes());
+
+        const insert = client.query.mock.calls.find(c => c[0].includes('INSERT INTO loot'));
+        expect(insert[1][7]).toBe(99);
+      });
+    });
+
+    describe('item validation', () => {
+      const commitItems = async (items) => {
+        const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 1, name: 'x', quantity: 1 }] }) };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = createMockRes();
+        await controller.commit(createMockReq({ body: { items, coins: {} } }), res);
+        return { client, res };
+      };
+
+      it('rejects an unnamed item instead of silently skipping it', async () => {
+        const { res } = await commitItems([{ name: '   ', quantity: 1 }]);
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Item 1'));
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+        expect(res.created).not.toHaveBeenCalled();
+      });
+
+      it.each([['abc'], [2.5], [-1]])('rejects a non-positive-integer itemId (%p)', async (itemId) => {
+        const { res } = await commitItems([{ name: 'A', itemId }]);
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('itemId'));
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('rejects a modIds entry that is not a positive integer', async () => {
+        const { res } = await commitItems([{ name: 'A', modIds: [417, 'x'] }]);
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('modIds'));
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('clamps negative charges and spellcraft DC to 0 and keeps valid ids', async () => {
+        const { client } = await commitItems([{ name: 'A', itemId: 7, modIds: [3, 4], charges: -5, spellcraftDc: -2 }]);
+        const params = client.query.mock.calls.find(c => c[0].includes('INTO loot'))[1];
+        expect(params[7]).toBe(7);
+        expect(params[8]).toEqual([3, 4]);
+        expect(params[12]).toBe(0);
+        expect(params[13]).toBe(0);
+      });
     });
 
     it('rejects a commit with no items and no coins', async () => {

@@ -11,12 +11,14 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Prerequisite checking against character feats/spells
 
 ### Spell Book Management
+*A DM-only spellbook generator (spellbooks as loot, `POST /api/loot-generator/spellbook`) already exists. The items below, tracking spells per character, are still planned.*
 - Track known spells per spellcasting character
 - Calculate costs for copying spells into spellbooks (spell level^2 x 10 gp)
 - Mark spells as prepared/used per day
 - Support for spontaneous casters (spells known vs spells per day)
 
 ### Encounter Loot Generator
+*Largely shipped: the DM-only loot generator (`backend/src/api/routes/lootGenerator.js`) generates treasure by CR and commits the result to the loot list. Not implemented: saving templates for common encounter types.*
 - Generate random treasure by CR using PF1e treasure tables (CRB Chapter 12)
 - Support for individual monster loot, hoard treasure, and NPC gear
 - Auto-populate loot entry from generated results
@@ -52,7 +54,7 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 ### User Preferences System
 - Create `user_preferences` table (key-value per user, like global `settings` table)
 - Backend API for get/set preferences per authenticated user
-- First preference: **Loot entry bar position** — move Add Item/Add Gold/Submit bar to bottom of page (requested by player, current top-sticky requires scrolling back up when adding many items)
+- First preference: **Loot entry bar position** — *shipped differently in 0.14.0: the Add Item/Add Gold/Submit bar is now sticky at both the top and the bottom of the page, so this preference is no longer needed for that purpose.*
 - Future preferences: light/dark mode toggle, theme selection, UI density
 
 ## Quality of Life Improvements
@@ -97,20 +99,20 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - End-to-end tests for critical user flows
 
 ### Infrastructure
-- GitHub Actions CI/CD pipeline
+- GitHub Actions CI/CD pipeline (`.github/workflows/` currently holds only a `.gitkeep`)
 - Automated database backups
 - Staging environment for testing before production
 - Health monitoring and alerting
 
 ### Database Backup & Restore (DM Settings)
-*Low priority — frontend buttons exist in System Settings but the backend `/admin/backup-database` and `/admin/restore-database` routes are not implemented. Buttons currently 404; rarely used so leaving for later.*
+*Low priority — neither the backend `/admin/backup-database` / `/admin/restore-database` routes nor any frontend buttons for them exist today.*
 - Implement `POST /api/admin/backup-database` (pg_dump with table excludes)
 - Implement `POST /api/admin/restore-database` (multipart upload + pg_restore, with safety checks)
 - Backend tests for both endpoints
-- Re-enable / verify the existing SystemSettings UI once endpoints land
+- Add the System Settings UI once endpoints land
 
 ### Mod Subtarget Selector (DM Item Management → Add Item/Mod)
-*Low priority UX bug — the Mods tab Subtarget dropdown lists every option regardless of selected target. "Light Weapon" and "Light Armor" both share `value="light"`, so MUI Select displays whichever is rendered last when "light" is selected, regardless of which one the DM actually picked.*
+*Shipped: `AddItemMod.jsx` now filters the Subtarget options by the selected Target (each value appears once per list). Only the frontend-test bullet below may still be open.*
 - Filter Subtarget options based on the selected Target (weapon shows one-handed/two-handed/light/ammunition; armor shows light/medium/heavy/shield)
 - Keep storing `value="light"` so existing mod rows in the database stay valid
 - Add a frontend test covering Subtarget filtering once implemented

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-stack web application for managing loot, gold, crew, ships, and campaigns in tabletop RPG sessions. The system supports multiple campaign instances (Rise of the Runelords, Skulls & Shackles) with separate databases.
+This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-stack web application for managing loot, gold, crew, ships, and campaigns in tabletop RPG sessions. The system supports multiple campaigns (Rise of the Runelords, Skulls & Shackles, and others) in one PostgreSQL database, separated by `campaign_id` and row-level security.
 
 ## Technology Stack
 
@@ -13,7 +13,7 @@ This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-
 - **Material-UI v9** (MUI) - Component library
   - **IMPORTANT**: MUI v9 uses `size={{xs, md}}` instead of `item xs={} md={}`
   - Always check existing components for current API patterns
-- **React Router v6** - Routing
+- **React Router v7** - Routing
 - **Axios** - HTTP client
   - **CRITICAL**: Always use the configured `api` utility (`frontend/src/utils/api.ts`), NEVER raw `axios`
   - The `api` utility handles CSRF token fetching and injection automatically
@@ -25,7 +25,7 @@ This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-
 - **PostgreSQL** - Database with pg driver
 - **JWT** - Authentication with HTTP-only cookies
 - **Winston** - Logging with daily rotation
-- **CSRF Protection** - Using csurf middleware
+- **CSRF Protection** - csrf-csrf (double-submit cookie), mounted per route group in `backend/index.js`
 - **Rate Limiting** - Express rate limit
 - **Helmet** - Security headers
 
@@ -36,9 +36,10 @@ This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-
 
 ## Development Environment Constraints
 
-**IMPORTANT**: Claude Code does not have direct access to run applications on this machine.
-- Cannot execute `npm start`, `npm run dev`, or Docker commands to test changes
-- Cannot access running servers or databases
+**IMPORTANT**: Claude Code cannot run the application, Docker or a database on this machine, but it CAN run the test suites:
+- Backend: `cd backend && npx jest --config jest.unit.config.js`
+- Frontend: `cd frontend && npx vitest run` and `npx tsc --noEmit`
+- Cannot execute `npm start`, `npm run dev` or Docker commands, and cannot reach running servers or databases
 - User must build and run the application to test changes
 - User will provide build output and error messages for troubleshooting
 
@@ -188,8 +189,8 @@ This project uses a domain-specific agent architecture for efficient development
 - Use transactions for multi-table operations
 
 **Common Pitfalls**:
-- Production database has legacy column names (`whohas` not `character_id`, `lastupdate` not `created_at`)
-- Always check `/database/init.sql` for actual column names
+- Production database has legacy column names: `loot` uses `whohas` (not `character_id`) and `lastupdate` (the last-update timestamp; there is no `created_at`)
+- Check actual column names in `/database/init.sql` (initial schema) AND the numbered files in `/backend/migrations` (they add and change columns later)
 - Don't assume standard naming - verify actual schema
 - Migration numbers must be sequential (check highest existing number)
 - PostgreSQL array syntax uses `'{}'` not `[]`
@@ -451,42 +452,42 @@ refactor: Extract duplicate logic into utility function
 
 **Build Script**: `build_image.sh`
 ```bash
-# Build from feature branch
-bash build_image.sh --branch feature/city-services --tag test
+# Dev build of a feature branch (worktree, no version commit; tags vX.Y.Z-dev.N):
+bash build_image.sh --branch feature/city-services
 
-# Build from master
-bash build_image.sh --branch master --tag latest
+# Stable release from master (commits the version bump, tags vX.Y.Z, pushes):
+bash build_image.sh --stable
 ```
+`--tag` disables auto-versioning (the tag you give is used as is).
 
 **Build Process**:
 1. Creates Git worktree for specified branch
-2. Builds Docker image with multi-stage build:
+2. Builds `docker/Dockerfile.backend`, a single-stage image:
    - Installs backend dependencies
    - Installs frontend dependencies
    - Builds frontend (TypeScript compilation + Vite build)
    - Copies built frontend to backend container
-   - Removes dev dependencies
-3. Tags image with specified tag
+   - Removes dev dependencies and runs as the `node` user
+3. Tags the image
 4. User deploys and tests
 
 **Important Notes**:
-- Claude cannot execute build or run commands
+- Claude cannot execute build or run commands (build_image.sh, Docker); it can run the unit test suites
 - User must run build script and provide output
+- Before a stable build: dev build first and tested, Dependabot alerts checked, CHANGELOG version heading cut
 - TypeScript errors will fail the build
 - Build happens in worktree to preserve current branch
 
 ### Deployment
-```bash
-# Using docker-compose
-docker-compose -f docker/docker-compose.yml up -d
-
-# Update running containers
-./update_containers.sh
-```
+The repository does not ship a compose file for the application. Images are built with
+`build_image.sh` (`docker/Dockerfile.backend` builds frontend and backend into one container), and the
+production and test instances, and the Discord broker, run from TrueNAS app definitions kept outside
+version control (`docker/truenas-*.yaml`, gitignored). `docker/README.md` and
+`docker/.env.docker.example` list the environment variables.
 
 ### Migration Execution
 - Migrations run automatically on server startup
-- Migration tracking table: `schema_migrations`
+- Migration tracking table: `schema_migrations_v2` (the old `schema_migrations` is only migrated from)
 - Migrations are sequential and tracked by number
 - Failed migrations will prevent server start
 
@@ -637,10 +638,7 @@ NODE_ENV=production
 ```
 
 ### Frontend
-```bash
-# API URL (production uses /api, development uses http://localhost:5000/api)
-REACT_APP_API_URL=/api
-```
+The frontend needs no environment variables: the API path is always `/api`.
 
 ---
 
@@ -668,7 +666,7 @@ const result = response.data || response;
 ### How it Works
 
 The `api` utility is a configured axios instance with request interceptors that:
-1. **Fetches CSRF token** from `/api/auth/csrf-token` endpoint on first request
+1. **Fetches CSRF token** from `/api/csrf-token` endpoint on first request
 2. **Caches token** in localStorage for subsequent requests
 3. **Automatically injects** the token in `X-CSRF-Token` header for every request
 4. **Handles token refresh** if token becomes invalid
@@ -692,12 +690,12 @@ The `api` utility is a configured axios instance with request interceptors that:
 
 ### Backend CSRF Protection
 
-All routes except authentication endpoints are protected with `csrfProtection` middleware:
+CSRF protection is applied where routers are mounted in `backend/index.js`, not per route inside the router files:
 ```javascript
-router.post('/', verifyToken, csrfProtection, controller.create);
+app.use('/api/user', csrfProtection, userRoutes);
 ```
 
-Auth endpoints (`/api/auth/*`) are excluded from CSRF protection to allow initial login.
+`/api/auth/*` and `/api/csrf-token` are not behind it, to allow initial login.
 
 ---
 
@@ -707,8 +705,8 @@ Auth endpoints (`/api/auth/*`) are excluded from CSRF protection to allow initia
 
 **NEVER change existing database column or table names**. The production database has existing data with specific column names that must be preserved:
 - `loot` table uses `whohas` (not `character_id`)
-- `loot` table uses `lastupdate` (not `created_at`)
-- Always verify column names in `/database/init.sql` before writing queries
+- `loot` table uses `lastupdate` (the last-update timestamp; there is no `created_at`)
+- Always verify column names in `/database/init.sql` and the numbered files in `/backend/migrations` before writing queries
 
 Creating new tables and columns is acceptable when required for new features, but existing schema must remain unchanged to maintain compatibility with production data.
 
@@ -910,7 +908,7 @@ When working on this project:
 5. **Follow patterns** - Use existing code as reference
 6. **Review before commit** - Invoke appropriate review agent
 7. **Test your work** - Work with QA agent to create tests
-8. **Remember constraints** - You cannot build or run the app locally
+8. **Remember constraints** - You can run the Jest/Vitest suites but cannot build or run the app, Docker or a database
 9. **Document changes** - Update relevant documentation
 
 The user will handle:

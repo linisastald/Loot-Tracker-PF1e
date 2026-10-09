@@ -28,15 +28,7 @@ module.exports = {
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,
-  // Handle potential issues with updated dependencies
-  extensionsToTreatAsEsm: [],
-  globals: {
-    'ts-jest': {
-      useESM: false
-    }
-  },
-  // Ensure proper module resolution
-  moduleNameMapper: {},
+  // Disable the Babel transform (plain CommonJS, no TypeScript)
   transform: {},
   // Handle async operations better
   maxWorkers: 1

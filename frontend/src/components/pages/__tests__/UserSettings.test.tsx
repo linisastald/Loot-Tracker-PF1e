@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
@@ -16,6 +16,16 @@ vi.mock('../../../utils/api', () => ({
 // Mock CharacterTab to avoid deep dependency tree
 vi.mock('../UserSettings/CharacterTab', () => ({
   default: () => <div data-testid="character-tab">Character Tab Content</div>,
+}));
+
+// The System Admin tab is rendered for superadmins only; mock the page itself
+vi.mock('../SystemAdmin', () => ({
+  default: () => <div data-testid="system-admin-tab">System Admin Content</div>,
+}));
+
+let isSuperadmin = false;
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useCampaign: () => ({ isSuperadmin }),
 }));
 
 import api from '../../../utils/api';
@@ -63,13 +73,64 @@ describe('UserSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (api.get as any).mockResolvedValue(mockUserData);
+    // Tabs are URL-driven and jsdom shares one URL across tests
+    window.history.pushState({}, '', '/user-settings');
+  });
+
+  it('Unlink sends a null discord id instead of re-linking the old one', async () => {
+    (api.put as any).mockResolvedValue({ data: {} });
+    renderUserSettings();
+
+    const unlink = await screen.findByRole('button', { name: /^unlink$/i });
+    fireEvent.click(unlink);
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/user/update-discord-id', { discord_id: null });
+    });
+  });
+
+  it('shows the linked Discord id loaded from the account status', async () => {
+    renderUserSettings();
+
+    const field = await screen.findByLabelText(/^Discord ID/);
+    await waitFor(() => expect(field).toHaveValue('123456789012345678'));
+    expect(screen.getByRole('button', { name: /update discord id/i })).toBeInTheDocument();
+  });
+
+  it('keeps the saved Discord id when the refresh response does not carry one', async () => {
+    const noDiscordField = { data: { user: { id: 1, username: 'testuser', email: 'test@example.com', role: 'Player' } } };
+    (api.get as any).mockResolvedValue(noDiscordField);
+    (api.put as any).mockResolvedValue({ data: {} });
+    renderUserSettings();
+
+    const field = await screen.findByLabelText(/^Discord ID/);
+    fireEvent.change(field, { target: { value: '987654321098765432' } });
+    fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+    expect(await screen.findByText('Discord ID linked successfully')).toBeInTheDocument();
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText(/^Discord ID/)).toHaveValue('987654321098765432');
+  });
+
+  it('toggles password visibility on each password field independently', async () => {
+    renderUserSettings();
+    await screen.findByRole('heading', { name: /change password/i });
+
+    const current = getPasswordInput(/^Current Password/);
+    const next = getPasswordInput(/^New Password/);
+    expect(current.type).toBe('password');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show password/i })[0]);
+
+    expect(getPasswordInput(/^Current Password/).type).toBe('text');
+    expect(next.type).toBe('password');
   });
 
   it('renders the settings tabs', async () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Account Settings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Account' })).toBeInTheDocument();
       expect(screen.getByText('Characters')).toBeInTheDocument();
     });
   });
@@ -106,7 +167,7 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Account Settings')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Account' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText('Characters'));
@@ -198,5 +259,146 @@ describe('UserSettings', () => {
       });
       expect(screen.getByText('Password changed successfully')).toBeInTheDocument();
     });
+  });
+
+  describe('server errors and the other account forms (F-1087)', () => {
+    const waitForForms = async () => {
+      await screen.findByRole('heading', { name: /change password/i });
+    };
+
+    it('shows the server message when changing the password fails', async () => {
+      (api.put as any).mockRejectedValueOnce({ response: { data: { message: 'Current password is incorrect' } } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(getPasswordInput(/^Current Password/), { target: { value: 'wrongpass1' } });
+      fireEvent.change(getPasswordInput(/^New Password/), { target: { value: 'newpassword123' } });
+      fireEvent.change(getPasswordInput(/^Confirm New Password/), { target: { value: 'newpassword123' } });
+      fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+      expect(await screen.findByText('Current password is incorrect')).toBeInTheDocument();
+      expect(screen.queryByText('Password changed successfully')).not.toBeInTheDocument();
+    });
+
+    it('changes the email with the entered password and refreshes the user', async () => {
+      (api.put as any).mockResolvedValueOnce({ data: { success: true } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^New Email/), { target: { value: 'new@example.com' } });
+      fireEvent.change(getPasswordInput(/^Enter Password to Confirm/), { target: { value: 'mypassword1' } });
+      fireEvent.click(screen.getByRole('button', { name: /^change email$/i }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/user/change-email', {
+          email: 'new@example.com',
+          password: 'mypassword1',
+        });
+      });
+      expect(await screen.findByText('Email changed successfully')).toBeInTheDocument();
+      // initial load + refresh after the change
+      expect(api.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects a malformed new email without calling the API', async () => {
+      renderUserSettings();
+      await waitForForms();
+
+      const form = screen.getByRole('button', { name: /^change email$/i }).closest('form')!;
+      fireEvent.change(screen.getByLabelText(/^New Email/), { target: { value: 'not-an-email' } });
+      fireEvent.change(getPasswordInput(/^Enter Password to Confirm/), { target: { value: 'mypassword1' } });
+      fireEvent.submit(form);
+
+      expect(await screen.findByText('Please enter a valid email address')).toBeInTheDocument();
+      expect(api.put).not.toHaveBeenCalled();
+    });
+
+    it('shows the server message when changing the email fails', async () => {
+      (api.put as any).mockRejectedValueOnce({ response: { data: { message: 'Email already in use' } } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^New Email/), { target: { value: 'taken@example.com' } });
+      fireEvent.change(getPasswordInput(/^Enter Password to Confirm/), { target: { value: 'mypassword1' } });
+      fireEvent.click(screen.getByRole('button', { name: /^change email$/i }));
+
+      expect(await screen.findByText('Email already in use')).toBeInTheDocument();
+      expect(screen.queryByText('Email changed successfully')).not.toBeInTheDocument();
+    });
+
+    it('updates the Discord id from the form', async () => {
+      (api.put as any).mockResolvedValueOnce({ data: { success: true } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^Discord ID/), { target: { value: '987654321098765432' } });
+      fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/user/update-discord-id', { discord_id: '987654321098765432' });
+      });
+      expect(await screen.findByText('Discord ID linked successfully')).toBeInTheDocument();
+    });
+
+    it('rejects a malformed Discord id without calling the API', async () => {
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^Discord ID/), { target: { value: '12345' } });
+      fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+      expect(await screen.findByText(/Invalid Discord ID format/)).toBeInTheDocument();
+      expect(api.put).not.toHaveBeenCalled();
+    });
+
+    it('shows the server message when the Discord id is already linked elsewhere', async () => {
+      (api.put as any).mockRejectedValueOnce({
+        response: { data: { message: 'This Discord ID is already linked to another account' } },
+      });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^Discord ID/), { target: { value: '987654321098765432' } });
+      fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+      expect(await screen.findByText('This Discord ID is already linked to another account')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('UserSettings System Admin tab', () => {
+  beforeEach(() => {
+    vi.mocked(api.get).mockResolvedValue(mockUserData as never);
+  });
+
+  afterEach(() => {
+    isSuperadmin = false;
+    window.history.pushState({}, '', '/');
+  });
+
+  it('is absent for an ordinary user, and /user-settings/system-admin falls back to Account', async () => {
+    window.history.pushState({}, '', '/user-settings/system-admin');
+    renderUserSettings();
+
+    expect(await screen.findByRole('tab', { name: 'Account' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('tab', { name: 'System Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('system-admin-tab')).not.toBeInTheDocument();
+  });
+
+  it('is shown to a superadmin and selected by its URL', async () => {
+    isSuperadmin = true;
+    window.history.pushState({}, '', '/user-settings/system-admin');
+    renderUserSettings();
+
+    expect(await screen.findByRole('tab', { name: 'System Admin' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('system-admin-tab')).toBeInTheDocument();
+  });
+
+  it('selects the Characters tab from its URL', async () => {
+    window.history.pushState({}, '', '/user-settings/characters');
+    renderUserSettings();
+
+    expect(await screen.findByRole('tab', { name: 'Characters' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('character-tab')).toBeInTheDocument();
   });
 });

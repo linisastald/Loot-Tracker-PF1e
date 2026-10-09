@@ -1,41 +1,29 @@
-# Docker Deployment
+# Docker
 
-## Quick Start
-
-1. **Copy the template files:**
-   ```bash
-   cp docker-compose.template.yml docker-compose.yml
-   cp .env.template .env
-   ```
-
-2. **Edit the .env file** with your actual values:
-   - Set secure passwords for `TEST_DB_PASSWORD`
-   - Generate a secure JWT secret for `TEST_JWT_SECRET`
-   - Add your OpenAI API key
-   - Configure your domain and paths
-
-3. **Build and start the services:**
-   ```bash
-   docker-compose up -d
-   ```
-
-## Permission Fix
-
-This deployment configuration eliminates the Docker permission issues by:
-
-- **Using container-internal storage** for logs and migrations (no external volume mounts)
-- **Proper directory ownership** set in the Dockerfile for the backend user
-- **Environment variable configuration** instead of hardcoded secrets
+The application ships as a single Node.js container: the Express backend serves both the API (`/api/*`) and the built React frontend on port 5000. There is no nginx layer in the image; an external proxy handles routing.
 
 ## Files
 
-- `docker-compose.template.yml` - Template compose file with environment variables
-- `.env.template` - Template environment file
-- `Dockerfile.full` - Multi-stage production Dockerfile with permission fixes
-- `.gitignore` - Prevents committing secrets and actual compose files
+- `Dockerfile.backend` - the production image (frontend build + backend). Built by `build_image.sh` from the repository root.
+- `../discord-handler/Dockerfile` - the Discord broker image, also built by `build_image.sh`.
+- `.env.docker.example` - reference list of environment variables (copy to `.env.docker` and fill in; never commit the real file).
+- `generate-secrets.sh` - prints random values for JWT secrets and database passwords.
+- `.gitignore` - keeps real `.env` and compose files (which hold secrets) out of version control.
+
+## Building
+
+```bash
+bash build_image.sh --branch master --tag latest
+```
+
+See `build_image.sh --help` for dev/stable builds and the Discord broker image.
+
+## Deployment
+
+The application is deployed from app definitions (for example TrueNAS apps) that are kept outside git because they contain environment-specific values and secrets; this repository does not ship a compose file for the application itself. The Discord broker image (`discord-handler/Dockerfile`) is deployed the same way; `.env.discord-broker.example` lists its settings. The backend applies pending migrations (`backend/migrations/`, tracked in `schema_migrations_v2`) on every start and should connect as the non-owner `loot_app` role so row-level security is enforced. See `database/DATABASE_SETUP.md` for how a fresh database is initialised.
 
 ## Security Notes
 
-- Never commit actual `.env` files or `docker-compose.yml` files with real secrets
-- Use strong, unique passwords and secrets
-- The template files use environment variables to keep secrets out of version control
+- Never commit real `.env` files or compose files containing secrets.
+- Use strong, unique passwords and secrets.
+- The container runs as the unprivileged `node` user and has a `/api/health` healthcheck.

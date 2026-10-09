@@ -1,33 +1,32 @@
-# Root .dockerignore - exclude development and non-production files
+# Root .dockerignore - exclude development and non-production files.
+# Docker only reads this file from the build-context root (the repo root for
+# docker/Dockerfile.backend), so there are deliberately no per-folder copies.
 
-# Documentation and README files
+# Documentation (a bare *.md pattern only matches at the context root)
 *.md
 docs/
-TESTING.md
-REFACTORING_SUMMARY.md
-BUILD_SCRIPT_IMPROVEMENTS.md
-FRONTEND_API_MIGRATION_GUIDE.md
-MIGRATION_BEST_PRACTICES.md
-PASSWORD_RESET_README.md
-SECRET_ROTATION_GUIDE.md
-SECURITY.md
-CLAUDE.md
 
 # Git files
 .git/
 .gitignore
 .gitattributes
+.github/
 
-# IDE and editor files
+# IDE, editor and OS files
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
 .DS_Store
+._*
 Thumbs.db
+ehthumbs.db
+.Spotlight-V100
+.Trashes
 
-# Test files and coverage
+# Tests and coverage
 **/__tests__/
 **/*.test.js
 **/*.spec.js
@@ -35,94 +34,48 @@ Thumbs.db
 **/tests/
 coverage/
 .nyc_output/
-jest.config.js
-codecov.yml
 setupTests.js
 
-# Development dependencies and build artifacts
-node_modules/
+# Installed dependencies and package-manager noise (installed fresh in the image)
+**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+yarn.lock
+pnpm-lock.yaml
 .npm
 .yarn/
 
-# Frontend build artifacts (will be built in container)
+# Build outputs (the frontend is built inside the image)
 frontend/build/
 frontend/dist/
+dist/
+build/
+out/
 
-# Backend logs and temp files
+# Logs, pids and temporary files
 backend/logs/
-*.log
 logs/
 pids/
+*.log
 *.pid
 *.seed
 *.pid.lock
-
-# Development scripts and utilities (keep build_image.sh as it's the main build script)
-update_containers.sh
-start.sh
-test-runner.js
-scripts/validate-migrations.sh
-update_sql_data.sh
-scripts/test-setup.js
-
-# Python utilities (development only)
-*.py
-utilities/
-db_compare*.py
-db_sync.py
-db_update*.py
-
-# Database backup and comparison files
-fix_weather_table.sql
-
-# Claude AI configuration
-.claude/
-
-# Environment files (secrets handled via docker-compose)
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-
-# Temporary files
 tmp/
 temp/
 *.tmp
 *.temp
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Development scripts and utilities (build_image.sh is the build entry point
+# but is not needed inside the image either)
+update_sql_data.sh
+*.py
 
-# Package manager lock files (keep package.json and package.prod.json)
-# Note: package-lock.json is needed for npm ci
-yarn.lock
-pnpm-lock.yaml
+# Environment files: secrets are supplied at deploy time, never baked into an image.
+# ** prefixes also cover backend/.env and frontend/.env; the *.example templates stay.
+**/.env
+**/.env.*
+!**/.env.example
 
-# Build outputs that will be regenerated
-dist/
-build/
-out/
-
-# CI/CD and GitHub workflows (not needed in container)
-.github/
-codecov.yml
-
-# Additional development files
-.claude/
-
-# Docker development files (keep Dockerfile.full and docker-compose.yml)
-docker-compose.secure.yml
-docker-compose.yml.template
-docker/Dockerfile.test
-docker/DOCKER_SECURITY_OPTIMIZATIONS.md
+# Docker helper files not needed in the image
 docker/generate-secrets.sh

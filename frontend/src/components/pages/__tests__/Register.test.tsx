@@ -24,17 +24,17 @@ const setupGetMock = (mode: RegistrationMode, dmExists = true) => {
     }
     if (url.includes('check-registration-status')) {
       return Promise.resolve({
-        data: { mode, registrationsOpen: mode !== 'closed' },
+        data: { mode },
       } as any);
     }
     return Promise.resolve({ data: {} } as any);
   });
 };
 
-const renderComponent = () =>
+const renderComponent = (onLogin?: (user: any) => void) =>
   render(
     <BrowserRouter>
-      <Register />
+      <Register onLogin={onLogin} />
     </BrowserRouter>
   );
 
@@ -98,6 +98,58 @@ describe('Register', () => {
       });
     });
 
+    it('signs the new user in locally (App state + cached user) so the next page is not bounced to /login', async () => {
+      const onLogin = vi.fn();
+      const newUser = { id: 9, username: 'newplayer', role: 'Player' };
+      vi.mocked(api.post).mockResolvedValueOnce({ data: { user: newUser } } as any);
+      renderComponent(onLogin);
+      await fillBasicFields();
+
+      fireEvent.click(screen.getByRole('button', { name: /register/i }));
+
+      await waitFor(() => expect(onLogin).toHaveBeenCalledWith(newUser));
+    });
+
+    it('does not sign in when registration fails', async () => {
+      const onLogin = vi.fn();
+      vi.mocked(api.post).mockRejectedValueOnce({ response: { data: { message: 'Username already exists' } } });
+      renderComponent(onLogin);
+      await fillBasicFields();
+
+      fireEvent.click(screen.getByRole('button', { name: /register/i }));
+
+      expect(await screen.findByText('Username already exists')).toBeInTheDocument();
+      expect(onLogin).not.toHaveBeenCalled();
+    });
+
+    describe('role selector (DM bootstrap only on an empty install)', () => {
+      it('is locked when accounts already exist', async () => {
+        setupGetMock('open', true);
+        renderComponent();
+        const role = await screen.findByRole('combobox', { name: /role/i });
+        await waitFor(() => expect(role).toHaveAttribute('aria-disabled', 'true'));
+      });
+
+      it('is unlocked only when the server confirms no account exists yet', async () => {
+        setupGetMock('open', false);
+        renderComponent();
+        const role = await screen.findByRole('combobox', { name: /role/i });
+        await waitFor(() => expect(role).not.toHaveAttribute('aria-disabled', 'true'));
+      });
+
+      it('stays locked when the DM check fails', async () => {
+        vi.mocked(api.get).mockImplementation((url: string) =>
+          url.includes('check-dm')
+            ? Promise.reject(new Error('down'))
+            : Promise.resolve({ data: { mode: 'open' } } as any)
+        );
+        renderComponent();
+        const role = await screen.findByRole('combobox', { name: /role/i });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(role).toHaveAttribute('aria-disabled', 'true');
+      });
+    });
+
     it('uppercases the invite code input and submits it', async () => {
       renderComponent();
       await fillBasicFields();
@@ -116,17 +168,17 @@ describe('Register', () => {
       });
     });
 
-    it('rejects invite codes that are not 6-8 alphanumeric characters', async () => {
+    it.each(['ABC', 'ABCDEF', 'ABCDEFG'])('rejects the invite code %s (not exactly 8 alphanumeric characters)', async (code) => {
       renderComponent();
       await fillBasicFields();
 
       const inviteField = screen.getByLabelText(/invite code \(optional/i);
-      fireEvent.change(inviteField, { target: { value: 'ABC' } });
+      fireEvent.change(inviteField, { target: { value: code } });
 
       fireEvent.click(screen.getByRole('button', { name: /register/i }));
 
       expect(
-        await screen.findByText(/invite codes are 6-8 letters and numbers/i)
+        await screen.findByText(/invite codes are exactly 8 letters and numbers/i)
       ).toBeInTheDocument();
       expect(api.post).not.toHaveBeenCalled();
     });
@@ -191,7 +243,7 @@ describe('Register', () => {
       });
     });
 
-    it('accepts legacy 6-character invite codes', async () => {
+    it('rejects retired 6-character invite codes without calling the API', async () => {
       renderComponent();
       await fillBasicFields();
 
@@ -200,12 +252,8 @@ describe('Register', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: /register/i }));
 
-      await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith(
-          '/auth/register',
-          expect.objectContaining({ inviteCode: 'ABC123' })
-        );
-      });
+      expect(await screen.findByText(/invite codes are exactly 8 letters and numbers/i)).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
     });
   });
 

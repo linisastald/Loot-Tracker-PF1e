@@ -3,6 +3,10 @@
 import React, {useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import api from '../../utils/api';
+import {getErrorMessage} from '../../utils/apiErrors';
+import {isValidEmail} from '../../utils/validation';
+import {INVITE_CODE_FORMAT_MESSAGE, INVITE_CODE_LENGTH, isValidInviteCode} from '../../utils/inviteCode';
+import type {AuthUser} from '../../contexts/AuthContext';
 import {
   Box,
   Button,
@@ -22,17 +26,18 @@ type RegistrationMode = 'open' | 'invite-only' | 'closed';
 
 interface RegistrationStatusData {
     mode: RegistrationMode;
-    registrationsOpen: boolean;
 }
 
 interface CheckDmData {
     dmExists: boolean;
 }
 
-// Invite codes are 8 alphanumeric characters (legacy codes were 6)
-const INVITE_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
+interface RegisterProps {
+    /** Signs the freshly registered user in (App state + cached user) */
+    onLogin?: (user: AuthUser) => void;
+}
 
-const Register: React.FC = () => {
+const Register: React.FC<RegisterProps> = ({onLogin}) => {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -40,7 +45,9 @@ const Register: React.FC = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [role, setRole] = useState('Player');
     const [error, setError] = useState('');
-    const [dmExists, setDmExists] = useState(false);
+    // Fail safe: the Role selector stays locked until the server confirms that
+    // no account exists yet (the server only honours DM on an empty install)
+    const [dmExists, setDmExists] = useState(true);
     const [mode, setMode] = useState<RegistrationMode | null>(null);
     const [statusLoading, setStatusLoading] = useState(true);
     const navigate = useNavigate();
@@ -50,9 +57,9 @@ const Register: React.FC = () => {
             try {
                 const response = await api.get('/auth/check-dm');
                 const data = response.data as CheckDmData;
-                setDmExists(Boolean(data?.dmExists));
+                setDmExists(data?.dmExists !== false);
             } catch {
-                // Non-fatal: role selector simply stays enabled
+                // Non-fatal: the role selector simply stays locked
             }
         };
 
@@ -73,61 +80,32 @@ const Register: React.FC = () => {
         checkRegistrationStatus();
     }, []);
 
-    // Email validation function
-    const validateEmail = (value: string): boolean => {
-        const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-        return re.test(value);
-    };
-
-    const handleInviteCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setInviteCode(e.target.value.toUpperCase());
-    };
-
-    const handleRegister = async () => {
-        try {
-            // Basic validation
-            if (!username) {
-                setError('Username is required');
-                return;
-            }
-
-            if (!email) {
-                setError('Email is required');
-                return;
-            }
-
-            if (!validateEmail(email)) {
-                setError('Please enter a valid email address');
-                return;
-            }
-
-            if (!password) {
-                setError('Password is required');
-                return;
-            }
-
-            if (password.length < 8) {
-                setError('Password must be at least 8 characters long');
-                return;
-            }
-
-            if (password.length > 64) {
-                setError('Password cannot exceed 64 characters');
-                return;
-            }
-
+    // First failing rule wins; null means the form is valid
+    const validate = (): string | null => {
+        const rules: Array<[boolean, string]> = [
+            [!username, 'Username is required'],
+            [!email, 'Email is required'],
+            [!!email && !isValidEmail(email), 'Please enter a valid email address'],
+            [!password, 'Password is required'],
+            [!!password && password.length < 8, 'Password must be at least 8 characters long'],
+            [password.length > 64, 'Password cannot exceed 64 characters'],
             // Invite code handling: required when invite-only, optional when open
-            if (mode === 'invite-only' && !inviteCode) {
-                setError('An invite code is required for registration');
-                return;
-            }
+            [mode === 'invite-only' && !inviteCode, 'An invite code is required for registration'],
+            [!!inviteCode && !isValidInviteCode(inviteCode), INVITE_CODE_FORMAT_MESSAGE],
+        ];
+        return rules.find(([failed]) => failed)?.[1] ?? null;
+    };
 
-            if (inviteCode && !INVITE_CODE_PATTERN.test(inviteCode)) {
-                setError('Invite codes are 6-8 letters and numbers');
-                return;
-            }
+    const handleRegister = async (event: React.FormEvent) => {
+        event.preventDefault();
+        const problem = validate();
+        if (problem) {
+            setError(problem);
+            return;
+        }
 
-            await api.post('/auth/register', {
+        try {
+            const response = await api.post('/auth/register', {
                 username,
                 email,
                 password,
@@ -135,27 +113,18 @@ const Register: React.FC = () => {
                 inviteCode: inviteCode || undefined
             });
 
-            // Auth token arrives as an HTTP-only cookie; nothing to store here
+            // The auth token arrives as an HTTP-only cookie. Sign the user in
+            // locally too, otherwise App still considers them logged out and
+            // the protected /user-settings route bounces them to /login.
+            const newUser = response.data?.user;
+            if (newUser) {
+                localStorage.setItem('user', JSON.stringify(newUser));
+                onLogin?.(newUser);
+            }
             navigate('/user-settings');
-        } catch (err: any) {
+        } catch (err: unknown) {
             // Surface the backend's validation message when available
-            setError(
-                err.response?.data?.message ||
-                err.response?.data?.error ||
-                'Registration failed'
-            );
-        }
-    };
-
-    // Handle toggle password visibility
-    const handleTogglePasswordVisibility = () => {
-        setShowPassword(!showPassword);
-    };
-
-    // Handle Enter key press for form submission
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleRegister();
+            setError(getErrorMessage(err, 'Registration failed'));
         }
     };
 
@@ -190,117 +159,104 @@ const Register: React.FC = () => {
         );
     }
 
+    const inviteRequired = mode === 'invite-only';
+
     return (
         <Container component="main" maxWidth="xs">
             <Paper sx={{p: 2, mt: 8}}>
                 <Typography component="h1" variant="h5">
                     Register
                 </Typography>
-                <TextField
-                    variant="outlined"
-                    margin="normal"
-                    required
-                    fullWidth
-                    label="Username"
-                    autoFocus
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                />
-                <TextField
-                    variant="outlined"
-                    margin="normal"
-                    required
-                    fullWidth
-                    label="Email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                />
-                <TextField
-                    variant="outlined"
-                    margin="normal"
-                    required
-                    fullWidth
-                    label="Password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    slotProps={{ input: {
-                        // Add eye icon to toggle password visibility
-                        endAdornment: (
-                            <InputAdornment position="end">
-                                <IconButton
-                                    aria-label="toggle password visibility"
-                                    onClick={handleTogglePasswordVisibility}
-                                    edge="end"
-                                >
-                                    {showPassword ? <VisibilityOff/> : <Visibility/>}
-                                </IconButton>
-                            </InputAdornment>
-                        ),
-                    } }}
-                />
-                <FormHelperText>
-                    Password must be at least 8 characters long. Use a mix of words, numbers,
-                    or symbols for increased security.
-                </FormHelperText>
-
-                {mode === 'invite-only' && (
+                <form onSubmit={handleRegister} noValidate>
                     <TextField
                         variant="outlined"
                         margin="normal"
                         required
                         fullWidth
-                        label="Invite code (required)"
-                        value={inviteCode}
-                        onChange={handleInviteCodeChange}
-                        onKeyDown={handleKeyDown}
-                        slotProps={{ htmlInput: {maxLength: 8} }}
-                        helperText="Registration requires an invite code from your DM"
+                        label="Username"
+                        autoFocus
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
                     />
-                )}
-
-                {mode === 'open' && (
                     <TextField
                         variant="outlined"
                         margin="normal"
+                        required
                         fullWidth
-                        label="Invite code (optional — joins you to your group's campaign)"
-                        value={inviteCode}
-                        onChange={handleInviteCodeChange}
-                        onKeyDown={handleKeyDown}
-                        slotProps={{ htmlInput: {maxLength: 8} }}
+                        label="Email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                     />
-                )}
+                    <TextField
+                        variant="outlined"
+                        margin="normal"
+                        required
+                        fullWidth
+                        label="Password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        slotProps={{ input: {
+                            // Add eye icon to toggle password visibility
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        aria-label="toggle password visibility"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        edge="end"
+                                    >
+                                        {showPassword ? <VisibilityOff/> : <Visibility/>}
+                                    </IconButton>
+                                </InputAdornment>
+                            ),
+                        } }}
+                    />
+                    <FormHelperText>
+                        Password must be at least 8 characters long. Use a mix of words, numbers,
+                        or symbols for increased security.
+                    </FormHelperText>
 
-                <TextField
-                    select
-                    variant="outlined"
-                    margin="normal"
-                    required
-                    fullWidth
-                    label="Role"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    disabled={dmExists}
-                >
-                    <MenuItem value="Player">Player</MenuItem>
-                    <MenuItem value="DM">DM</MenuItem>
-                </TextField>
-                {error && <Typography color="error">{error}</Typography>}
-                <Button
-                    fullWidth
-                    variant="outlined"
-                    color="primary"
-                    sx={{mt: 3, mb: 2}}
-                    onClick={handleRegister}
-                    disabled={mode === 'invite-only' && !inviteCode}
-                >
-                    Register
-                </Button>
+                    <TextField
+                        variant="outlined"
+                        margin="normal"
+                        required={inviteRequired}
+                        fullWidth
+                        label={inviteRequired
+                            ? 'Invite code (required)'
+                            : "Invite code (optional — joins you to your group's campaign)"}
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                        slotProps={{ htmlInput: {maxLength: INVITE_CODE_LENGTH} }}
+                        helperText={inviteRequired ? 'Registration requires an invite code from your DM' : undefined}
+                    />
+
+                    <TextField
+                        select
+                        variant="outlined"
+                        margin="normal"
+                        required
+                        fullWidth
+                        label="Role"
+                        value={role}
+                        onChange={(e) => setRole(e.target.value)}
+                        disabled={dmExists}
+                    >
+                        <MenuItem value="Player">Player</MenuItem>
+                        <MenuItem value="DM">DM</MenuItem>
+                    </TextField>
+                    {error && <Typography color="error">{error}</Typography>}
+                    <Button
+                        type="submit"
+                        fullWidth
+                        variant="outlined"
+                        color="primary"
+                        sx={{mt: 3, mb: 2}}
+                        disabled={inviteRequired && !inviteCode}
+                    >
+                        Register
+                    </Button>
+                </form>
 
                 <Box sx={{
                     mt: 2

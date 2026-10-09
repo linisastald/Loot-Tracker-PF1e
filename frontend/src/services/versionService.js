@@ -7,21 +7,18 @@ import api from '../utils/api';
 const versionService = {
   /**
    * Get application version information
-   * @returns {Promise<Object>} Version information object
+   * @returns {Promise<Object>} Version information; version 'unknown' when the API call fails
    */
   async getVersion() {
     try {
-      const response = await api.get('/version');
-      return response;
-    } catch (error) {
-      console.error('Version API call failed:', error);
-      // Return fallback version info on error
+      return await api.get('/version');
+    } catch {
+      // Report an unmistakable "unknown" marker rather than a made-up version
       return {
         data: {
-          version: '0.7.1',
+          version: 'unknown',
           buildNumber: 0,
-          fullVersion: '0.7.1',
-          environment: 'development'
+          fullVersion: 'unknown'
         }
       };
     }

@@ -1,6 +1,5 @@
 // frontend/src/components/pages/ItemManagement/GeneralItemManagement.js
-import React, {useEffect, useState} from 'react';
-import api from '../../../utils/api';
+import React, {useState} from 'react';
 import lootService from '../../../services/lootService';
 import {updateItemAsDM} from '../../../utils/utils';
 import {
@@ -26,90 +25,69 @@ import {
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+import { ITEM_SIZES, ITEM_TYPES } from '../../../utils/itemOptions';
+
+const ANY = {value: '', label: 'Any'};
+const NULL_OR_VALUE = (valueLabel) => [ANY, {value: 'null', label: 'Null'}, {value: 'notnull', label: valueLabel}];
+
+// One entry per advanced-search dropdown; the key is the search parameter name
+const FILTERS = [
+    {key: 'unidentified', label: 'Unidentified', options: [ANY, {value: 'true', label: 'Yes'}, {value: 'false', label: 'No'}]},
+    {key: 'type', label: 'Type', options: [ANY, ...ITEM_TYPES]},
+    {key: 'size', label: 'Size', options: [ANY, ...ITEM_SIZES.map((size) => ({value: size, label: size}))]},
+    {
+        key: 'status', label: 'Status',
+        options: [ANY, ...['Pending Sale', 'Kept Character', 'Kept Party', 'Trashed', 'Sold'].map((status) => ({value: status, label: status}))],
+    },
+    {key: 'itemid', label: 'Item ID', options: NULL_OR_VALUE('Has Value')},
+    {key: 'modids', label: 'Mod IDs', options: NULL_OR_VALUE('Has Values')},
+    {key: 'value', label: 'Value', options: NULL_OR_VALUE('Has Value')},
+];
+
+const EMPTY_FILTERS = Object.fromEntries(FILTERS.map(({key}) => [key, '']));
+
+const COLUMNS = [
+    {key: 'session_date', label: 'Session Date'},
+    {key: 'quantity', label: 'Quantity', numeric: true},
+    {key: 'name', label: 'Name'},
+    {key: 'unidentified', label: 'Unidentified'},
+    {key: 'masterwork', label: 'Masterwork'},
+    {key: 'type', label: 'Type'},
+    {key: 'size', label: 'Size'},
+    {key: 'status', label: 'Status'},
+    {key: 'value', label: 'Value', numeric: true},
+    {key: 'notes', label: 'Notes'},
+];
+
+// Missing values sort first ascending; numeric columns compare as numbers
+const compareValues = (a, b, numeric) => {
+    if (a == null && b == null) return 0;
+    if (a == null) return -1;
+    if (b == null) return 1;
+    if (numeric) return Number(a) - Number(b);
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+};
 
 const GeneralItemManagement = () => {
     const { timezone } = useCampaignTimezone();
     const [searchTerm, setSearchTerm] = useState('');
     const [filteredItems, setFilteredItems] = useState([]);
-    const [items, setItems] = useState([]);
-    const [mods, setMods] = useState([]);
-    const [itemsMap, setItemsMap] = useState({});
-    const [modsMap, setModsMap] = useState({});
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
+    // direction is the MUI value: 'asc' | 'desc'
+    const [sortConfig, setSortConfig] = useState({key: null, direction: 'asc'});
     const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState({});
-    const [advancedSearch, setAdvancedSearch] = useState({
-        unidentified: '',
-        type: '',
-        size: '',
-        status: '',
-        itemid: '',
-        modids: '',
-        value: '',
-    });
-
-    // Resolve catalog items for the rows currently shown so the "Real Item"
-    // column can render names. `loot.itemid` references the catalog `item`
-    // table — looking the id up in the loot list (the previous behaviour)
-    // never matches and falsely renders "Not linked (ID: …)".
-    useEffect(() => {
-        if (!Array.isArray(filteredItems) || filteredItems.length === 0) {
-            setItems([]);
-            setItemsMap({});
-            return;
-        }
-        const itemIds = filteredItems
-            .map(it => it.itemid)
-            .filter(id => id != null)
-            .filter((id, idx, arr) => arr.indexOf(id) === idx);
-        if (itemIds.length === 0) {
-            setItems([]);
-            setItemsMap({});
-            return;
-        }
-        let cancelled = false;
-        (async () => {
-            try {
-                const response = await lootService.getItemsByIds(itemIds);
-                if (cancelled) return;
-                const catalogItems = response?.data?.items || [];
-                setItems(catalogItems);
-                const map = {};
-                catalogItems.forEach(ci => {
-                    if (ci && ci.id != null) map[ci.id] = ci;
-                });
-                setItemsMap(map);
-            } catch (err) {
-                if (!cancelled) {
-                    console.error('Error fetching catalog items for general item search:', err);
-                }
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [filteredItems]);
+    const [advancedSearch, setAdvancedSearch] = useState(EMPTY_FILTERS);
 
     const handleSearch = async () => {
         try {
-            const params = new URLSearchParams();
-            params.append('query', searchTerm);
-
-            // Add advanced search parameters if they have values
-            if (advancedSearch.unidentified) params.append('unidentified', advancedSearch.unidentified);
-            if (advancedSearch.type) params.append('type', advancedSearch.type);
-            if (advancedSearch.size) params.append('size', advancedSearch.size);
-            if (advancedSearch.status) params.append('status', advancedSearch.status);
-            if (advancedSearch.itemid) params.append('itemid', advancedSearch.itemid);
-            if (advancedSearch.modids) params.append('modids', advancedSearch.modids);
-            if (advancedSearch.value) params.append('value', advancedSearch.value);
-
             const searchParams = {
                 query: searchTerm,
                 ...Object.fromEntries(
-                    Object.entries(advancedSearch).filter(([key, value]) => value)
+                    Object.entries(advancedSearch).filter(([, value]) => value)
                 )
             };
             const response = await lootService.searchLoot(searchParams);
@@ -119,12 +97,10 @@ const GeneralItemManagement = () => {
             } else if (Array.isArray(response.data)) {
                 setFilteredItems(response.data);
             } else {
-                console.error('Unexpected response structure:', response.data);
                 setError('Unexpected response structure from server');
                 setFilteredItems([]);
             }
-        } catch (error) {
-            console.error('Error searching items', error);
+        } catch {
             setError('Error searching items');
             setFilteredItems([]);
         }
@@ -133,22 +109,11 @@ const GeneralItemManagement = () => {
     const handleClearSearch = () => {
         setFilteredItems([]);
         setSearchTerm('');
-        setAdvancedSearch({
-            unidentified: '',
-            type: '',
-            size: '',
-            status: '',
-            itemid: '',
-            modids: '',
-            value: '',
-        });
+        setAdvancedSearch(EMPTY_FILTERS);
     };
 
     const requestSort = (key) => {
-        let direction = 'ascending';
-        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
-        }
+        const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
         setSortConfig({key, direction});
     };
 
@@ -156,17 +121,11 @@ const GeneralItemManagement = () => {
         if (!filteredItems || !Array.isArray(filteredItems)) {
             return [];
         }
-        let sortableItems = [...filteredItems];
+        const sortableItems = [...filteredItems];
         if (sortConfig.key !== null) {
-            sortableItems.sort((a, b) => {
-                if (a[sortConfig.key] < b[sortConfig.key]) {
-                    return sortConfig.direction === 'ascending' ? -1 : 1;
-                }
-                if (a[sortConfig.key] > b[sortConfig.key]) {
-                    return sortConfig.direction === 'ascending' ? 1 : -1;
-                }
-                return 0;
-            });
+            const {numeric} = COLUMNS.find(({key}) => key === sortConfig.key) || {};
+            const sign = sortConfig.direction === 'asc' ? 1 : -1;
+            sortableItems.sort((a, b) => sign * compareValues(a[sortConfig.key], b[sortConfig.key], numeric));
         }
         return sortableItems;
     }, [filteredItems, sortConfig]);
@@ -213,111 +172,21 @@ const GeneralItemManagement = () => {
                             }}
                         />
                     </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Unidentified</InputLabel>
-                            <Select
-                                value={advancedSearch.unidentified}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, unidentified: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="true">Yes</MenuItem>
-                                <MenuItem value="false">No</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Type</InputLabel>
-                            <Select
-                                value={advancedSearch.type}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, type: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="weapon">Weapon</MenuItem>
-                                <MenuItem value="armor">Armor</MenuItem>
-                                <MenuItem value="magic">Magic</MenuItem>
-                                <MenuItem value="gear">Gear</MenuItem>
-                                <MenuItem value="trade good">Trade Good</MenuItem>
-                                <MenuItem value="other">Other</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Size</InputLabel>
-                            <Select
-                                value={advancedSearch.size}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, size: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="Fine">Fine</MenuItem>
-                                <MenuItem value="Diminutive">Diminutive</MenuItem>
-                                <MenuItem value="Tiny">Tiny</MenuItem>
-                                <MenuItem value="Small">Small</MenuItem>
-                                <MenuItem value="Medium">Medium</MenuItem>
-                                <MenuItem value="Large">Large</MenuItem>
-                                <MenuItem value="Huge">Huge</MenuItem>
-                                <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                                <MenuItem value="Colossal">Colossal</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Status</InputLabel>
-                            <Select
-                                value={advancedSearch.status}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, status: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="Pending Sale">Pending Sale</MenuItem>
-                                <MenuItem value="Kept Self">Kept Self</MenuItem>
-                                <MenuItem value="Kept Party">Kept Party</MenuItem>
-                                <MenuItem value="Trashed">Trashed</MenuItem>
-                                <MenuItem value="Sold">Sold</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Item ID</InputLabel>
-                            <Select
-                                value={advancedSearch.itemid}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, itemid: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="null">Null</MenuItem>
-                                <MenuItem value="notnull">Has Value</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Mod IDs</InputLabel>
-                            <Select
-                                value={advancedSearch.modids}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, modids: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="null">Null</MenuItem>
-                                <MenuItem value="notnull">Has Values</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <FormControl fullWidth>
-                            <InputLabel>Value</InputLabel>
-                            <Select
-                                value={advancedSearch.value}
-                                onChange={(e) => setAdvancedSearch(prev => ({...prev, value: e.target.value}))}
-                            >
-                                <MenuItem value="">Any</MenuItem>
-                                <MenuItem value="null">Null</MenuItem>
-                                <MenuItem value="notnull">Has Value</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
+                    {FILTERS.map(({key, label, options}) => (
+                        <Grid key={key} size={{xs: 12, md: 3}}>
+                            <FormControl fullWidth>
+                                <InputLabel>{label}</InputLabel>
+                                <Select
+                                    value={advancedSearch[key]}
+                                    onChange={(e) => setAdvancedSearch(prev => ({...prev, [key]: e.target.value}))}
+                                >
+                                    {options.map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                    ))}
                     <Grid size={{xs: 12, md: 3}}>
                         <Box sx={{display: 'flex', gap: 1}}>
                             <Button variant="outlined" color="primary" onClick={handleSearch} fullWidth>
@@ -335,18 +204,7 @@ const GeneralItemManagement = () => {
                     <Table>
                         <TableHead>
                             <TableRow>
-                                {[
-                                    {key: 'session_date', label: 'Session Date'},
-                                    {key: 'quantity', label: 'Quantity'},
-                                    {key: 'name', label: 'Name'},
-                                    {key: 'unidentified', label: 'Unidentified'},
-                                    {key: 'masterwork', label: 'Masterwork'},
-                                    {key: 'type', label: 'Type'},
-                                    {key: 'size', label: 'Size'},
-                                    {key: 'status', label: 'Status'},
-                                    {key: 'value', label: 'Value'},
-                                    {key: 'notes', label: 'Notes'},
-                                ].map((column) => (
+                                {COLUMNS.map((column) => (
                                     <TableCell
                                         key={column.key}
                                         sortDirection={sortConfig.key === column.key ? sortConfig.direction : false}

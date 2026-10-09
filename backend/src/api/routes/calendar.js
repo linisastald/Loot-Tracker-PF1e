@@ -8,7 +8,7 @@ const checkRole = require('../../middleware/checkRole');
 router.get('/current-date', verifyToken, calendarController.getCurrentDate);
 router.post('/next-day', verifyToken, calendarController.advanceDay);
 router.post('/advance', verifyToken, calendarController.advanceDays);
-router.post('/set-current-date', verifyToken, calendarController.setCurrentDate);
+router.post('/set-current-date', verifyToken, checkRole('DM'), calendarController.setCurrentDate);
 router.get('/notes', verifyToken, calendarController.getNotes);
 router.post('/notes', verifyToken, calendarController.createNote);
 router.put('/notes/:id', verifyToken, calendarController.updateNote);
