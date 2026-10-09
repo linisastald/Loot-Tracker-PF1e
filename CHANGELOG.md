@@ -46,6 +46,7 @@ All notable changes to this project are documented in this file.
 - **Typing the address of a DM-only page as a player redirects home**, and the DM controls follow the campaign you are in.
 - **The frontend test run is capped at 6 workers** and the linter works again.
 
+- **Dependency security updates.** Cleared the 8 open Dependabot alerts (1 critical, 1 high, 6 moderate) by refreshing transitive packages within their existing ranges: proxy-addr 2.0.8 in the app and the Discord broker (critical, IP-spoofing fix), source-map-js 1.2.2 and brace-expansion 1.1.21 / 2.1.7 / 5.0.12. No application code changed. The remaining advisory for braces is reached only through nodemon, a development-only file watcher, has no fixed release yet, and is auto-dismissed by GitHub.
 ### Security
 - **Discord broker calls are authenticated.** Backend and broker now share `DISCORD_BROKER_SECRET` (set the same value on both; with `NODE_ENV=production` an unset secret rejects broker traffic). `BROKER_ALLOW_UNAUTHENTICATED_CONTROL=true` on the broker allows a staged rollout.
 - **The broker only passes the shared secret to backends that registered with it**, refuses a channel another running backend already owns, and lets a backend take its channels back from a registration that has gone silent.
