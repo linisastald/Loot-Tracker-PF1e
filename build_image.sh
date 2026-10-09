@@ -839,7 +839,8 @@ archive_latest_image() {
 # tags first; falls back to whatever is local if offline.
 compute_dev_build_number() {
     local version="$1"
-    git fetch --tags origin >/dev/null 2>&1 || true
+    echo "Fetching tags from origin to number this dev build..." >&2
+    git fetch --tags origin >/dev/null 2>&1 || echo "Warning: could not fetch tags; numbering from local tags" >&2
     local max=0 n tag
     while IFS= read -r tag; do
         [ -z "$tag" ] && continue
@@ -893,6 +894,7 @@ create_and_push_tag() {
 # commit origin can't see, and will diverge the branch once origin advances.
 # Non-blocking: it only prints guidance.
 warn_if_ahead_of_origin() {
+    echo "Checking whether local $GIT_BRANCH is ahead of origin..."
     git fetch origin "$GIT_BRANCH" >/dev/null 2>&1 || return 0
     local ahead
     ahead=$(git rev-list --count "origin/$GIT_BRANCH..HEAD" 2>/dev/null || echo 0)
