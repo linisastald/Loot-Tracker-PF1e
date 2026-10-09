@@ -19,7 +19,12 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Bag of Holding / Handy Haversack weight tracking
 
 ### Campaign Journal
-- Searchable log of events, NPCs met, locations visited
+- Upload a session recording or transcript and attach it to the session (and its Golarion date)
+- Transcribe uploaded recordings
+- Claude-written session summary from the transcript: what happened, NPCs met, locations visited, loot found, open threads
+- DM reviews and edits the summary before it is published to players
+- Post the summary (or a short recap) to the Discord channel
+- Searchable log across summaries and transcripts
 - Link journal entries to loot acquired that session
 - Timeline view across the Golarion calendar
 - Per-player calendar notes signed with the player's name
