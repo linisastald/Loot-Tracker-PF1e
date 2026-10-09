@@ -43,7 +43,8 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Merchant reputation/discount tracking
 
 ### Campaign Journal
-- Session notes tied to Golarion dates
+*Partially shipped: the Golarion calendar has a per-campaign Notes tab (a note on a calendar date). The searchable log, loot links and timeline are still planned.*
+- Session notes tied to Golarion dates — *shipped as calendar notes*
 - Searchable log of events, NPCs met, locations visited
 - Link journal entries to loot acquired that session
 - Timeline view across the Golarion calendar
@@ -55,7 +56,7 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Create `user_preferences` table (key-value per user, like global `settings` table)
 - Backend API for get/set preferences per authenticated user
 - First preference: **Loot entry bar position** — *shipped differently in 0.14.0: the Add Item/Add Gold/Submit bar is now sticky at both the top and the bottom of the page, so this preference is no longer needed for that purpose.*
-- Future preferences: light/dark mode toggle, theme selection, UI density
+- Future preferences: light/dark mode toggle, theme selection, UI density — *per-campaign colour themes with dark backgrounds shipped in 0.13.0 (set by the DM, not per user)*
 
 ## Quality of Life Improvements
 
@@ -80,7 +81,7 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 ## Technical Improvements
 
 ### First-Run Setup Wizard
-*Medium priority - Reduces env var dependency and improves onboarding.*
+*Medium priority - Reduces env var dependency and improves onboarding. Partly there since 0.16.0: the first account on an empty install becomes DM and superadmin automatically, and the frontend URL, registration mode, Discord bot token and OpenAI key are set from the System Admin tab rather than env vars. Still missing: the guided `/setup` flow itself.*
 - On first run (no users in DB, or flagged unconfigured), redirect admin to `/setup`
 - Setup wizard collects: initial DM account, campaign name, frontend URL, Discord settings
 - Writes values to the `settings` table instead of requiring env vars in docker-compose
@@ -89,20 +90,20 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 
 
 ### Performance
-- Server-side pagination for all list views
+- Server-side pagination for all list views — *shipped for gold history, crew, outposts, ships and infamy; loot and catalog lists still load in full*
 - Database query caching for reference data (items, mods, spells)
 - WebSocket support for real-time updates across connected clients
 
 ### Testing
-- Integration tests for all API endpoints
-- Component tests for all page components
+*Unit coverage is broad after the October 2026 review (about 3,700 backend and 1,360 frontend tests; every page has component tests). Nothing below runs against a real database or browser.*
+- Integration tests against a real database (the Jest integration config exists but has no tests)
 - End-to-end tests for critical user flows
 
 ### Infrastructure
 - GitHub Actions CI/CD pipeline (`.github/workflows/` currently holds only a `.gitkeep`)
 - Automated database backups
-- Staging environment for testing before production
-- Health monitoring and alerting
+- ~~Staging environment for testing before production~~ — *the test instance on TrueNAS serves this role*
+- Health monitoring and alerting — *`/api/health` and the Docker healthcheck exist; alerting does not*
 
 ### Database Backup & Restore (DM Settings)
 *Low priority — neither the backend `/admin/backup-database` / `/admin/restore-database` routes nor any frontend buttons for them exist today.*
@@ -110,12 +111,6 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Implement `POST /api/admin/restore-database` (multipart upload + pg_restore, with safety checks)
 - Backend tests for both endpoints
 - Add the System Settings UI once endpoints land
-
-### Mod Subtarget Selector (DM Item Management → Add Item/Mod)
-*Shipped: `AddItemMod.jsx` now filters the Subtarget options by the selected Target (each value appears once per list). Only the frontend-test bullet below may still be open.*
-- Filter Subtarget options based on the selected Target (weapon shows one-handed/two-handed/light/ammunition; armor shows light/medium/heavy/shield)
-- Keep storing `value="light"` so existing mod rows in the database stay valid
-- Add a frontend test covering Subtarget filtering once implemented
 
 ## Deferred from the October 2026 code review
 
