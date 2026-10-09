@@ -58,6 +58,7 @@ interface HistoryResponse {
 type EntityFilter = 'all' | 'loot' | 'gold';
 
 const ACTION_LABELS: Record<string, string> = {
+  'loot.create': 'Loot entered',
   'loot.status': 'Status change',
   'loot.restore': 'Restore',
   'loot.update': 'Edit',
@@ -285,6 +286,8 @@ const History: React.FC = () => {
         {undoTarget?.summary}
         {undoTarget?.entity_type === 'gold' || undoTarget?.action === 'sale'
           ? ' The gold entry will be removed from the ledger.'
+          : undoTarget?.action === 'loot.create'
+            ? ' The submitted items will be deleted.'
           : ' The items go back to how they were before this change.'}
       </ConfirmDialog>
     </Container>

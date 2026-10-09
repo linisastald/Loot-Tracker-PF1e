@@ -6,6 +6,7 @@ const campaignSettings = require('../utils/campaignSettings');
 const lootGeneratorService = require('../services/lootGenerator/lootGeneratorService');
 const { crKey, NPC_GEAR_SOURCES, DEFAULT_NPC_GEAR_SOURCE } = require('../services/lootGenerator/treasureTables');
 const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/treasureFlavor');
+const auditService = require('../services/auditService');
 const spellbookService = require('../services/lootGenerator/spellbookService');
 const Spellbook = require('../models/Spellbook');
 
@@ -209,6 +210,14 @@ const commit = async (req, res) => {
         date, req.user?.id || null, platinum, gold, silver, copper, 'Generated loot',
       ]);
       goldEntry = g.rows[0];
+    }
+
+    const userId = req.user?.id || null;
+    if (createdItems.length > 0) {
+      await auditService.recordLootCreate(client, { userId, rows: createdItems, source: 'generator' });
+    }
+    if (goldEntry) {
+      await auditService.recordGold(client, { userId, action: 'gold.create', rows: [goldEntry] });
     }
 
     return { items: createdItems, coins: goldEntry };

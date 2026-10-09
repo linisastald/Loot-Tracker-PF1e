@@ -12,7 +12,7 @@ const SUMMARY_MAX = 255;
 
 /** Actions a DM can reverse from the History page (anything else is a record only). */
 exports.UNDOABLE_ACTIONS = [
-  'loot.status', 'loot.restore', 'loot.update', 'loot.identify', 'loot.consume', 'loot.charges',
+  'loot.create', 'loot.status', 'loot.restore', 'loot.update', 'loot.identify', 'loot.consume', 'loot.charges',
   'gold.create', 'gold.distribute', 'gold.balance', 'sale',
 ];
 

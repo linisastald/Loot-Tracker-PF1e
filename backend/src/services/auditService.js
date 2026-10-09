@@ -44,6 +44,27 @@ const snapshotLoot = (row) => ({
 // --- recording -------------------------------------------------------------
 
 /**
+ * Loot submitted on the Loot Entry page or committed by the loot generator.
+ * `rows` are the inserted loot rows; `source` is 'entry' or 'generator'.
+ */
+exports.recordLootCreate = (client, { userId, rows, source = 'entry' }) => {
+  const names = rows.map((row) => row.name);
+  const verb = source === 'generator' ? 'Generated' : 'Entered';
+  return AuditLog.record(client, {
+    userId,
+    action: 'loot.create',
+    entityType: 'loot',
+    entityIds: rows.map((row) => row.id),
+    before: null,
+    after: rows.map((row) => ({
+      id: row.id, name: row.name, quantity: row.quantity, value: row.value ?? null,
+      status: row.status ?? null, unidentified: row.unidentified ?? null,
+    })),
+    summary: `${verb} ${countOf(rows.length, 'item')}: ${nameList([...new Set(names)])}`,
+  });
+};
+
+/**
  * Bulk status change. `beforeRows` are the rows as read (id, name, status,
  * whohas) before the UPDATE; `after` is what was set.
  */
@@ -238,6 +259,19 @@ const removeGoldRows = async (client, ids) => {
 };
 
 const UNDO_HANDLERS = {
+  // A mistaken submission is removed outright. Rows that reference the loot
+  // and are not themselves audited (appraisals, failed identify attempts) go
+  // first; audited references (sales, consumable use) would have blocked the
+  // undo as later changes. spellbook rows cascade.
+  'loot.create': async (client, entry) => {
+    const ids = entry.entity_ids;
+    if (!ids.length) return;
+    await client.query('DELETE FROM appraisal WHERE lootid = ANY($1)', [ids]);
+    await client.query('DELETE FROM identify WHERE lootid = ANY($1)', [ids]);
+    await client.query('DELETE FROM consumableuse WHERE lootid = ANY($1)', [ids]);
+    await client.query('DELETE FROM loot WHERE id = ANY($1)', [ids]);
+  },
+
   'loot.status': (client, entry) => restoreLootStatuses(client, asArray(entry.before)),
   'loot.restore': (client, entry) => restoreLootStatuses(client, asArray(entry.before)),
 

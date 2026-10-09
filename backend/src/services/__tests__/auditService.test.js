@@ -15,7 +15,7 @@ jest.mock('../../models/AuditLog', () => ({
   laterEntriesOn: jest.fn(),
   markUndone: jest.fn(),
   UNDOABLE_ACTIONS: [
-    'loot.status', 'loot.restore', 'loot.update', 'loot.identify', 'loot.consume', 'loot.charges',
+    'loot.create', 'loot.status', 'loot.restore', 'loot.update', 'loot.identify', 'loot.consume', 'loot.charges',
     'gold.create', 'gold.distribute', 'gold.balance', 'sale',
   ],
 }));
@@ -283,6 +283,30 @@ describe('auditService', () => {
       });
 
       expect(recorded().summary).toBe('Set charges of Wand of Light from 0 to 10');
+    });
+  });
+
+  describe('recordLootCreate', () => {
+    it('records entered rows with their names (deduplicated) and no before state', async () => {
+      const c = client();
+      const rows = [
+        { id: 1, name: 'Arrow', quantity: 1, value: 0.05, status: null, unidentified: false },
+        { id: 2, name: 'Arrow', quantity: 1, value: 0.05, status: null, unidentified: false },
+        { id: 3, name: 'Longsword', quantity: 1, value: 15, status: null, unidentified: null },
+      ];
+
+      await auditService.recordLootCreate(c, { userId: 4, rows, source: 'entry' });
+
+      expect(AuditLog.record).toHaveBeenCalledWith(c, expect.objectContaining({
+        userId: 4, action: 'loot.create', entityType: 'loot', entityIds: [1, 2, 3], before: null,
+        summary: 'Entered 3 items: Arrow, Longsword',
+      }));
+      expect(AuditLog.record.mock.calls[0][1].after[2]).toEqual({ id: 3, name: 'Longsword', quantity: 1, value: 15, status: null, unidentified: null });
+    });
+
+    it('says Generated for the loot generator', async () => {
+      await auditService.recordLootCreate(client(), { userId: 4, rows: [{ id: 9, name: 'Gem', quantity: 2 }], source: 'generator' });
+      expect(AuditLog.record.mock.calls[0][1].summary).toBe('Generated 1 item: Gem');
     });
   });
 
@@ -724,5 +748,31 @@ describe('auditService', () => {
 
   it('exports the currency order used by the gold summaries', () => {
     expect(auditService.CURRENCIES).toEqual(['platinum', 'gold', 'silver', 'copper']);
+  });
+});
+
+describe('auditService.undo of a loot submission', () => {
+  it('deletes the submitted rows and their unaudited dependants', async () => {
+    const c = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    dbUtils.executeTransaction.mockImplementation(async (cb) => cb(c));
+    AuditLog.getForUpdate.mockResolvedValue({
+      id: 50, action: 'loot.create', entity_type: 'loot', entity_ids: [7, 8],
+      before: null, after: [{ id: 7, name: 'Arrow' }, { id: 8, name: 'Arrow' }],
+      summary: 'Entered 2 items: Arrow', undone_at: null,
+    });
+    AuditLog.laterEntriesOn.mockResolvedValue([]);
+    AuditLog.record.mockResolvedValue({ id: 51 });
+
+    await auditService.undo(50, 9);
+
+    const sql = c.query.mock.calls.map(([s]) => s);
+    expect(sql).toEqual([
+      'DELETE FROM appraisal WHERE lootid = ANY($1)',
+      'DELETE FROM identify WHERE lootid = ANY($1)',
+      'DELETE FROM consumableuse WHERE lootid = ANY($1)',
+      'DELETE FROM loot WHERE id = ANY($1)',
+    ]);
+    c.query.mock.calls.forEach(([, params]) => expect(params).toEqual([[7, 8]]));
+    expect(AuditLog.markUndone).toHaveBeenCalledWith(c, 50, 9);
   });
 });
