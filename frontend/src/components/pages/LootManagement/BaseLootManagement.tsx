@@ -90,6 +90,20 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     trash: () => performStatusChange('Trashed' as LootStatus),
     keepSelf: () => performStatusChange('Kept Character' as LootStatus, true),
     keepParty: () => performStatusChange('Kept Party' as LootStatus),
+    // Trashed page (DM): each item goes back to where it was before it was
+    // trashed; the server reads that from the History log.
+    restore: async () => {
+      if (selectedItems.length === 0) return;
+      setActionError('');
+      try {
+        await lootService.restoreLoot(selectedItems);
+        await fetchLoot();
+        setSelectedItems([]);
+        notifyLootCountsChanged();
+      } catch (error) {
+        setActionError(getErrorMessage(error, 'Failed to restore the selected items'));
+      }
+    },
   };
 
   // Dedicated update-dialog submit that mirrors the action button flow:

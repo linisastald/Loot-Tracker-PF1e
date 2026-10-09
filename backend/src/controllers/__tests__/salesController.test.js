@@ -121,7 +121,8 @@ describe('salesController', () => {
 
       await salesController.confirmSale(req, res);
 
-      expect(SalesService.sellAllPendingItems).toHaveBeenCalled();
+      // The acting DM is passed through so the sale is logged against them
+      expect(SalesService.sellAllPendingItems).toHaveBeenCalledWith({ userId: 1 });
       expect(res.success).toHaveBeenCalledWith(
         mockResult,
         'Successfully sold 5 items for 1200 gold'
@@ -153,7 +154,7 @@ describe('salesController', () => {
 
       await salesController.sellSelected(req, res);
 
-      expect(SalesService.sellSelectedItems).toHaveBeenCalledWith([1, 2, 3]);
+      expect(SalesService.sellSelectedItems).toHaveBeenCalledWith([1, 2, 3], { userId: 1 });
       expect(res.success).toHaveBeenCalledWith(
         mockResult,
         'Successfully sold 3 selected items for 750 gold'
@@ -208,7 +209,7 @@ describe('salesController', () => {
 
       await salesController.sellAllExcept(req, res);
 
-      expect(SalesService.sellAllExceptItems).toHaveBeenCalledWith([5, 10]);
+      expect(SalesService.sellAllExceptItems).toHaveBeenCalledWith([5, 10], { userId: 1 });
       expect(res.success).toHaveBeenCalledWith(
         mockResult,
         'Successfully sold 8 items for 2000 gold, keeping 2 items'
@@ -270,7 +271,7 @@ describe('salesController', () => {
 
       await salesController.sellUpTo(req, res);
 
-      expect(SalesService.sellUpToAmount).toHaveBeenCalledWith(1000);
+      expect(SalesService.sellUpToAmount).toHaveBeenCalledWith(1000, { userId: 1 });
       expect(res.success).toHaveBeenCalledWith(
         mockResult,
         'Successfully sold 4 items for 950 gold (limit: 1000 gold)'

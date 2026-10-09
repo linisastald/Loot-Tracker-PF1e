@@ -6,6 +6,8 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const SearchService = require('../services/searchService');
 const { hasDmRights } = require('../utils/roleUtils');
+const auditService = require('../services/auditService');
+const AuditLog = require('../models/AuditLog');
 
 // Columns only a DM may see. Items still unidentified also hide what they
 // really are (the stored name is deliberately generic).
@@ -215,8 +217,22 @@ const SOLD_DM_ONLY_MESSAGE = 'Sold items can only be changed by a DM';
 // edit either; the sale endpoints (pending sale / sales service) do that.
 const SET_SOLD_DM_ONLY_MESSAGE = 'Only a DM can mark an item as Sold';
 
+// DM edit: read the row under a lock, write, and log the change with its
+// before values so the History page can undo it.
 const persistLootUpdate = async (req, res, itemId, filteredData) => {
-  const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
+  const updatedItem = await dbUtils.executeTransaction(async (client) => {
+    const stored = await client.query('SELECT * FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
+    if (stored.rows.length === 0) return null;
+    const columns = Object.keys(filteredData);
+    if (columns.length === 0) return stored.rows[0];
+    const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
+    const updated = await client.query(
+      `UPDATE "loot" SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+      [itemId, ...columns.map((col) => filteredData[col])]
+    );
+    await auditService.recordLootUpdate(client, { userId: req.user.id, beforeRow: stored.rows[0], fields: filteredData });
+    return updated.rows[0];
+  });
   return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
 };
 
@@ -269,7 +285,7 @@ const updateLootItem = async (req, res) => {
   // row, and writes with the same condition in the UPDATE's WHERE, so a sale
   // that commits in between cannot be overwritten.
   const updatedItem = await dbUtils.executeTransaction(async (client) => {
-    const stored = await client.query('SELECT status, unidentified FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
+    const stored = await client.query('SELECT * FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
     if (stored.rows.length === 0) {
       throw controllerFactory.createNotFoundError('Loot item not found');
     }
@@ -290,6 +306,7 @@ const updateLootItem = async (req, res) => {
     if (updated.rows.length === 0) {
       throw controllerFactory.createAuthorizationError(SOLD_DM_ONLY_MESSAGE);
     }
+    await auditService.recordLootUpdate(client, { userId: req.user.id, beforeRow: stored.rows[0], fields: filteredData });
     return updated.rows[0];
   });
   return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
@@ -369,6 +386,12 @@ const updateLootStatus = async (req, res) => {
       }
     }
 
+    // Snapshot for the History page (and its undo) before the rows change
+    const beforeResult = await client.query(
+      'SELECT id, name, status, whohas FROM loot WHERE id = ANY($1) ORDER BY id FOR UPDATE',
+      [lootIds]
+    );
+
     let updateQuery = 'UPDATE loot SET status = $1';
     const params = [status];
     let paramIndex = 2;
@@ -404,6 +427,14 @@ const updateLootStatus = async (req, res) => {
       throw controllerFactory.createNotFoundError('No loot items found with the provided IDs');
     }
 
+    const updatedIds = new Set(result.rows.map((row) => row.id));
+    await auditService.recordStatusChange(client, {
+      userId: req.user.id,
+      beforeRows: beforeResult.rows.filter((row) => updatedIds.has(row.id)),
+      status,
+      characterId: characterId || null,
+    });
+
     return result.rows;
   });
 
@@ -418,6 +449,39 @@ const updateLootStatus = async (req, res) => {
     updatedItems: updatedRows,
     count: updatedRows.length
   }, `${updatedRows.length} items status updated to ${status}`);
+};
+
+/**
+ * Restore trashed items (DM only). Each item goes back to the status and
+ * holder it had before it was trashed, read from the History log; an item
+ * trashed before the log existed goes back to Unprocessed.
+ */
+const restoreLoot = async (req, res) => {
+  const { lootIds } = req.body;
+  ValidationService.validateItems(lootIds, 'lootIds');
+
+  const restored = await dbUtils.executeTransaction(async (client) => {
+    const stored = await client.query(
+      "SELECT id, name, status, whohas FROM loot WHERE id = ANY($1) AND status = 'Trashed' ORDER BY id FOR UPDATE",
+      [lootIds]
+    );
+    if (stored.rows.length === 0) {
+      throw controllerFactory.createNotFoundError('No trashed items found with the provided IDs');
+    }
+    const earlier = await AuditLog.statusBeforeTrash(client, stored.rows.map((row) => row.id));
+    const targets = {};
+    for (const row of stored.rows) {
+      const target = earlier[row.id] || { status: null, whohas: row.whohas ?? null };
+      targets[row.id] = target;
+      await client.query('UPDATE loot SET status = $1, whohas = $2 WHERE id = $3', [target.status, target.whohas, row.id]);
+    }
+    await auditService.recordRestore(client, { userId: req.user.id, beforeRows: stored.rows, targets });
+    return stored.rows.map((row) => ({ id: row.id, name: row.name, status: targets[row.id].status || 'Unprocessed' }));
+  });
+
+  logger.info(`${restored.length} trashed loot items restored`, { userId: req.user.id, count: restored.length });
+  return controllerFactory.sendSuccessResponse(res, { restoredItems: restored, count: restored.length },
+    `${restored.length} item${restored.length === 1 ? '' : 's'} restored`);
 };
 
 /**
@@ -558,5 +622,9 @@ module.exports = {
 
   splitItemStack: controllerFactory.createHandler(splitItemStack, {
     errorMessage: 'Error splitting item stack'
+  }),
+
+  restoreLoot: controllerFactory.createHandler(restoreLoot, {
+    errorMessage: 'Error restoring loot items'
   })
 };

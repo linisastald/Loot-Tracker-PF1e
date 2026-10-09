@@ -34,7 +34,7 @@ const getPendingSaleItems = async (req, res) => {
 const confirmSale = async (req, res) => {
   ValidationService.requireDM(req);
 
-  const saleResult = await SalesService.sellAllPendingItems();
+  const saleResult = await SalesService.sellAllPendingItems({ userId: req.user.id });
 
   logger.info(`DM ${req.user.id} confirmed sale of all pending items`, {
     userId: req.user.id,
@@ -56,7 +56,7 @@ const sellSelected = async (req, res) => {
   const { itemIds } = req.body;
   ValidationService.validateItems(itemIds, 'itemIds');
 
-  const saleResult = await SalesService.sellSelectedItems(itemIds);
+  const saleResult = await SalesService.sellSelectedItems(itemIds, { userId: req.user.id });
 
   logger.info(`DM ${req.user.id} sold selected items`, {
     userId: req.user.id,
@@ -82,7 +82,7 @@ const sellAllExcept = async (req, res) => {
   const { keepIds } = req.body;
   ValidationService.validateItems(keepIds, 'keepIds');
 
-  const saleResult = await SalesService.sellAllExceptItems(keepIds);
+  const saleResult = await SalesService.sellAllExceptItems(keepIds, { userId: req.user.id });
 
   logger.info(`DM ${req.user.id} sold all except specified items`, {
     userId: req.user.id,
@@ -107,7 +107,7 @@ const sellUpTo = async (req, res) => {
     allowZero: false
   });
 
-  const saleResult = await SalesService.sellUpToAmount(validatedAmount);
+  const saleResult = await SalesService.sellUpToAmount(validatedAmount, { userId: req.user.id });
 
   logger.info(`DM ${req.user.id} sold items up to ${validatedAmount} gold`, {
     userId: req.user.id,

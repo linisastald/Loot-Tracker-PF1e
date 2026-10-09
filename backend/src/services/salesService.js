@@ -3,6 +3,7 @@ const dbUtils = require('../utils/dbUtils');
 const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
 const controllerFactory = require('../utils/controllerFactory');
 const Gold = require('../models/Gold');
+const auditService = require('./auditService');
 
 // COALESCE so DM-linked items inherit the catalog value when the row's own
 // value is null (otherwise they would sell for 0 gold).
@@ -92,7 +93,7 @@ class SalesService {
    * @param {string} notes - Notes for the transaction
    * @returns {Promise<Object>} - Sale results
    */
-  static async processSaleItems(client, validItems, notes) {
+  static async processSaleItems(client, validItems, notes, actor) {
     const totalSold = calculateTotalSaleValue(validItems);
     const validItemIds = validItems.map(item => item.id);
     const now = new Date();
@@ -111,9 +112,10 @@ class SalesService {
     });
 
     // Batch insert all sold records in a single query
-    await client.query(
+    const soldRows = await client.query(
       `INSERT INTO sold (lootid, soldfor, soldon)
-       SELECT unnest($1::int[]), unnest($2::numeric[]), $3`,
+       SELECT unnest($1::int[]), unnest($2::numeric[]), $3
+       RETURNING id`,
       [soldItems.map(s => s.id), soldItems.map(s => s.soldFor), now]
     );
 
@@ -141,6 +143,14 @@ class SalesService {
       copper: goldEntry.copper,
       notes: goldEntry.notes
     }, client);
+
+    await auditService.recordSale(client, {
+      userId: actor && actor.userId,
+      soldItems,
+      soldRowIds: (soldRows.rows || []).map((row) => row.id),
+      goldRow: goldResult,
+      totalSold,
+    });
 
     return { soldItems, totalSold, goldResult };
   }
@@ -179,14 +189,14 @@ class SalesService {
    * unsellable ones, write the sale and build the response.
    * @private
    */
-  static async _sellItems(client, items, notes, keptIds = []) {
+  static async _sellItems(client, items, notes, keptIds = [], actor) {
     const { validItems, invalidItems } = this.filterValidSaleItems(items);
 
     if (validItems.length === 0) {
       throw new Error('No valid items to sell (all items are unidentified or have no value)');
     }
 
-    const saleResult = await this.processSaleItems(client, validItems, notes);
+    const saleResult = await this.processSaleItems(client, validItems, notes, actor);
     return this.createSaleResponse(saleResult.soldItems, saleResult.totalSold, saleResult.goldResult, keptIds, invalidItems);
   }
 
@@ -207,7 +217,7 @@ class SalesService {
    * Sell all pending sale items
    * @returns {Promise<Object>} - Sale result
    */
-  static async sellAllPendingItems() {
+  static async sellAllPendingItems(actor) {
     return await dbUtils.executeTransaction(async (client) => {
       await Gold.lockLedger(client);
 
@@ -216,7 +226,7 @@ class SalesService {
         throw new Error('No items pending sale found');
       }
 
-      return this._sellItems(client, items, 'Bulk sale of all pending items');
+      return this._sellItems(client, items, 'Bulk sale of all pending items', [], actor);
     });
   }
 
@@ -225,7 +235,7 @@ class SalesService {
    * @param {Array} itemIds - Array of item IDs to sell
    * @returns {Promise<Object>} - Sale result
    */
-  static async sellSelectedItems(itemIds) {
+  static async sellSelectedItems(itemIds, actor) {
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       throw new Error('Item IDs array is required');
     }
@@ -256,7 +266,7 @@ class SalesService {
       }
 
       const validNames = this.filterValidSaleItems(items).validItems.map(i => i.name);
-      return this._sellItems(client, items, this.buildSelectedSaleNote(validNames));
+      return this._sellItems(client, items, this.buildSelectedSaleNote(validNames), [], actor);
     });
   }
 
@@ -265,7 +275,7 @@ class SalesService {
    * @param {Array} keepIds - Array of item IDs to keep
    * @returns {Promise<Object>} - Sale result
    */
-  static async sellAllExceptItems(keepIds) {
+  static async sellAllExceptItems(keepIds, actor) {
     if (!Array.isArray(keepIds)) {
       throw new Error('Keep IDs must be an array');
     }
@@ -281,7 +291,7 @@ class SalesService {
         throw new Error('No items to sell found');
       }
 
-      return this._sellItems(client, items, 'Sale of all items except specified keeps', keepIds);
+      return this._sellItems(client, items, 'Sale of all items except specified keeps', keepIds, actor);
     });
   }
 
@@ -290,7 +300,7 @@ class SalesService {
    * @param {number} maxAmount - Maximum amount to sell
    * @returns {Promise<Object>} - Sale result
    */
-  static async sellUpToAmount(maxAmount) {
+  static async sellUpToAmount(maxAmount, actor) {
     if (!maxAmount || maxAmount <= 0) {
       throw new Error('Maximum amount must be a positive number');
     }
@@ -329,7 +339,7 @@ class SalesService {
         throw new Error('No items found within the specified amount limit');
       }
 
-      return this._sellItems(client, selectedItems, `Sale up to ${maxAmount} gold`);
+      return this._sellItems(client, selectedItems, `Sale up to ${maxAmount} gold`, [], actor);
     });
   }
 

@@ -138,6 +138,12 @@ const lootService = {
     api.patch('/items/status', data),
 
   /**
+   * Restore trashed items to the status they had before (DM only)
+   */
+  restoreLoot: (lootIds: number[]): Promise<ApiResponse> =>
+    api.post('/items/restore', { lootIds }),
+
+  /**
    * Update single loot item
    */
   updateLootItem: (id: number, data: Partial<LootItem>): Promise<ApiResponse> =>

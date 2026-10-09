@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const ValidationService = require('./validationService');
 const controllerFactory = require('../utils/controllerFactory');
 const { rollD20 } = require('../utils/dice');
+const auditService = require('./auditService');
 
 /** Columns of an unidentified loot row that a non-DM may see. */
 const PLAYER_UNIDENTIFIED_COLUMNS =
@@ -185,7 +186,7 @@ class IdentificationService {
    * @returns {Promise<Object>} - Identification result
    */
   static async identifySingleItem(client, identificationData) {
-    const { itemId, characterId, golarionDate, dmIdentify = false } = identificationData;
+    const { itemId, characterId, golarionDate, dmIdentify = false, actor = {} } = identificationData;
     const isDMIdentification = dmIdentify === true;
 
     // Validate inputs
@@ -252,6 +253,7 @@ class IdentificationService {
       );
       
       await this.updateIdentifiedItem(client, itemId, newName);
+      await auditService.recordIdentify(client, { userId: actor.userId, beforeRow: lootItem, newName });
 
       return {
         success: true,
@@ -319,7 +321,8 @@ class IdentificationService {
             characterId,
             spellcraftBonus,
             golarionDate,
-            dmIdentify
+            dmIdentify,
+            actor
           });
 
           if (result.alreadyAttempted) {

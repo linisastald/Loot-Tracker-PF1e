@@ -37,6 +37,7 @@ const HarrowTracker = React.lazy(() => import('./components/pages/HarrowTracker'
 const SessionsPage = React.lazy(() => import('./components/pages/Sessions/SessionsPage'));
 const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
 const TaskManagement = React.lazy(() => import('./components/pages/DMSettings/TaskManagement'));
+const History = React.lazy(() => import('./components/pages/DMSettings/History'));
 const CityServices = React.lazy(() => import('./components/pages/CityServices'));
 
 
@@ -80,6 +81,7 @@ const PAGE_ROUTES: PageRoute[] = [
   { path: 'sessions', Page: SessionsPage },
   { path: 'session-management', Page: SessionManagement, require: 'dm' },
   { path: 'task-management', Page: TaskManagement, require: 'dm' },
+  { path: 'history', Page: History, require: 'dm' },
   { path: 'city-services', Page: CityServices },
 ];
 

@@ -14,6 +14,7 @@ const PAGE_TITLES: Record<string, string> = {
   'spellbook-generator': 'Spellbook Generator',
   'tasks': 'Session Tasks',
   'task-management': 'Task Management',
+  'history': 'History',
   'session-management': 'Session Management',
   'sessions': 'Sessions',
   'identify': 'Identify Items',

@@ -58,12 +58,6 @@ Priority: very low
 - In-app notifications for session reminders
 - Email notifications for upcoming sessions
 
-### Undo/History
-Priority: very high
-- Undo recent actions (status changes, gold transactions)
-- Full audit log of who changed what and when
-- Restore deleted/trashed items
-
 ### Import
 Priority: very low
 - Import items from CSV or JSON

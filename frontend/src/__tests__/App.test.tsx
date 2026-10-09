@@ -48,6 +48,7 @@ vi.mock('../components/pages/HarrowTracker', () => page('harrow'));
 vi.mock('../components/pages/Sessions/SessionsPage', () => page('sessions'));
 vi.mock('../components/pages/DMSettings/SessionManagement', () => page('session-management'));
 vi.mock('../components/pages/DMSettings/TaskManagement', () => page('task-management'));
+vi.mock('../components/pages/DMSettings/History', () => page('history'));
 vi.mock('../components/pages/CityServices', () => page('city'));
 
 import App from '../App';

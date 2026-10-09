@@ -33,6 +33,11 @@ describe('backend/index.js wiring', () => {
     expect(unprotected.sort()).toEqual(['/api/auth', '/api/config', '/api/version']);
   });
 
+  it('mounts the History log router at /api/audit behind CSRF protection', () => {
+    expect(source).toContain("const auditRoutes = require('./src/api/routes/audit')");
+    expect(source).toContain("app.use('/api/audit', csrfProtection, auditRoutes)");
+  });
+
   it('applies the global limiter before the CSRF-protected routers', () => {
     expect(indexOfLine(/app\.use\('\/api', limiter\)/)).toBeGreaterThan(-1);
     expect(indexOfLine(/app\.use\('\/api', limiter\)/)).toBeLessThan(indexOfLine(/app\.use\('\/api\/user'/));
