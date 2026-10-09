@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-08
+
 ### Added
 - **System Admin page manages the instance.** The superadmin page now creates campaigns (choosing their DM from the user list, defaulting to the superadmin), edits a campaign's name and world, deactivates and reactivates campaigns, and manages any campaign's members: assign a DM or player from the user list, change a member's role, or remove a member. A campaign always keeps at least one DM, and the last active campaign cannot be deactivated. The instance settings on the same page gained the frontend URL, the Discord bot token and the OpenAI key (write-only, with a stored/not-stored indicator). Deactivated campaigns disappear from their members' campaign list; the superadmin still sees them. Nothing is ever deleted.
 - **Every session task now carries its own options; nothing about a phase is hardcoded any more.** In DM Settings > Task Management each task can set who can draw it (skip late arrivals, skip early leavers, let the DM draw, require attendance at the last session, or always give it to one named character), how it rotates (stay with last session's holder, or never the same person two sessions running), a priority (normal, high, or first, which only sets the order tasks are dealt in), a character-count range (minimum and maximum), an active switch to park a task without deleting it, a description shown under the task on the Tasks page and in Discord, and an "Announce as" label. Any task with a label is named in the next session's Discord announcement ("Snack Master: Bob", "Recap by: Alice"), which replaces the single fixed Snack Master flag. Existing tasks keep the behaviour they had: pre-session tasks skip late arrivals, post-session tasks let the DM draw, and the snacks task announces "Snack Master".
@@ -94,7 +96,8 @@ All notable changes to this project are documented in this file.
 - Obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file, the broker compose file and deploy script, `update_containers.sh`), the archived migrations folder, and the old Python utility scripts.
 
 ### Notes
-- Includes database migrations 059 to 084, which run automatically on server start. None of 061 to 084 had been run against a real database when this was written.
+- Includes database migrations 059 to 085, which run automatically on server start. They have been run on the test instance; this is their first run against production, so take a database backup first.
+- Rebuild and redeploy the Discord broker container as well: its dependencies were refreshed and it now requires the shared secret.
 - Before deploying: set `DISCORD_BROKER_SECRET` on the broker and every backend, configure the mail variables (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, or `EMAIL_SERVICE` with `EMAIL_USER` and `EMAIL_PASS`), check the production settings listed under Changed (the server will not start without them), and check for users with no campaign membership, who lose access.
 
 ## [0.15.2]
