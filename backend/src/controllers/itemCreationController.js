@@ -6,6 +6,7 @@ const ValidationService = require('../services/validationService');
 const ItemParsingService = require('../services/itemParsingService');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
 const { getCampaignSetting } = require('../utils/campaignSettings');
+const auditService = require('../services/auditService');
 
 // Largest quantity the "auto-split stacks" campaign setting will split into
 // separate rows, so a typo (e.g. 5000) cannot create thousands of loot rows.
@@ -152,6 +153,7 @@ const createLoot = async (req, res) => {
       const inserted = await client.query(insertSql, rowValues);
       createdRows.push(inserted.rows[0]);
     }
+    await auditService.recordLootCreate(client, { userId: req.user.id, rows: createdRows, source: 'entry' });
     return { createdLoot: createdRows[0], createdCount: createdRows.length, calculatedValue };
   });
 

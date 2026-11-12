@@ -12,6 +12,10 @@ jest.mock('../../utils/dbUtils', () => ({
   executeTransaction: jest.fn(),
 }));
 
+jest.mock('../../services/auditService', () => ({
+  recordLootCreate: jest.fn().mockResolvedValue({}),
+  recordGold: jest.fn().mockResolvedValue({}),
+}));
 jest.mock('../../utils/logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));

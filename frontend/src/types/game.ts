@@ -151,7 +151,7 @@ export interface LootTableFilterConfig {
   whoHas: boolean;
 }
 
-export type LootActionKey = 'appraise' | 'sell' | 'trash' | 'keepSelf' | 'keepParty';
+export type LootActionKey = 'appraise' | 'sell' | 'trash' | 'keepSelf' | 'keepParty' | 'restore';
 
 export interface LootManagementAction {
   label: string;

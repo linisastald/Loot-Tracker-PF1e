@@ -254,6 +254,7 @@ const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
 const crewRoutes = require('./src/api/routes/crew');
 const harrowRoutes = require('./src/api/routes/harrow');
+const auditRoutes = require('./src/api/routes/audit');
 const sessionTaskRoutes = require('./src/api/routes/sessionTasks');
 
 // New refactored routes
@@ -313,6 +314,7 @@ app.use('/api/ships', csrfProtection, shipRoutes);
 app.use('/api/outposts', csrfProtection, outpostRoutes);
 app.use('/api/crew', csrfProtection, crewRoutes);
 app.use('/api/harrow', csrfProtection, harrowRoutes);
+app.use('/api/audit', csrfProtection, auditRoutes);
 app.use('/api/session-tasks', csrfProtection, sessionTaskRoutes);
 
 // New refactored routes

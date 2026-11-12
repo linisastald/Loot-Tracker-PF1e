@@ -2,6 +2,7 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const Gold = require('../models/Gold');
+const auditService = require('./auditService');
 
 const CURRENCIES = ['platinum', 'gold', 'silver', 'copper'];
 
@@ -120,7 +121,9 @@ class GoldDistributionService {
       const distribution = this.calculateDistribution(totals, activeCharacters.length, includePartyShare);
       this.validateDistribution(totals, distribution, activeCharacters.length);
 
-      return this.createDistributionEntries(client, activeCharacters, distribution, userId);
+      const rows = await this.createDistributionEntries(client, activeCharacters, distribution, userId);
+      await auditService.recordGold(client, { userId, action: 'gold.distribute', rows });
+      return rows;
     }, 'Error distributing gold');
 
     const message = includePartyShare

@@ -15,8 +15,32 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
+// History log entries are written on the transaction client; a no-op here,
+// asserted by its arguments.
+jest.mock('../../services/auditService', () => ({
+  recordConsume: jest.fn(),
+  recordCharges: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
+const auditService = require('../../services/auditService');
 const consumablesController = require('../consumablesController');
+
+/**
+ * updateWandCharges runs in ONE transaction: lock and read the row, then the
+ * guarded UPDATE, then the History entry. Stubs that transaction and returns
+ * the fake client (calls[0] = SELECT ... FOR UPDATE, calls[1] = UPDATE).
+ */
+const wandTx = (updatedRows, storedRows = updatedRows.map((row) => ({ ...row, charges: 40, status: 'Kept Party' }))) => {
+  const client = {
+    query: jest.fn()
+      .mockResolvedValueOnce({ rows: storedRows })
+      .mockResolvedValueOnce({ rows: updatedRows }),
+    release: jest.fn(),
+  };
+  dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+  return client;
+};
 
 // Helper to create a mock response object
 function createMockRes() {
@@ -133,8 +157,8 @@ describe('consumablesController', () => {
           .mockResolvedValueOnce({ rows: [updatedWand] })
           // SELECT active character
           .mockResolvedValueOnce({ rows: [{ id: 42 }] })
-          // INSERT consumableuse
-          .mockResolvedValueOnce({ rows: [] }),
+          // INSERT consumableuse ... RETURNING id
+          .mockResolvedValueOnce({ rows: [{ id: 77 }] }),
         release: jest.fn(),
       };
 
@@ -154,7 +178,20 @@ describe('consumablesController', () => {
       expect(mockClient.query.mock.calls[1][0]).toContain('FROM characters');
       expect(mockClient.query.mock.calls[1][1]).toEqual([7]); // user id
       expect(mockClient.query.mock.calls[2][0]).toContain('INSERT INTO consumableuse');
+      expect(mockClient.query.mock.calls[2][0]).toContain('RETURNING id');
       expect(mockClient.query.mock.calls[2][1]).toEqual([5, 42]); // lootid, character id (not user id)
+      expect(mockClient.query).toHaveBeenCalledTimes(3);
+
+      // The use is logged for the History page with the row as it was before
+      // (one charge more, still party-held) and the consumableuse row to delete on undo
+      expect(auditService.recordConsume).toHaveBeenCalledTimes(1);
+      expect(auditService.recordConsume).toHaveBeenCalledWith(mockClient, {
+        userId: 7,
+        beforeRow: { ...updatedWand, charges: 35, status: 'Kept Party' },
+        afterRow: updatedWand,
+        useId: 77,
+        type: 'wand',
+      });
 
       expect(res.success).toHaveBeenCalledWith(
         updatedWand,
@@ -217,6 +254,14 @@ describe('consumablesController', () => {
       // only potion items can be consumed as potions
       expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%potion of%'/);
       expect(mockClient.query.mock.calls[0][0]).not.toMatch(/scroll of/);
+      // Logged with the quantity put back; no use row id when the INSERT returned none
+      expect(auditService.recordConsume).toHaveBeenCalledWith(mockClient, expect.objectContaining({
+        userId: 1,
+        type: 'potion',
+        useId: undefined,
+        beforeRow: { ...updatedPotion, quantity: 3, status: 'Kept Party' },
+        afterRow: updatedPotion,
+      }));
       expect(res.success).toHaveBeenCalledWith(
         updatedPotion,
         'potion consumed successfully'
@@ -293,6 +338,7 @@ describe('consumablesController', () => {
       expect(res.notFound).toHaveBeenCalledWith(
         'Consumable not found or no uses left'
       );
+      expect(auditService.recordConsume).not.toHaveBeenCalled();
     });
 
     it('should reject when required fields are missing', async () => {
@@ -345,15 +391,26 @@ describe('consumablesController', () => {
         charges: 25,
         status: 'Kept Party',
       };
+      const storedWand = { ...updatedWand, charges: 40 };
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [updatedWand] });
+      const client = wandTx([updatedWand], [storedWand]);
 
       await consumablesController.updateWandCharges(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE loot'),
-        [25, 1]
-      );
+      // Read under a lock, then the UPDATE, all inside one transaction
+      expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      expect(client.query).toHaveBeenCalledTimes(2);
+      expect(client.query.mock.calls[0][0]).toContain('FOR UPDATE');
+      expect(client.query.mock.calls[0][1]).toEqual([1]);
+      expect(client.query.mock.calls[1][0]).toContain('UPDATE loot');
+      expect(client.query.mock.calls[1][1]).toEqual([25, 1]);
+      // The old and new rows go to the History log on the same client
+      expect(auditService.recordCharges).toHaveBeenCalledWith(client, {
+        userId: 1,
+        beforeRow: storedWand,
+        afterRow: updatedWand,
+      });
       expect(res.success).toHaveBeenCalledWith(
         updatedWand,
         'Wand charges updated successfully'
@@ -367,7 +424,7 @@ describe('consumablesController', () => {
       const res = createMockRes();
 
       const updatedWand = { id: 1, charges: 50, status: 'Kept Party' };
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [updatedWand] });
+      wandTx([updatedWand]);
 
       await consumablesController.updateWandCharges(req, res);
 
@@ -381,12 +438,12 @@ describe('consumablesController', () => {
       const req = createMockReq({ body: { id: 1, charges: 0 } });
       const res = createMockRes();
       const trashed = { id: 1, charges: 0, status: 'Trashed' };
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [trashed] });
+      const client = wandTx([trashed]);
 
       await consumablesController.updateWandCharges(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(expect.any(String), [0, 1]);
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/status = CASE WHEN [$]1 = 0 THEN 'Trashed' ELSE status END/);
+      expect(client.query.mock.calls[1][1]).toEqual([0, 1]);
+      expect(client.query.mock.calls[1][0]).toMatch(/status = CASE WHEN [$]1 = 0 THEN 'Trashed' ELSE status END/);
       expect(res.success).toHaveBeenCalledWith(
         trashed,
         expect.stringMatching(/the wand is now empty and was moved to trash/i)
@@ -397,7 +454,7 @@ describe('consumablesController', () => {
       const req = createMockReq({ body: { id: 1, charges: 3 } });
       const res = createMockRes();
       const kept = { id: 1, charges: 3, status: 'Kept Party' };
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [kept] });
+      wandTx([kept]);
 
       await consumablesController.updateWandCharges(req, res);
 
@@ -407,12 +464,15 @@ describe('consumablesController', () => {
     it('should only update wand rows', async () => {
       const req = createMockReq({ body: { id: 3, charges: 10 } });
       const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // e.g. a longsword row
+      // the row exists (e.g. a longsword) but the guarded UPDATE matches nothing
+      const client = wandTx([], [{ id: 3, name: 'Longsword', charges: null }]);
 
       await consumablesController.updateWandCharges(req, res);
 
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/ILIKE '%wand of%'/);
+      expect(client.query.mock.calls[1][0]).toMatch(/ILIKE '%wand of%'/);
       expect(res.notFound).toHaveBeenCalledWith('Wand not found or not in kept party status');
+      // nothing changed, so nothing is logged
+      expect(auditService.recordCharges).not.toHaveBeenCalled();
     });
 
     it.each([1.5, NaN, '25', null, [25], {}, Infinity])(
@@ -424,6 +484,7 @@ describe('consumablesController', () => {
 
         expect(res.validationError).toHaveBeenCalled();
         expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
       });
 
     it.each([0, -1, 1.5, '1', NaN, null])(
@@ -435,6 +496,7 @@ describe('consumablesController', () => {
 
         expect(res.validationError).toHaveBeenCalled();
         expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
       });
 
     it('should set charges to minimum (1)', async () => {
@@ -444,7 +506,7 @@ describe('consumablesController', () => {
       const res = createMockRes();
 
       const updatedWand = { id: 1, charges: 1, status: 'Kept Party' };
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [updatedWand] });
+      wandTx([updatedWand]);
 
       await consumablesController.updateWandCharges(req, res);
 
@@ -466,6 +528,7 @@ describe('consumablesController', () => {
         'Charges must be a whole number between 0 and 50'
       );
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
     });
 
     it('should reject negative charges', async () => {
@@ -487,13 +550,14 @@ describe('consumablesController', () => {
       });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      wandTx([], []); // no row to lock, nothing updated
 
       await consumablesController.updateWandCharges(req, res);
 
       expect(res.notFound).toHaveBeenCalledWith(
         'Wand not found or not in kept party status'
       );
+      expect(auditService.recordCharges).not.toHaveBeenCalled();
     });
 
     it('should reject when required fields are missing', async () => {

@@ -26,8 +26,15 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
+// The History log is written on the transaction client after the rows are
+// inserted; it is a no-op here and its call is asserted separately.
+jest.mock('../auditService', () => ({
+  recordGold: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
 const Gold = require('../../models/Gold');
+const auditService = require('../auditService');
 
 describe('GoldDistributionService', () => {
   beforeEach(() => {
@@ -226,6 +233,20 @@ describe('GoldDistributionService', () => {
       expect(result.message).toBe('Gold distributed successfully');
       expect(client.query.mock.calls[1][1].slice(2, 6)).toEqual([0, -50, 0, 0]);
       expect(client.query.mock.calls[1][1][8]).toBe(1);
+      // The distribution is logged on the same client, inside the transaction
+      expect(auditService.recordGold).toHaveBeenCalledTimes(1);
+      expect(auditService.recordGold).toHaveBeenCalledWith(client, {
+        userId: 1,
+        action: 'gold.distribute',
+        rows: [{ id: 10 }, { id: 11 }],
+      });
+    });
+
+    it('does not log anything when the distribution fails before the insert', async () => {
+      setup([{ id: 1, name: 'Valeros' }], { platinum: 0, gold: 0, silver: 0, copper: 0 }, []);
+
+      await expect(GoldDistributionService.executeDistribution(1, false)).rejects.toThrow();
+      expect(auditService.recordGold).not.toHaveBeenCalled();
     });
 
     it('should include party share message when enabled', async () => {

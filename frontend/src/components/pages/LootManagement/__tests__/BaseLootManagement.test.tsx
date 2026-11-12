@@ -9,6 +9,7 @@ vi.mock('../../../../services/lootService', () => ({
     updateLootItem: vi.fn().mockResolvedValue({ data: {} }),
     updateLootItemAsDM: vi.fn().mockResolvedValue({ data: {} }),
     updateLootStatus: vi.fn().mockResolvedValue({ data: {} }),
+    restoreLoot: vi.fn().mockResolvedValue({ data: {} }),
   },
 }));
 
@@ -290,5 +291,41 @@ describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
 
     expect(await screen.findByText('You can only appraise as your own character')).toBeInTheDocument();
     expect(setSelectedItems).not.toHaveBeenCalledWith([]);
+  });
+});
+
+describe('BaseLootManagement restore action (Trashed page, DM)', () => {
+  const restoreConfig: any = {
+    ...config,
+    actions: [{ label: 'Restore', color: 'primary', variant: 'outlined', actionKey: 'restore' }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsDM = true;
+    mockHookReturn.openUpdateDialog = false;
+    useAuthMock.mockReturnValue({ user: { id: 1, role: 'DM' } });
+  });
+
+  it('restores the selected items, refetches and clears the selection', async () => {
+    render(<BaseLootManagement config={restoreConfig} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(lootService.restoreLoot).toHaveBeenCalledWith([42]));
+    await waitFor(() => expect(fetchLoot).toHaveBeenCalled());
+    expect(setSelectedItems).toHaveBeenCalledWith([]);
+  });
+
+  it('shows the server message when the restore fails and keeps the selection', async () => {
+    (lootService.restoreLoot as any).mockRejectedValueOnce({
+      response: { data: { message: 'No trashed items found with the provided IDs' } },
+    });
+    render(<BaseLootManagement config={restoreConfig} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+
+    expect(await screen.findByText('No trashed items found with the provided IDs')).toBeInTheDocument();
+    expect(setSelectedItems).not.toHaveBeenCalled();
   });
 });

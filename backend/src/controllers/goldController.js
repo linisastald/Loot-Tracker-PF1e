@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const GoldDistributionService = require('../services/goldDistributionService');
 const { hasDmRights } = require('../utils/roleUtils');
+const auditService = require('../services/auditService');
 
 const CURRENCIES = ['platinum', 'gold', 'silver', 'copper'];
 const DEBIT_TYPES = ['Withdrawal', 'Purchase', 'Party Loot Purchase'];
@@ -93,6 +94,7 @@ const createGoldEntry = async (req, res) => {
             created.push(await Gold.create(adjustedEntry, client));
         }
 
+        await auditService.recordGold(client, { userId: req.user.id, action: 'gold.create', rows: created });
         return created;
     }, 'Error creating gold entries');
 
@@ -193,7 +195,7 @@ const balance = async (req, res) => {
             return null;
         }
 
-        return Gold.create({
+        const row = await Gold.create({
             sessionDate: new Date(),
             transactionType: 'Balance',
             platinum: 0,
@@ -203,6 +205,8 @@ const balance = async (req, res) => {
             notes: 'Balanced currencies',
             who: req.user.id
         }, client);
+        await auditService.recordGold(client, { userId: req.user.id, action: 'gold.balance', rows: [row] });
+        return row;
     }, 'Error balancing currencies');
 
     if (!created) {

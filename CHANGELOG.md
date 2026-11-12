@@ -4,8 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Features
+- History page (DM Settings): every change to loot and gold is logged with who made it and when: loot submissions (Loot Entry and the loot generator), status changes, edits, identification, consumable use, wand charges, gold entries, distributions, balances and sales. Each entry shows its before and after, and a DM can undo it from the page
+- Undo reverses the latest change to those rows: items go back to their earlier status or values, gold entries come off the ledger (refused if a total would go negative), and a sale puts the items back in Pending Sale and removes the gold. Changes come off newest first; an undo is logged and cannot itself be undone
+- Restore on the Trashed page (DM): selected items go back to the status they had before they were trashed, or Unprocessed if that is not known
+
 ### Security
 - Dependency updates clear the open production advisories: follow-redirects 1.16.3 (credential headers leaking on redirect), body-parser 2.4.0 (denial of service through a compressed request body), nodemailer 10.5.0 (address parsing), ip-address 10.7.6 and qs 6.17.1. Dev tooling moves to vite 8.3.8, vitest 4.1.12 and undici 7.30.2. The remaining advisories are in jest's own dependencies (glob, minimatch, deepmerge) and are dev-only
+
+### Notes
+- Migration 086 adds the audit_log table. History starts with this release; earlier changes are not shown
 
 ## [0.16.0] - 2026-10-08
 

@@ -2,6 +2,7 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const auditService = require('../services/auditService');
 
 const CONSUMABLE_TYPES = ['wand', 'potion', 'scroll'];
 const MAX_WAND_CHARGES = 50;
@@ -138,11 +139,26 @@ const useConsumable = async (req, res) => {
     const insertUseQuery = `
       INSERT INTO consumableuse (lootid, who, consumed_on)
       VALUES ($1, $2, CURRENT_TIMESTAMP)
+      RETURNING id
     `;
 
-    await client.query(insertUseQuery, [result.rows[0].id, characterId]);
+    const use = await client.query(insertUseQuery, [result.rows[0].id, characterId]);
 
-    return result.rows[0];
+    // The row before the use is the row after it with the unit put back; the
+    // UPDATE only matches 'Kept Party' rows, so that was the status
+    const afterRow = result.rows[0];
+    const beforeRow = type === 'wand'
+      ? { ...afterRow, charges: afterRow.charges + 1, status: 'Kept Party' }
+      : { ...afterRow, quantity: afterRow.quantity + 1, status: 'Kept Party' };
+    await auditService.recordConsume(client, {
+      userId: req.user.id,
+      beforeRow,
+      afterRow,
+      useId: use.rows[0] && use.rows[0].id,
+      type,
+    });
+
+    return afterRow;
   });
 
   const baseMessage = `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`;
@@ -178,7 +194,14 @@ const updateWandCharges = async (req, res) => {
     RETURNING *
   `;
 
-  const result = await dbUtils.executeQuery(updateQuery, [charges, id]);
+  const result = await dbUtils.executeTransaction(async (client) => {
+    const stored = await client.query('SELECT * FROM loot WHERE id = $1 FOR UPDATE', [id]);
+    const updated = await client.query(updateQuery, [charges, id]);
+    if (updated.rows.length > 0 && stored.rows.length > 0) {
+      await auditService.recordCharges(client, { userId: req.user.id, beforeRow: stored.rows[0], afterRow: updated.rows[0] });
+    }
+    return updated;
+  });
 
   if (result.rows.length === 0) {
     throw controllerFactory.createNotFoundError('Wand not found or not in kept party status');
