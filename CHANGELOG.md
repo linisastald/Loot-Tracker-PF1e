@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Security
+- Dependency updates clear the open production advisories: follow-redirects 1.16.3 (credential headers leaking on redirect), body-parser 2.4.0 (denial of service through a compressed request body), nodemailer 10.5.0 (address parsing), ip-address 10.7.6 and qs 6.17.1. Dev tooling moves to vite 8.3.8, vitest 4.1.12 and undici 7.30.2. The remaining advisories are in jest's own dependencies (glob, minimatch, deepmerge) and are dev-only
+
 ## [0.16.0] - 2026-10-08
 
 Big one: the whole code base was reviewed and cleaned up. About 60 unused endpoints and a pile of dead files are gone, dozens of bugs are fixed, and the superadmin finally has a real admin page.
